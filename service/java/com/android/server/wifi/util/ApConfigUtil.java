@@ -25,6 +25,8 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.SoftApConfiguration.BandType;
+import android.net.wifi.SoftApInfo;
+import android.net.wifi.WifiClient;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiScanner;
@@ -38,8 +40,10 @@ import com.android.server.wifi.coex.CoexManager;
 import com.android.wifi.resources.R;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Random;
 import java.util.Set;
@@ -801,6 +805,18 @@ public class ApConfigUtil {
     }
 
     /**
+     * Helper function to get whether or not dynamic country code update is supported when Soft AP
+     * enabled.
+     *
+     * @param context the caller context used to get value from resource file.
+     * @return true if supported, false otherwise.
+     */
+    public static boolean isSoftApDynamicCountryCodeSupported(@NonNull Context context) {
+        return context.getResources().getBoolean(
+                R.bool.config_wifiSoftApDynamicCountryCodeUpdateSupported);
+    }
+
+    /**
      * Helper function for comparing two SoftApConfiguration.
      *
      * @param currentConfig the original configuration.
@@ -923,5 +939,40 @@ public class ApConfigUtil {
 
         // In all other cases, we don't need to set the freqList
         return false;
+    }
+
+    /**
+     * Deep copy for object Map<String, SoftApInfo>
+     */
+    public static Map<String, SoftApInfo> deepCopyForSoftApInfoMap(
+            Map<String, SoftApInfo> originalMap) {
+        if (originalMap == null) {
+            return null;
+        }
+        Map<String, SoftApInfo> deepCopyMap = new HashMap<String, SoftApInfo>();
+        for (Map.Entry<String, SoftApInfo> entry: originalMap.entrySet()) {
+            deepCopyMap.put(entry.getKey(), new SoftApInfo(entry.getValue()));
+        }
+        return deepCopyMap;
+    }
+
+    /**
+     * Deep copy for object Map<String, List<WifiClient>>
+     */
+    public static Map<String, List<WifiClient>> deepCopyForWifiClientListMap(
+            Map<String, List<WifiClient>> originalMap) {
+        if (originalMap == null) {
+            return null;
+        }
+        Map<String, List<WifiClient>> deepCopyMap = new HashMap<String, List<WifiClient>>();
+        for (Map.Entry<String, List<WifiClient>> entry: originalMap.entrySet()) {
+            List<WifiClient> clients = new ArrayList<>();
+            for (WifiClient client : entry.getValue()) {
+                clients.add(new WifiClient(client.getMacAddress(),
+                        client.getApInstanceIdentifier()));
+            }
+            deepCopyMap.put(entry.getKey(), clients);
+        }
+        return deepCopyMap;
     }
 }

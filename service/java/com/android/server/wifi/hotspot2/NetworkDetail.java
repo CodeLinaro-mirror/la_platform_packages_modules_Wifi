@@ -10,6 +10,8 @@ import com.android.server.wifi.hotspot2.anqp.ANQPElement;
 import com.android.server.wifi.hotspot2.anqp.Constants;
 import com.android.server.wifi.hotspot2.anqp.RawByteElement;
 import com.android.server.wifi.util.InformationElementUtil;
+import com.android.server.wifi.util.NativeUtil;
+import com.android.server.wifi.WifiGbk;
 
 import java.nio.BufferUnderflowException;
 import java.nio.ByteBuffer;
@@ -264,6 +266,13 @@ public class NetworkDetail {
             }
 
             if (ssid == null) {
+                // wifigbk++
+                String ssid2 = WifiGbk.encodeSsid(ssidOctets, "GBK");
+                if (ssid2 != null) {
+                    ssid = NativeUtil.removeEnclosingQuotes(ssid2);
+                }
+                else
+                // wifigbk--
                 if (extendedCapabilities.isStrictUtf8() && exception != null) {
                     throw new IllegalArgumentException("Failed to decode SSID in dubious IE string");
                 }
@@ -301,7 +310,7 @@ public class NetworkDetail {
         //set up channel info
         mPrimaryFreq = freq;
         int channelWidth = ScanResult.UNSPECIFIED;
-        int centerFreq0 = 0;
+        int centerFreq0 = mPrimaryFreq;
         int centerFreq1 = 0;
 
         // First check if HE Operation IE is present
@@ -338,6 +347,12 @@ public class NetworkDetail {
                 centerFreq0 = htOperation.getCenterFreq0(mPrimaryFreq);
             }
         }
+
+        if (channelWidth == ScanResult.UNSPECIFIED) {
+            // Failed to obtain channel info from HE, VHT, HT IEs (possibly a 802.11a/b/g legacy AP)
+            channelWidth = ScanResult.CHANNEL_WIDTH_20MHZ;
+        }
+
         mChannelWidth = channelWidth;
         mCenterfreq0 = centerFreq0;
         mCenterfreq1 = centerFreq1;

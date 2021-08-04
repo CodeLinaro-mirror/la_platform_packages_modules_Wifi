@@ -970,9 +970,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     }
 
     private void stopIpClient() {
-        // TODO(b/157943924): Adding more log to debug the issue.
-        Log.v(getTag(), "stopIpClient IpClientWithPreConnection: " + mIpClientWithPreConnection,
-                new Throwable());
+        if (mVerboseLoggingEnabled) {
+            Log.v(getTag(), "stopIpClient IpClientWithPreConnection: "
+                    + mIpClientWithPreConnection);
+        }
         if (mIpClient != null) {
             if (mIpClientWithPreConnection) {
                 mIpClient.notifyPreconnectionComplete(false);
@@ -5538,8 +5539,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     if (message.arg1 == NETWORK_STATUS_UNWANTED_DISCONNECT) {
                         mWifiMetrics.logStaEvent(mInterfaceName, StaEvent.TYPE_FRAMEWORK_DISCONNECT,
                                 StaEvent.DISCONNECT_UNWANTED);
-                        if (mClientModeManager.getRole() == ROLE_CLIENT_SECONDARY_TRANSIENT) {
-                            mWifiMetrics.incrementMakeBeforeBreakLingerCompletedCount();
+                        if (mClientModeManager.getRole() == ROLE_CLIENT_SECONDARY_TRANSIENT
+                                && mClientModeManager.getPreviousRole() == ROLE_CLIENT_PRIMARY) {
+                            mWifiMetrics.incrementMakeBeforeBreakLingerCompletedCount(
+                                    mClock.getElapsedSinceBootMillis()
+                                            - mClientModeManager.getLastRoleChangeSinceBootMs());
                         }
                         mWifiNative.disconnect(mInterfaceName);
                     } else if (message.arg1 == NETWORK_STATUS_UNWANTED_DISABLE_AUTOJOIN
@@ -6609,8 +6613,20 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * SSID allowlist with the linked networks.
      */
     private void updateLinkedNetworks(@NonNull WifiConfiguration config) {
-        if (!mContext.getResources().getBoolean(R.bool.config_wifiEnableLinkedNetworkRoaming)
-                || !config.allowedKeyManagement.get(WifiConfiguration.KeyMgmt.WPA_PSK)) {
+        if (!mContext.getResources().getBoolean(R.bool.config_wifiEnableLinkedNetworkRoaming)) {
+            return;
+        }
+
+        SecurityParams params = mWifiNative.getCurrentSecurityParams(mInterfaceName);
+        if (params == null || !params.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
+            return;
+        }
+
+        // check for FT/PSK
+        ScanResult scanResult = mScanRequestProxy.getScanResult(mLastBssid);
+        String caps = (scanResult != null) ? scanResult.capabilities : "";
+        if (caps.contains("FT/PSK")) {
+            Log.i(TAG, "Linked network - return as current connection is FT-PSK");
             return;
         }
 

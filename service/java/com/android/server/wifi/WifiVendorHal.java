@@ -949,12 +949,19 @@ public class WifiVendorHal {
                 return WifiBand.BAND_24GHZ_5GHZ;
             case WifiScanner.WIFI_BAND_BOTH_WITH_DFS:
                 return WifiBand.BAND_24GHZ_5GHZ_WITH_DFS;
+            case WifiScanner.WIFI_BAND_6_GHZ:
+                return WifiBand.BAND_6GHZ;
+            case WifiScanner.WIFI_BAND_24_5_6_GHZ:
+                return WifiBand.BAND_24GHZ_5GHZ_6GHZ;
+            case WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_GHZ:
+                return WifiBand.BAND_24GHZ_5GHZ_WITH_DFS_6GHZ;
             case WifiScanner.WIFI_BAND_60_GHZ:
                 return WifiBand.BAND_60GHZ;
             case WifiScanner.WIFI_BAND_24_5_6_60_GHZ:
                 return WifiBand.BAND_24GHZ_5GHZ_6GHZ_60GHZ;
             case WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_60_GHZ:
                 return WifiBand.BAND_24GHZ_5GHZ_WITH_DFS_6GHZ_60GHZ;
+            case WifiScanner.WIFI_BAND_24_GHZ_WITH_5GHZ_DFS:
             default:
                 throw new IllegalArgumentException("bad band " + frameworkBand);
         }
@@ -1977,6 +1984,32 @@ public class WifiVendorHal {
             } catch (RemoteException e) {
                 handleRemoteException(e);
                 return false;
+            }
+        }
+    }
+
+    /**
+     * Get the names of the bridged AP instances.
+     *
+     * @param ifaceName Name of the bridged interface.
+     * @return A list which contains the names of the bridged AP instances.
+     */
+    @Nullable
+    public List<String> getBridgedApInstances(@NonNull String ifaceName) {
+        synchronized (sLock) {
+            try {
+                Mutable<List<String>> instancesResp  = new Mutable<>();
+                android.hardware.wifi.V1_5.IWifiApIface ap15 =
+                        getWifiApIfaceForV1_5Mockable(ifaceName);
+                if (ap15 == null) return null;
+                ap15.getBridgedInstances((status, instances) -> {
+                    if (!ok(status)) return;
+                    instancesResp.value = new ArrayList<>(instances);
+                });
+                return instancesResp.value;
+            } catch (RemoteException e) {
+                handleRemoteException(e);
+                return null;
             }
         }
     }
@@ -3854,6 +3887,9 @@ public class WifiVendorHal {
                 return answer.value;
             } catch (RemoteException e) {
                 handleRemoteException(e);
+                return null;
+            } catch (IllegalArgumentException e) {
+                mLog.e("Illegal argument for getUsableChannels() " + e);
                 return null;
             }
         }

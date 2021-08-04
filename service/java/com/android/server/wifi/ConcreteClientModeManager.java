@@ -126,6 +126,9 @@ public class ConcreteClientModeManager implements ClientModeManager {
     @Nullable
     private ClientRole mRole = null;
     @Nullable
+    private ClientRole mPreviousRole = null;
+    private long mLastRoleChangeSinceBootMs = 0;
+    @Nullable
     private WorkSource mRequestorWs = null;
     @NonNull
     private Listener<ConcreteClientModeManager> mModeListener;
@@ -236,7 +239,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
                     }
                 };
 
-        private final NetworkCallback mImsNetworkCallback = new NetworkCallback() {
+        private final class ImsNetworkCallback extends NetworkCallback {
             private int mRegisteredImsNetworkCount = 0;
 
             @Override
@@ -261,7 +264,9 @@ public class ConcreteClientModeManager implements ClientModeManager {
                     }
                 }
             }
-        };
+        }
+
+        private NetworkCallback mImsNetworkCallback = null;
 
         DeferStopHandler(Looper looper) {
             super(TAG, looper);
@@ -307,6 +312,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
             mConnectivityManager =
                     (ConnectivityManager) mContext.getSystemService(Context.CONNECTIVITY_SERVICE);
 
+            mImsNetworkCallback = new ImsNetworkCallback();
             mConnectivityManager.registerNetworkCallback(imsRequest, mImsNetworkCallback,
                     new Handler(mLooper));
         }
@@ -360,8 +366,9 @@ public class ConcreteClientModeManager implements ClientModeManager {
                 }
             }
 
-            if (mConnectivityManager != null) {
+            if (mConnectivityManager != null && mImsNetworkCallback != null) {
                 mConnectivityManager.unregisterNetworkCallback(mImsNetworkCallback);
+                mImsNetworkCallback = null;
             }
 
             mIsDeferring = false;
@@ -430,6 +437,16 @@ public class ConcreteClientModeManager implements ClientModeManager {
     @Override
     @Nullable public ClientRole getRole() {
         return mRole;
+    }
+
+    @Override
+    @Nullable public ClientRole getPreviousRole() {
+        return mPreviousRole;
+    }
+
+    @Override
+    public long getLastRoleChangeSinceBootMs() {
+        return mLastRoleChangeSinceBootMs;
     }
 
     /**
@@ -590,11 +607,18 @@ public class ConcreteClientModeManager implements ClientModeManager {
                 + " EXTRA_WIFI_STATE=" + newState
                 + " EXTRA_PREVIOUS_WIFI_STATE=" + currentState;
         if (mVerboseLoggingEnabled) Log.d(getTag(), "Queuing " + summary);
-        mBroadcastQueue.queueOrSendBroadcast(
-                this, () -> {
+        ClientModeManagerBroadcastQueue.QueuedBroadcast broadcast =
+                () -> {
                     if (mVerboseLoggingEnabled) Log.d(getTag(), "Sending " + summary);
                     mContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
-                });
+                };
+        if (mRole == null && role == ROLE_CLIENT_PRIMARY) {
+            // This CMM is intended to be the primary, but has not completed the mode transition
+            // yet. Need to force broadcast to be sent.
+            broadcast.send();
+        } else {
+            mBroadcastQueue.queueOrSendBroadcast(this, broadcast);
+        }
     }
 
     private void setWifiStateForApiCalls(int newState) {
@@ -736,6 +760,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
         }
 
         private void setRoleInternal(@NonNull RoleChangeInfo roleChangeInfo) {
+            mPreviousRole = mRole;
+            mLastRoleChangeSinceBootMs = mClock.getElapsedSinceBootMillis();
             mRole = roleChangeInfo.role;
             if (roleChangeInfo.requestorWs != null) {
                 mRequestorWs = roleChangeInfo.requestorWs;
@@ -1077,6 +1103,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
      */
     private void cleanupOnQuitIfApplicable() {
         if (mIsStopped && mGraveyard.hasAllClientModeImplsQuit()) {
+            mPreviousRole = mRole;
+            mLastRoleChangeSinceBootMs = mClock.getElapsedSinceBootMillis();
             mRole = null;
             // only call onStopped() after role has been reset to null since ActiveModeWarden
             // expects the CMM to be fully stopped before onStopped().

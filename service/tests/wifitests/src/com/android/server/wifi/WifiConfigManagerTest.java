@@ -2823,6 +2823,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         // Verify the recent failure association status is set properly
         List<WifiConfiguration> configs = mWifiConfigManager.getSavedNetworks(Process.WIFI_UID);
         assertEquals(1, configs.size());
+        verify(mWifiMetrics).incrementRecentFailureAssociationStatusCount(eq(expectedStatusCode));
         assertEquals(expectedStatusCode, configs.get(0).getRecentFailureReason());
         assertEquals(updateTimeMs,
                 configs.get(0).recentFailure.getLastUpdateTimeSinceBootMillis());
@@ -4088,7 +4089,8 @@ public class WifiConfigManagerTest extends WifiBaseTest {
                 Arrays.asList(savedOpenNetwork, ephemeralNetwork, passpointNetwork,
                         suggestionNetwork));
         WifiConfigurationTestUtil.assertConfigurationsEqualForConfigManagerAddOrUpdate(
-                expectedConfigsBeforeRemove, mWifiConfigManager.getConfiguredNetworks());
+                expectedConfigsBeforeRemove,
+                mWifiConfigManager.getConfiguredNetworksWithPasswords());
 
         assertTrue(mWifiConfigManager.removeAllEphemeralOrPasspointConfiguredNetworks());
 
@@ -6983,7 +6985,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
      */
     @Test
     public void testRemoveExcessNetworksOnAdd() {
-        mResources.setInteger(R.integer.config_wifiMaxNumWifiConfigurations, 8);
+        mResources.setInteger(R.integer.config_wifiMaxNumWifiConfigurations, 9);
         List<WifiConfiguration> configsInDeletionOrder = new ArrayList<>();
         WifiConfiguration currentConfig = WifiConfigurationTestUtil.createPskNetwork();
         currentConfig.status = WifiConfiguration.Status.CURRENT;
@@ -7003,7 +7005,13 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         WifiConfiguration noAssociationConfig = WifiConfigurationTestUtil.createOpenNetwork();
         noAssociationConfig.numRebootsSinceLastUse = 1;
         noAssociationConfig.numAssociation = 0;
+        WifiConfiguration invalidKeyMgmtConfig = WifiConfigurationTestUtil.createEapNetwork();
+        invalidKeyMgmtConfig.allowedKeyManagement.clear(WifiConfiguration.KeyMgmt.IEEE8021X);
+        invalidKeyMgmtConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA2_PSK);
+        noAssociationConfig.numRebootsSinceLastUse = 1;
+        noAssociationConfig.numAssociation = 0;
 
+        configsInDeletionOrder.add(invalidKeyMgmtConfig);
         configsInDeletionOrder.add(noAssociationConfig);
         configsInDeletionOrder.add(oneRebootOpenConfig);
         configsInDeletionOrder.add(oneRebootSaeConfig);

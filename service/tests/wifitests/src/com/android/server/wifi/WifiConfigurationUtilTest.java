@@ -507,6 +507,19 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
     }
 
     /**
+     * Verify that the validate method fails to validate WifiConfiguration with bad key mgmt values.
+     */
+    @Test
+    public void testValidateNegativeCases_BadSuiteBKeyMgmt() {
+        WifiConfiguration config = WifiConfigurationTestUtil.createEapSuiteBNetwork();
+        assertTrue(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
+
+        config.allowedKeyManagement.clear(WifiConfiguration.KeyMgmt.IEEE8021X);
+        config.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA2_PSK);
+        assertFalse(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
+    }
+
+    /**
      * Verify that the validate method fails to validate WifiConfiguration with bad ipconfiguration
      * values.
      */
@@ -1171,6 +1184,29 @@ public class WifiConfigurationUtilTest extends WifiBaseTest {
         assertFalse(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
 
         config.setSecurityParams(WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE_192_BIT);
+        assertFalse(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
+    }
+
+    /**
+     * Verify that the validate method fails to validate WifiConfiguration with enterprise
+     * configuration that is missing the identity and/or password.
+     */
+    @Test
+    public void testValidateNegativeCases_NoIdentityOrPasswordEnterpriseConfig() {
+        WifiConfiguration config = WifiConfigurationTestUtil.createEapNetwork();
+        config.enterpriseConfig.setIdentity(null);
+        assertFalse(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
+
+        WifiConfigurationTestUtil.createEapNetwork();
+        config.enterpriseConfig.setPassword(null);
+        assertFalse(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
+
+        config = WifiConfigurationTestUtil.createWpa3EnterpriseNetwork(TEST_SSID);
+        config.enterpriseConfig.setIdentity(null);
+        assertFalse(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
+
+        WifiConfigurationTestUtil.createWpa3EnterpriseNetwork(TEST_SSID);
+        config.enterpriseConfig.setPassword(null);
         assertFalse(WifiConfigurationUtil.validate(config, WifiConfigurationUtil.VALIDATE_FOR_ADD));
     }
 }

@@ -1105,6 +1105,8 @@ public class WifiConfigManager {
             }
         }
 
+        internalConfig.shareThisAp = externalConfig.shareThisAp;
+
         // Copy over the |WifiEnterpriseConfig| parameters if set.
         if (externalConfig.enterpriseConfig != null) {
             internalConfig.enterpriseConfig.copyFromExternal(
@@ -1517,9 +1519,14 @@ public class WifiConfigManager {
                         .thenComparing((WifiConfiguration config) ->
                                 Math.max(config.lastConnected, config.lastUpdated))
                         .thenComparing((WifiConfiguration config) -> {
-                            int authType = config.getAuthType();
-                            return !(authType == WifiConfiguration.KeyMgmt.NONE
-                                    || authType == WifiConfiguration.KeyMgmt.OWE);
+                            try {
+                                int authType = config.getAuthType();
+                                return !(authType == WifiConfiguration.KeyMgmt.NONE
+                                        || authType == WifiConfiguration.KeyMgmt.OWE);
+                            } catch (IllegalStateException e) {
+                                // An invalid keymgmt configuration should be pruned first.
+                                return false;
+                            }
                         })
                         .thenComparing((WifiConfiguration config) -> config.numAssociation))
                 .limit(numExcessNetworks)
@@ -3477,6 +3484,7 @@ public class WifiConfigManager {
         if (config == null) {
             return;
         }
+        mWifiMetrics.incrementRecentFailureAssociationStatusCount(reason);
         int previousReason = config.recentFailure.getAssociationStatus();
         config.recentFailure.setAssociationStatus(reason, mClock.getElapsedSinceBootMillis());
         if (previousReason != reason) {
@@ -3750,7 +3758,15 @@ public class WifiConfigManager {
             return null;
         }
         for (String configKey : linkedConfigurations.keySet()) {
-            linkedNetworks.put(configKey, getConfiguredNetworkWithoutMasking(configKey));
+            WifiConfiguration linkConfig = getConfiguredNetworkWithoutMasking(configKey);
+            if (linkConfig == null ||
+                !linkConfig.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK))
+                continue;
+
+            linkConfig.getNetworkSelectionStatus().setCandidateSecurityParams(
+                    SecurityParams.createSecurityParamsBySecurityType(
+                            WifiConfiguration.SECURITY_TYPE_PSK));
+            linkedNetworks.put(configKey, linkConfig);
         }
         return linkedNetworks;
     }

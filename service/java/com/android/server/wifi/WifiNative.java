@@ -26,6 +26,7 @@ import android.net.TrafficStats;
 import android.net.apf.ApfCapabilities;
 import android.net.wifi.CoexUnsafeChannel;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SecurityParams;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiAvailableChannel;
@@ -174,6 +175,13 @@ public class WifiNative {
 
         public void setChangeListener(@NonNull WifiCountryCode.ChangeListener listener) {
             mListener = listener;
+        }
+
+        public void onSetCountryCodeSucceeded(String country) {
+            Log.d(TAG, "onSetCountryCodeSucceeded: " + country);
+            if (mListener != null) {
+                mListener.onSetCountryCodeSucceeded(country);
+            }
         }
 
         @Override
@@ -942,6 +950,24 @@ public class WifiNative {
         }
     }
 
+    /**
+     * Get list of instance name from this bridged AP iface.
+     *
+     * @param ifaceName Name of the bridged interface.
+     * @return list of instance name when succeed, otherwise null.
+     */
+    @Nullable
+    private List<String> getBridgedApInstances(@NonNull String ifaceName) {
+        synchronized (mLock) {
+            if (mWifiVendorHal.isVendorHalSupported()) {
+                return mWifiVendorHal.getBridgedApInstances(ifaceName);
+            } else {
+                Log.i(TAG, "Vendor Hal not supported, ignoring getBridgedApInstances.");
+                return null;
+            }
+        }
+    }
+
     // For devices that don't support the vendor HAL, we will not support any concurrency.
     // So simulate the HalDeviceManager behavior by triggering the destroy listener for
     // the interface.
@@ -1273,8 +1299,19 @@ public class WifiNative {
                 mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHal();
                 return null;
             }
-            if (!mHostapdHal.isApInfoCallbackSupported()
-                    && !mWifiCondManager.setupInterfaceForSoftApMode(iface.name)) {
+            String ifaceInstanceName = iface.name;
+            if (isBridged) {
+                List<String> instances = getBridgedApInstances(iface.name);
+                if (instances == null || instances.size() == 0) {
+                    Log.e(TAG, "Failed to get bridged AP instances" + iface.name);
+                    teardownInterface(iface.name);
+                    mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHal();
+                    return null;
+                }
+                // Always select first instance as wificond interface.
+                ifaceInstanceName = instances.get(0);
+            }
+            if (!mWifiCondManager.setupInterfaceForSoftApMode(ifaceInstanceName)) {
                 Log.e(TAG, "Failed to setup iface in wificond on " + iface);
                 teardownInterface(iface.name);
                 mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToWificond();
@@ -1579,9 +1616,12 @@ public class WifiNative {
         List<byte[]> hiddenNetworkSsidsArrays = new ArrayList<>();
         for (String hiddenNetworkSsid : hiddenNetworkSSIDs) {
             try {
-                hiddenNetworkSsidsArrays.add(
-                        NativeUtil.byteArrayFromArrayList(
-                                NativeUtil.decodeSsid(hiddenNetworkSsid)));
+                byte[] hiddenSsidBytes = WifiGbk.getRandUtfOrGbkBytes(hiddenNetworkSsid);
+                if (hiddenSsidBytes.length > WifiGbk.MAX_SSID_LENGTH) {
+                    Log.e(TAG, "Skip too long Gbk->utf ssid[" + hiddenSsidBytes.length
+                       + "]=" + hiddenNetworkSsid);
+                }
+                hiddenNetworkSsidsArrays.add(hiddenSsidBytes);
             } catch (IllegalArgumentException e) {
                 Log.e(TAG, "Illegal argument " + hiddenNetworkSsid, e);
                 continue;
@@ -2261,7 +2301,13 @@ public class WifiNative {
      * @return true if request is sent successfully, false otherwise.
      */
     public boolean setStaCountryCode(@NonNull String ifaceName, String countryCode) {
-        return mSupplicantStaIfaceHal.setCountryCode(ifaceName, countryCode);
+        if (mSupplicantStaIfaceHal.setCountryCode(ifaceName, countryCode)) {
+            if (mCountryCodeChangeListener != null) {
+                mCountryCodeChangeListener.onSetCountryCodeSucceeded(countryCode);
+            }
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -3115,7 +3161,22 @@ public class WifiNative {
                     android.net.wifi.nl80211.PnoNetwork nativeNetwork =
                             network.toNativePnoNetwork();
                     if (nativeNetwork != null) {
-                        pnoNetworks.add(nativeNetwork);
+                        if (nativeNetwork.getSsid().length <= WifiGbk.MAX_SSID_LENGTH) {
+                            pnoNetworks.add(nativeNetwork);
+                        }
+                        //wifigbk++
+                        if (!WifiGbk.isAllAscii(nativeNetwork.getSsid())) {
+                            byte gbkBytes[] = WifiGbk.toGbk(nativeNetwork.getSsid());
+                            if (gbkBytes != null) {
+                                android.net.wifi.nl80211.PnoNetwork gbkNetwork =
+                                    network.toNativePnoNetwork();
+                                gbkNetwork.setSsid(gbkBytes);
+                                pnoNetworks.add(gbkNetwork);
+                                Log.i(TAG, "WifiGbk fixed - pnoScan add extra Gbk ssid for "
+                                    + nativeNetwork.getSsid());
+                            }
+                        }
+                        //wifigbk--
                     }
                 }
             }
@@ -3399,7 +3460,13 @@ public class WifiNative {
      * @return true for success
      */
     public boolean setApCountryCode(@NonNull String ifaceName, String countryCode) {
-        return mWifiVendorHal.setApCountryCode(ifaceName, countryCode);
+        if (mWifiVendorHal.setApCountryCode(ifaceName, countryCode)) {
+            if (mCountryCodeChangeListener != null) {
+                mCountryCodeChangeListener.onSetCountryCodeSucceeded(countryCode);
+            }
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -3408,7 +3475,13 @@ public class WifiNative {
      * @return true for success
      */
     public boolean setChipCountryCode(String countryCode) {
-        return mWifiVendorHal.setChipCountryCode(countryCode);
+        if (mWifiVendorHal.setChipCountryCode(countryCode)) {
+            if (mCountryCodeChangeListener != null) {
+                mCountryCodeChangeListener.onSetCountryCodeSucceeded(countryCode);
+            }
+            return true;
+        }
+        return false;
     }
 
     //---------------------------------------------------------------------------------
@@ -4216,5 +4289,9 @@ public class WifiNative {
             }
         }
         return true;
+    }
+
+    public SecurityParams getCurrentSecurityParams(@NonNull String ifaceName) {
+        return mSupplicantStaIfaceHal.getCurrentSecurityParams(ifaceName);
     }
 }

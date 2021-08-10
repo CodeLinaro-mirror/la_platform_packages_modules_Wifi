@@ -1529,7 +1529,17 @@ public class WifiNative {
      */
     public Set<String> getSoftApInterfaceNames() {
         synchronized (mLock) {
-            return mIfaceMgr.findAllApIfaceNames();
+            Set<String> maintainedNames = mIfaceMgr.findAllApIfaceNames();
+            Set<String> detailedNames = new ArraySet<>();
+            for (String name : maintainedNames) {
+                if (name.contains("br")) {
+                    ArrayList<String> ifaces = listApInterfaces();
+                    detailedNames.add(name + String.valueOf(ifaces));
+                } else {
+                    detailedNames.add(name);
+                }
+            }
+            return detailedNames;
         }
     }
 
@@ -3426,6 +3436,75 @@ public class WifiNative {
             if (mCountryCodeChangeListener != null) {
                 mCountryCodeChangeListener.onSetCountryCodeSucceeded(countryCode);
             }
+            return true;
+        }
+        return false;
+    }
+
+    // ---------------------------------------------------------------------------------
+    /* Hostapd Vendor APIs */
+    public ArrayList<String> listApInterfaces() {
+        return mHostapdHal.listInterfaces();
+    }
+
+    public String hostapdCmd(String ifname, String cmd) {
+        return mHostapdHal.hostapdCmd(ifname, cmd);
+    }
+
+    public String hapdDriverCmd(String ifname, String cmd) {
+        if (ifname.contains("br")) {
+            // bridge interface
+            ArrayList<String> ifaces = listApInterfaces();
+            if (ifaces != null && ifaces.size() > 0) {
+                return mHostapdHal.hostapdCmd(ifaces.get(0), "DRIVER " + cmd);
+            } else {
+                return "iface not ready";
+            }
+        }
+        return mHostapdHal.hostapdCmd(ifname, "DRIVER " + cmd);
+    }
+
+    //Used for cmds requiring all internal ifaces to take effect when
+    //bridge iface is set
+    public String hapdDriverCmd2(String ifname, String cmd) {
+        String reply = "";
+        if (ifname.contains("br")) {
+            // bridge interface
+            ArrayList<String> ifaces = listApInterfaces();
+            if (ifaces != null && ifaces.size() > 0) {
+                for (String iface : ifaces) {
+                    reply = mHostapdHal.hostapdCmd(iface, "DRIVER " + cmd);
+                    if (!reply.contains("OK")) {
+                        return reply;
+                    }
+                }
+            } else {
+                reply = "iface not ready";
+            }
+        } else {
+            reply = mHostapdHal.hostapdCmd(ifname, "DRIVER " + cmd);
+        }
+        return reply;
+    }
+
+    private int getIfaceType(String ifname) {
+        int iface_type = -1;
+        synchronized (mLock) {
+            Iface iface = mIfaceMgr.getIface(ifname);
+            if (iface != null) {
+                iface_type = iface.type;
+            } else { //internal ifaces
+                ArrayList<String> ifaces = listApInterfaces();
+                if (ifaces != null && ifaces.contains(ifname)) {
+                    iface_type = Iface.IFACE_TYPE_AP;
+                }
+            }
+            return iface_type;
+        }
+    }
+
+    private boolean setSuccess(String reply) {
+        if (reply != null && reply.contains("OK")) {
             return true;
         }
         return false;

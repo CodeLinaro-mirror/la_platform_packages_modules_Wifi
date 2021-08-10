@@ -995,6 +995,11 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     }
                     mScanRequestProxy.enableScanning(enabled, hiddenEnabled);
                     return 0;
+                case "qca-list-ifaces" : {
+                    pw.println("Active STA ifaces: " + mWifiNative.getClientInterfaceNames());
+                    pw.println("Active AP  ifaces: " + mWifiNative.getSoftApInterfaceNames());
+                    return 0;
+                }
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -1751,6 +1756,9 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("  enable-scanning enabled|disabled [-h]");
         pw.println("    Sets whether all scanning should be enabled or disabled");
         pw.println("    -h - Enable scanning for hidden networks.");
+        pw.println("  qca-list-ifaces");
+        pw.println("    Lists active STA/AP interfaces (could be bridge interfaces). " +
+                "Command to set bridge iface will only apply to the first internal iface");
     }
 
     @Override

@@ -53,6 +53,9 @@ import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSpecifier;
 import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
+import android.net.wifi.hotspot2.pps.Credential;
+import android.net.wifi.hotspot2.pps.HomeSp;
+import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.WifiSsid;
 import android.net.wifi.ThermalData;
 import android.os.Binder;
@@ -80,7 +83,7 @@ import com.android.server.wifi.util.ApConfigUtil;
 import com.android.server.wifi.util.ArrayUtils;
 import com.android.server.wifi.util.ScanResultUtil;
 
-import java.io.PrintWriter;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -95,6 +98,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import java.security.cert.Certificate;
+import java.security.cert.X509Certificate;
+import java.security.cert.CertificateFactory;
+
 
 /**
  * Interprets and executes 'adb shell cmd wifi [args]'.
@@ -160,6 +168,12 @@ public class WifiShellCommand extends BasicShellCommandHandler {
     private final WifiApConfigStore mWifiApConfigStore;
     private int mSapState = WifiManager.WIFI_STATE_UNKNOWN;
     private final ScanRequestProxy mScanRequestProxy;
+    private static HomeSp mHomeSp = new HomeSp();
+    private static Credential mCredential = new Credential();
+    private static Credential.UserCredential mUserCredential = new Credential.UserCredential();
+    private static X509Certificate[] mCaCertificates = new X509Certificate[10];
+    private static PasspointConfiguration mPasspointConfiguration = new PasspointConfiguration();
+    private List<PasspointConfiguration> ppcList= new ArrayList<PasspointConfiguration>();
 
     /**
      * Used for shell command testing of scorer.
@@ -220,6 +234,132 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         mSelfRecovery = wifiInjector.getSelfRecovery();
         mWifiApConfigStore = wifiInjector.getWifiApConfigStore();
         mScanRequestProxy = wifiInjector.getScanRequestProxy();
+    }
+
+    public void setHomeSp(String fqdn, String friendlyName, long[] OSIs) {
+        mHomeSp.setFqdn(fqdn);
+        mHomeSp.setFriendlyName(friendlyName);
+        mHomeSp.setRoamingConsortiumOis(OSIs);
+    }
+
+    public HomeSp getHomeSp(PrintWriter pw) {
+        pw.println("HomeSp is: " + mHomeSp);
+        return mHomeSp;
+    }
+
+    public void setUserCredential(String username, String password, boolean machineManaged, int eap_type, String innerMethod) {
+        mUserCredential.setUsername(username);
+        mUserCredential.setPassword(password);
+        mUserCredential.setMachineManaged(machineManaged);
+        mUserCredential.setEapType(eap_type);
+        mUserCredential.setNonEapInnerMethod(innerMethod);
+    }
+
+    public Credential.UserCredential getUserCredential(PrintWriter pw) {
+        pw.println("UserCredential is: " + mUserCredential);
+        return mUserCredential;
+    }
+
+    private ArrayList<String> readCaFilesFromPath(String path, PrintWriter pw) {
+        ArrayList<String> caFiles = new ArrayList<String>();
+        int i = 0;
+
+        File[] filesList = new File(path).listFiles();
+        for (File file : filesList) {
+            if (file.getName().endsWith(".pem")) {
+                String fileInfo = readFile(file.getAbsolutePath(), pw);
+                if (!fileInfo.equals("")) {
+                    caFiles.add(fileInfo);
+                }
+            }
+        }
+        return caFiles;
+    }
+
+    private String readFile(String path, PrintWriter pw) {
+        StringBuilder buffer = new StringBuilder();
+        int index = 0;
+        try {
+            File filename = new File(path);
+            InputStreamReader in = new InputStreamReader(new FileInputStream(filename));
+            BufferedReader reader = new BufferedReader(in);
+            String line = "";
+            while((line = reader.readLine()) != null) {
+                if (!line.equals("-----BEGIN CERTIFICATE-----") && index == 0) {
+                    pw.println("certificate's format is not match, we can't transfer this format certificate. This certificate begin with: " + line +     ", file's path is: " + path);
+                    break;
+                }
+                buffer.append(line + '\n');
+                index++;
+            }
+        } catch (Exception e) {
+            pw.println(e);
+        }
+        return buffer.toString();
+    }
+
+    private String transferPathFormat(String path) {
+        String[] pathes = path.split("\\/");
+        StringBuffer dir = new StringBuffer();
+
+        for (int index = 0; index < pathes.length; index++) {
+            dir.append(pathes[index]);
+            if (index < pathes.length - 1) {
+                dir.append(File.separator);
+            }
+        }
+        return dir.toString();
+    }
+
+    public X509Certificate[] loadCertificates(String path, PrintWriter pw) {
+        ArrayList<X509Certificate> certificateList = new ArrayList<X509Certificate>();
+
+        /* transfer path format to linux readable format. */
+        String dir = transferPathFormat(path);
+
+        /* read all certificates from the path. */
+        ArrayList<String> certs = readCaFilesFromPath(dir, pw);
+
+        try {
+            for (String cert : certs) {
+                CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+                ByteArrayInputStream bytes = new ByteArrayInputStream(cert.getBytes());
+                certificateList.add((X509Certificate) certFactory.generateCertificate(bytes));
+            }
+        } catch (Exception e) {
+            pw.println(e);
+        }
+
+        X509Certificate[] certificates = new X509Certificate[certificateList.size()];
+        for (int index = 0; index < certificateList.size(); index++) {
+            certificates[index] = certificateList.get(index);
+        }
+        return certificates;
+    }
+
+    public void setCredential(String realm, Credential.UserCredential uc, X509Certificate[] cas) {
+        mCredential.setRealm(realm);
+        mCredential.setUserCredential(uc);
+        mCredential.setCaCertificates(cas);
+    }
+
+    public Credential getCredential(PrintWriter pw) {
+        pw.println("Credential is: " + mCredential);
+        return mCredential;
+    }
+
+    public void setPasspointConfiguration(HomeSp sp, Credential cred) {
+        mPasspointConfiguration.setHomeSp(mHomeSp);
+        mPasspointConfiguration.setCredential(mCredential);
+        mWifiService.addOrUpdatePasspointConfiguration(mPasspointConfiguration, SHELL_PACKAGE_NAME);
+    }
+
+    public List<PasspointConfiguration> getPasspointConfigurations() {
+        return mWifiService.getPasspointConfigurations(SHELL_PACKAGE_NAME);
+    }
+
+    public void removePasspointConfiguration(String fqdn) {
+        mWifiService.removePasspointConfiguration(fqdn, SHELL_PACKAGE_NAME);
     }
 
     @Override
@@ -1120,6 +1260,130 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     pw.println("set-ani-level result -> " + result);
                     return 0;
                 }
+                case "set-homesp": {
+                    String fqdn = getNextArgRequired();
+                    String friendlyName = getNextArgRequired();
+                    String osi = getNextArg();
+                    String[] osiChar = osi.split(",");
+                    long[] OSIs = new long[osiChar.length];
+                    for (int i = 0; i < osiChar.length; i++) {
+                        OSIs[i] = Long.parseLong(osiChar[i]);
+                    }
+                    setHomeSp(fqdn, friendlyName, OSIs);
+                    return 0;
+                }
+                case "get-homesp": {
+                    pw.println("In WifiShellCommand, homeSp is " + mHomeSp);
+                    return 0;
+                }
+                case "set-uc": {
+                    String username = getNextArgRequired();
+                    String password = getNextArg();
+                    boolean machineManaged = false;
+                    if (getNextArg().equals("enable")) {
+                        machineManaged = true;
+                    } else {
+                        machineManaged = false;
+                    }
+                    int eapType = Integer.parseInt(getNextArg());
+                    String innerMethod = getNextArg();
+                    setUserCredential(username, password, machineManaged, eapType, innerMethod);
+                    return 0;
+                }
+                case "get-uc": {
+                    pw.println("UserCredential is: " + mUserCredential);
+                    return 0;
+                }
+                case "load-ca": {
+                    String path = getNextArgRequired();
+                    pw.println("path is: " + path);
+                    mCaCertificates = loadCertificates(path, pw);
+                    return 0;
+                }
+                case "set-cred": {
+                    String realm = getNextArgRequired();
+                    int index = 0;
+
+                    for (X509Certificate cert : mCaCertificates) {
+                        if (cert != null) {
+                            index++;
+                            pw.println("cert is : " );
+                            pw.println(cert);
+                            pw.println("cert end");
+                        } else {
+                            break;
+                        }
+                    }
+
+                    X509Certificate[] certs = new X509Certificate[index];
+                    for (int i = 0; i < index; i++) {
+                        certs[i] = mCaCertificates[i];
+                    }
+                    setCredential(realm, mUserCredential, certs);
+                    return 0;
+                }
+                case "get-cred": {
+                    pw.println("Credential is: " + mCredential);
+                    return 0;
+                }
+                case "set-ppc": {
+                    setPasspointConfiguration(mHomeSp, mCredential);
+                    return 0;
+                }
+                case "add-suggestion-ppc": {
+                    mPasspointConfiguration.setOemPaid(false);
+                    mPasspointConfiguration.setOemPrivate(false);
+                    WifiNetworkSuggestion passpointSuggestion = buildPasspointSuggestion(pw);
+                    if (passpointSuggestion  == null) {
+                        pw.println("Invalid network suggestion parameter");
+                        return -1;
+                    }
+                    int errorCode = mWifiService.addNetworkSuggestions(
+                            Arrays.asList(passpointSuggestion), SHELL_PACKAGE_NAME, null);
+                    if (errorCode != WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS) {
+                        pw.println("Add network suggestion failed with error code: " + errorCode);
+                        return -1;
+                    }
+
+                    // untrusted/oem-paid networks need a corresponding NetworkRequest.
+                    if (passpointSuggestion.isUntrusted()
+                            || (SdkLevel.isAtLeastS()
+                            && (passpointSuggestion.isOemPaid() || passpointSuggestion.isOemPrivate()))) {
+                        NetworkRequest.Builder networkRequestBuilder =
+                                new NetworkRequest.Builder()
+                                        .addTransportType(TRANSPORT_WIFI);
+                        if (passpointSuggestion.isUntrusted()) {
+                            networkRequestBuilder.removeCapability(NET_CAPABILITY_TRUSTED);
+                        }
+                        if (SdkLevel.isAtLeastS()) {
+                            if (passpointSuggestion.isOemPaid()) {
+                                networkRequestBuilder.addCapability(NET_CAPABILITY_OEM_PAID);
+                            }
+                            if (passpointSuggestion.isOemPrivate()) {
+                                networkRequestBuilder.addCapability(NET_CAPABILITY_OEM_PRIVATE);
+                            }
+                        }
+                        NetworkRequest networkRequest = networkRequestBuilder.build();
+                        ConnectivityManager.NetworkCallback networkCallback =
+                                new ConnectivityManager.NetworkCallback();
+                        pw.println("Adding request: " + networkRequest);
+                        mConnectivityManager.requestNetwork(networkRequest, networkCallback);
+                        sActiveRequests.put(null, Pair.create(networkRequest, networkCallback));
+                    }
+                    return 0;
+                }
+                case "get-ppc": {
+                    ppcList = getPasspointConfigurations();
+                    for (PasspointConfiguration ppc : ppcList) {
+                        pw.println("PasspointConfiguration is: " + ppc);
+                    }
+                    return 0;
+                }
+                case "del-ppc": {
+                    String fqdn = getNextArgRequired();
+                    removePasspointConfiguration(fqdn);
+                    return 0;
+                }
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -1252,6 +1516,45 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             option = getNextOption();
         }
         return configBuilder.build();
+    }
+
+    private WifiNetworkSuggestion buildPasspointSuggestion(PrintWriter pw) {
+        WifiNetworkSuggestion.Builder suggestionBuilder =
+                new WifiNetworkSuggestion.Builder();
+
+        boolean isCarrierMerged = false;
+        mPasspointConfiguration.setHomeSp(mHomeSp);
+        mPasspointConfiguration.setCredential(mCredential);
+        String option = getNextOption();
+        while (option != null) {
+            if (option.equals("-u")) {
+                suggestionBuilder.setUntrusted(true);
+            } else if (option.equals("-o")) {
+                if (SdkLevel.isAtLeastS()) {
+                    suggestionBuilder.setOemPaid(true);
+                    mPasspointConfiguration.setOemPaid(true);
+                } else {
+                    throw new IllegalArgumentException(
+                            "-o OEM paid suggestions not supported before S");
+                }
+            } else if (option.equals("-p")) {
+                if (SdkLevel.isAtLeastS()) {
+                    suggestionBuilder.setOemPrivate(true);
+                    mPasspointConfiguration.setOemPrivate(true);
+                } else {
+                    throw new IllegalArgumentException(
+                            "-p OEM private suggestions not supported before S");
+                }
+            } else {
+                pw.println("Ignoring unknown option " + option);
+            }
+            option = getNextOption();
+        }
+        suggestionBuilder.setPasspointConfig(mPasspointConfiguration);
+
+        WifiNetworkSuggestion suggestion = suggestionBuilder.build();
+
+        return suggestion;
     }
 
     private WifiNetworkSuggestion buildSuggestion(PrintWriter pw) {

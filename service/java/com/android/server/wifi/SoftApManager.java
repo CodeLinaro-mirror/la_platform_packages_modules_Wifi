@@ -391,7 +391,9 @@ public class SoftApManager implements ActiveModeManager {
 
     private boolean isBridgedMode() {
         return (SdkLevel.isAtLeastS() && mCurrentSoftApConfiguration != null
-                && mCurrentSoftApConfiguration.getBands().length > 1);
+                && (mCurrentSoftApConfiguration.getBands().length > 1
+                || mCurrentSoftApConfiguration.getSecurityType()
+                   == SoftApConfiguration.SECURITY_TYPE_OWE_TRANSITION));
     }
 
     private long getShutdownTimeoutMillis() {

@@ -310,12 +310,20 @@ public final class SoftApConfiguration implements Parcelable {
     public static final int SECURITY_TYPE_WPA3_SAE = 3;
 
     /** @hide */
+    public static final int SECURITY_TYPE_OWE_TRANSITION = 4;
+
+    /** @hide */
+    public static final int SECURITY_TYPE_OWE = 5;
+
+    /** @hide */
     @Retention(RetentionPolicy.SOURCE)
     @IntDef(prefix = { "SECURITY_TYPE_" }, value = {
         SECURITY_TYPE_OPEN,
         SECURITY_TYPE_WPA2_PSK,
         SECURITY_TYPE_WPA3_SAE_TRANSITION,
         SECURITY_TYPE_WPA3_SAE,
+        SECURITY_TYPE_OWE_TRANSITION,
+        SECURITY_TYPE_OWE,
     })
     public @interface SecurityType {}
 
@@ -815,8 +823,14 @@ public final class SoftApConfiguration implements Parcelable {
                 wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.NONE);
                 break;
             case SECURITY_TYPE_WPA2_PSK:
-            case SECURITY_TYPE_WPA3_SAE_TRANSITION:
                 wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA2_PSK);
+            case SECURITY_TYPE_WPA3_SAE:
+            case SECURITY_TYPE_WPA3_SAE_TRANSITION:
+                wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.SAE);
+                break;
+            case SECURITY_TYPE_OWE:
+            case SECURITY_TYPE_OWE_TRANSITION:
+                wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.OWE);
                 break;
             default:
                 Log.e(TAG, "Convert fail, unsupported security type :" + mSecurityType);
@@ -1024,7 +1038,9 @@ public final class SoftApConfiguration implements Parcelable {
          */
         @NonNull
         public Builder setPassphrase(@Nullable String passphrase, @SecurityType int securityType) {
-            if (securityType == SECURITY_TYPE_OPEN) {
+            if (securityType == SECURITY_TYPE_OPEN
+                || securityType == SECURITY_TYPE_OWE_TRANSITION
+                || securityType == SECURITY_TYPE_OWE) {
                 if (passphrase != null) {
                     throw new IllegalArgumentException(
                             "passphrase should be null when security type is open");

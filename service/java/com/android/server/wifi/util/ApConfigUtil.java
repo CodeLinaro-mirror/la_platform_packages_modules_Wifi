@@ -654,6 +654,11 @@ public class ApConfigUtil {
             features |= SoftApCapability.SOFTAP_FEATURE_WPA3_SAE;
         }
 
+        if (isWpa3OweSupported(context)) {
+            Log.d(TAG, "Update Softap capability, add OWE feature support");
+            features |= SoftApCapability.SOFTAP_FEATURE_WPA3_OWE;
+        }
+
         if (isMacCustomizationSupported(context)) {
             Log.d(TAG, "Update Softap capability, add MAC customization support");
             features |= SoftApCapability.SOFTAP_FEATURE_MAC_ADDRESS_CUSTOMIZATION;
@@ -732,6 +737,17 @@ public class ApConfigUtil {
     public static boolean isWpa3SaeSupported(@NonNull Context context) {
         return context.getResources().getBoolean(
                 R.bool.config_wifi_softap_sae_supported);
+    }
+
+    /**
+     * Helper function to get OWE support or not.
+     *
+     * @param context the caller context used to get value from resource file.
+     * @return true if supported, false otherwise.
+     */
+    public static boolean isWpa3OweSupported(@NonNull Context context) {
+        return context.getResources().getBoolean(
+                R.bool.config_vendor_wifi_softap_owe_supported);
     }
 
     /**
@@ -863,6 +879,13 @@ public class ApConfigUtil {
             return false;
         }
 
+        if (!capability.areFeaturesSupported(SoftApCapability.SOFTAP_FEATURE_WPA3_OWE)
+                && (config.getSecurityType()
+                == SoftApConfiguration.SECURITY_TYPE_OWE_TRANSITION
+                || config.getSecurityType() == SoftApConfiguration.SECURITY_TYPE_OWE)) {
+            Log.d(TAG, "Error, OWE requires HAL support");
+            return false;
+        }
         // The bands length should always 1 in R. Adding SdkLevel.isAtLeastS for lint check only.
         if (config.getBands().length > 1 && SdkLevel.isAtLeastS()) {
             int[] bands = config.getBands();
@@ -883,6 +906,11 @@ public class ApConfigUtil {
         return true;
     }
 
+    public static boolean isOpenOweHotspot(int security) {
+        return security == SoftApConfiguration.SECURITY_TYPE_OPEN
+              || security == SoftApConfiguration.SECURITY_TYPE_OWE_TRANSITION
+              || security == SoftApConfiguration.SECURITY_TYPE_OWE;
+    }
 
     /**
      * Check if need to provide freq range for ACS.

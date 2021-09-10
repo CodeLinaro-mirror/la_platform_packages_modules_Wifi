@@ -1000,6 +1000,21 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     pw.println("Active AP  ifaces: " + mWifiNative.getSoftApInterfaceNames());
                     return 0;
                 }
+                case "qca-dump-thermal-events": {
+                    pw.println(mWifiNative.getThermalEventStr());
+                    return 0;
+                }
+                case "qca-get-thermal-info": {
+                    String ifname = getNextArgRequired();
+                    WifiNative.ThermalInfo thermalInfo = mWifiNative.getThermalInfo(ifname);
+                    if(thermalInfo != null){
+                        pw.println("temperature: " + thermalInfo.temperature);
+                        pw.println("thermal state: " + thermalInfo.thermal_level);
+                        return 0;
+                    }
+                    pw.println("fail to get thermal info");
+                    return -1;
+                }
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -1759,6 +1774,10 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("  qca-list-ifaces");
         pw.println("    Lists active STA/AP interfaces (could be bridge interfaces). " +
                 "Command to set bridge iface will only apply to the first internal iface");
+        pw.println("  qca-dump-thermal-events");
+        pw.println("    Dump thermal events from driver/firmware after boot");
+        pw.println("  qca-get-thermal-info <iface>");
+        pw.println("    Gets thermal info, and <iface> is from 'qca-list-ifaces'");
     }
 
     @Override

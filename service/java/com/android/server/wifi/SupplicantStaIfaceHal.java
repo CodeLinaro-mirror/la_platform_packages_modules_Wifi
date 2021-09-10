@@ -119,6 +119,7 @@ public class SupplicantStaIfaceHal {
     private HashMap<String, ISupplicantVendorStaIface> mISupplicantVendorStaIfaces = new HashMap<>();
     private HashMap<String, ISupplicantVendorStaIfaceCallback> mISupplicantVendorStaIfaceCallbacks = new HashMap<>();
     private SupplicantVendorDeathRecipient mSupplicantVendorDeathRecipient;
+    private WifiNative.WifiHalListener mWifiNativeListener;
 
     // Supplicant HAL interface objects
     private IServiceManager mIServiceManager = null;
@@ -4189,6 +4190,22 @@ public class SupplicantStaIfaceHal {
             Log.i(TAG, ifaceName + ": " + eventStr);
 
             if (eventStr == null) return;
+            if (mWifiNativeListener == null) return;
+
+            // CTRL-EVENT-THERMAL-CHANGED level=3
+            if (eventStr.startsWith(WifiNative.THERMAL_EVENT_STR)) {
+                Matcher match = WifiNative.THERMAL_PATTERN.matcher(eventStr);
+                if (match.find()) {
+                    try {
+                        int level = Integer.parseInt(match.group(1));
+                        mWifiNativeListener.onThermalChanged(ifaceName, level);
+                    } catch (NumberFormatException e) {
+                        // not possible..
+                    }
+                } else {
+                    Log.e(TAG, "Could not parse event=" + eventStr);
+                }
+            }
         }
 
         @Override
@@ -4218,5 +4235,10 @@ public class SupplicantStaIfaceHal {
         @Override
         public void onDppNetworkId(int netID) {}
         /* DPP Callbacks ends */
+    }
+
+    /** WifiNative registered event callbacks */
+    public void registerHalListener(WifiNative.WifiHalListener listener) {
+        mWifiNativeListener = listener;
     }
 }

@@ -100,6 +100,8 @@ import android.net.wifi.WifiScanner;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.hotspot2.PasspointConfiguration;
+import android.net.wifi.ThermalData;
+import android.net.wifi.IWifiNativeEventCallback;
 import android.os.AsyncTask;
 import android.os.Binder;
 import android.os.Build;
@@ -116,6 +118,7 @@ import android.os.RemoteException;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.WorkSource;
+import android.os.RemoteCallbackList;
 import android.os.connectivity.WifiActivityEnergyInfo;
 import android.provider.Settings;
 import android.telephony.CarrierConfigManager;
@@ -133,6 +136,8 @@ import com.android.modules.utils.ParceledListSlice;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.net.module.util.Inet4AddressUtils;
 import com.android.server.wifi.coex.CoexManager;
+import com.android.server.wifi.WifiNative.ThermalChangeListener;
+import com.android.server.wifi.WifiNative.CongestionChangeListener;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.hotspot2.PasspointProvider;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.UserActionEvent;
@@ -232,6 +237,8 @@ public class WifiServiceImpl extends BaseWifiService {
     private final BuildProperties mBuildProperties;
 
     private final DefaultClientModeManager mDefaultClientModeManager;
+
+    private final RemoteCallbackList<IWifiNativeEventCallback> mWifiNativeEventCallbacks;
 
     /**
      * Callback for use with LocalOnlyHotspot to unregister requesting applications upon death.
@@ -356,6 +363,9 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiConnectivityManager = wifiInjector.getWifiConnectivityManager();
         mWifiDataStall = wifiInjector.getWifiDataStall();
         mWifiNative = wifiInjector.getWifiNative();
+        mWifiNative.registerCongestionChangeListener(new CongestionChangeListenerImpl());
+        mWifiNative.registerThermalChangeListener(new ThermalChangeListenerImpl());
+        mWifiNativeEventCallbacks = new RemoteCallbackList<>();
         mCoexManager = wifiInjector.getCoexManager();
         mConnectHelper = wifiInjector.getConnectHelper();
         mWifiGlobals = wifiInjector.getWifiGlobals();
@@ -5386,4 +5396,116 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         mWifiThreadRunner.post(mPasspointManager::clearAnqpRequestsAndFlushCache);
     }
+
+    /**
+     * @hide
+     */
+    @Override
+    public List<String> getAvailableInterfaces() {
+        mLog.info("getAvailableInterfaces uid=%").c(Binder.getCallingUid()).flush();
+
+        // post operation to handler thread
+        return mWifiThreadRunner.call(() ->
+            mWifiInjector.getWifiNative().getAvailableInterfaces(), null);
+    }
+    /**
+     * See {@link android.net.wifi.WifiManager#getThermalInfo(String)}
+     */
+    @Override
+    public ThermalData getThermalInfo(String ifname) {
+        ThermalData info = mWifiThreadRunner.call(() ->
+                mWifiInjector.getWifiNative().getThermalInfo(ifname), null);
+        return info;
+    }
+
+    /**
+     * @hide
+     * See {@link android.net.wifi.WifiManager#setCongestionReport(String, boolean, int, int)}
+     */
+    @Override
+    public boolean setCongestionReport(String ifname, boolean enable, int threshold, int interval) {
+        final int ENABLE_INT = 1;
+        final int DISABLE_INT = 0;
+
+        if (enable)
+            return mWifiThreadRunner.call(() ->
+                mWifiInjector.getWifiNative().setCongestionReport(
+                    ifname, ENABLE_INT, threshold, interval), false);
+        else
+            return mWifiThreadRunner.call(() ->
+                mWifiInjector.getWifiNative().setCongestionReport(
+                    ifname, DISABLE_INT, threshold, interval), false);
+    }
+
+    /**
+     * Callback for use when thermal changed event received.
+     */
+    public final class ThermalChangeListenerImpl implements ThermalChangeListener {
+
+        @Override
+        public void onStateChanged(String ifname, int thermal_state) {
+            synchronized(mWifiNativeEventCallbacks) {
+               int itemCount = mWifiNativeEventCallbacks.beginBroadcast();
+                for (int i = 0; i < itemCount; ++i) {
+                    try {
+                        mWifiNativeEventCallbacks.getBroadcastItem(i).onThermalChanged(ifname, thermal_state);
+                    } catch (RemoteException e) {
+                        Log.e(TAG, "onCongestionReport error.");
+                    }
+                }
+                mWifiNativeEventCallbacks.finishBroadcast();
+            }
+        }
+    }
+
+    /**
+     * Callback for use when congestion report event received
+     */
+    public final class CongestionChangeListenerImpl implements CongestionChangeListener {
+
+        @Override
+        public void onStateChanged(String ifname, int percentage) {
+            synchronized(mWifiNativeEventCallbacks) {
+                int itemCount = mWifiNativeEventCallbacks.beginBroadcast();
+                for (int i = 0; i < itemCount; ++i) {
+                    try {
+                        mWifiNativeEventCallbacks.getBroadcastItem(i).onCongestionReport(ifname, percentage);
+                    } catch (RemoteException e) {
+                        Log.e(TAG, "onCongestionReport error.");
+                    }
+                }
+                mWifiNativeEventCallbacks.finishBroadcast();
+            }
+        }
+    }
+
+    /**
+     * See {@link WifiManager#registerWifiNativeEventCallback(WifiManager.WifiNativeEventCallback)}
+     */
+    public void registerWifiNativeEventCallback(@NonNull IWifiNativeEventCallback callback) {
+        if (callback == null) {
+            throw new IllegalArgumentException("callback must not be null");
+        }
+        enforceAccessPermission();
+        if (isVerboseLoggingEnabled()) {
+            mLog.info("registerWifiNativeEventCallback uid=%").c(Binder.getCallingUid()).flush();
+        }
+        synchronized(mWifiNativeEventCallbacks) {
+            mWifiNativeEventCallbacks.register(callback);
+        }
+    }
+
+    /**
+     * See {@link WifiManager#unregisterWifiNativeEventCallback(WifiManager.WifiNativeEventCallback)}
+     */
+    public void unregisterWifiNativeEventCallback(@NonNull IWifiNativeEventCallback callback) {
+        if (isVerboseLoggingEnabled()) {
+            mLog.info("unregisterWifiNativeEventCallback uid=%").c(Binder.getCallingUid()).flush();
+        }
+        enforceAccessPermission();
+        synchronized(mWifiNativeEventCallbacks) {
+            mWifiNativeEventCallbacks.unregister(callback);
+        }
+    }
+
 }

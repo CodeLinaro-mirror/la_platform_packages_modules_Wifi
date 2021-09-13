@@ -32,6 +32,7 @@ import android.net.wifi.WifiAvailableChannel;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
+import android.net.wifi.ThermalData;
 import android.net.wifi.nl80211.DeviceWiphyCapabilities;
 import android.net.wifi.nl80211.NativeScanResult;
 import android.net.wifi.nl80211.NativeWifiClient;
@@ -1555,6 +1556,35 @@ public class WifiNative {
                 }
             }
             return detailedNames;
+        }
+    }
+
+    /**
+     * Get names of all available interfaces for apps use.
+     *
+     * Note: For bridge interface, it only returns inner managed interfaces.
+     *
+     * @return List of interface name of all active interfaces.
+     */
+    public List<String> getAvailableInterfaces() {
+        synchronized (mLock) {
+            List<String> interfaces = new ArrayList<String>();
+            Set<String> staIfaces = mIfaceMgr.findAllStaIfaceNames();
+            Set<String> apIfaces = mIfaceMgr.findAllApIfaceNames();
+            for (String name : staIfaces) {
+                interfaces.add(name);
+            }
+            for (String name : apIfaces) {
+                if (name.contains("br")) {
+                    List<String> ifaces = listApInterfaces();
+                    for (String innerName : ifaces) {
+                        interfaces.add(innerName);
+                    }
+                } else {
+                    interfaces.add(name);
+                }
+            }
+            return interfaces;
         }
     }
 
@@ -3485,18 +3515,32 @@ public class WifiNative {
         void onCongestionChanged(String ifname, int percentage);
     }
 
+    private int toFrameworkThermalLevel(int original_val) {
+        switch (original_val) {
+            case 0:
+                return ThermalData.THERMAL_INFO_LEVEL_FULL_PERF;
+            case 2:
+                return ThermalData.THERMAL_INFO_LEVEL_REDUCED_PERF;
+            case 4:
+                return ThermalData.THERMAL_INFO_LEVEL_TX_OFF;
+            case 5:
+                return ThermalData.THERMAL_INFO_LEVEL_SHUT_DOWN;
+        }
+        return ThermalData.THERMAL_INFO_LEVEL_UNKNOWN;
+    }
+
     private class WifiNativeHalListener implements WifiHalListener {
+        int mLastThermalLevel = ThermalData.THERMAL_INFO_LEVEL_UNKNOWN;
         @Override
         public void onThermalChanged(String ifname, int thermal_state) {
             synchronized (mThermalListeners) {
+                thermal_state = toFrameworkThermalLevel(thermal_state);
                 // Reduce duplicate Thermal change event report.
-                Iface iface = mIfaceMgr.findAnyIfaceOfType(Iface.IFACE_TYPE_STA_FOR_CONNECTIVITY);
-                String staIfname = (iface != null) ? iface.name : null;
-                if (staIfname != null && !staIfname.equals(ifname)) {
-                    Log.d(TAG, "ignore duplicate report thermal in other ifaces - " + ifname);
+                if (thermal_state == mLastThermalLevel) {
+                    Log.d(TAG, "ignore duplicate report thermal with same level " + thermal_state);
                     return;
                 }
-
+                mLastThermalLevel = thermal_state;
                 // Put into log events
                 SimpleDateFormat formatter= new SimpleDateFormat("MM-dd HH:mm:ss.S");
                 Date date = new Date(System.currentTimeMillis());
@@ -3565,44 +3609,12 @@ public class WifiNative {
         return sb.toString();
     }
 
-    public enum ThermalLevel {
-        THERMAL_LEVEL_FULL_PERF,
-        THERMAL_LEVEL_REDUCED_PERF,
-        THERMAL_LEVEL_TX_OFF,
-        THERMAL_LEVEL_SHUT_DOWN,
-        THERMAL_LEVEL_UNKNOWN
-    }
-
-    public static class ThermalInfo {
-        public ThermalInfo(int temp, int level) {
-            temperature = temp;
-            switch (level) {
-                case 0:
-                    thermal_level = ThermalLevel.THERMAL_LEVEL_FULL_PERF;
-                    break;
-                case 2:
-                    thermal_level = ThermalLevel.THERMAL_LEVEL_REDUCED_PERF;
-                    break;
-                case 4:
-                    thermal_level = ThermalLevel.THERMAL_LEVEL_TX_OFF;
-                    break;
-                case 5:
-                    thermal_level = ThermalLevel.THERMAL_LEVEL_SHUT_DOWN;
-                    break;
-                default:
-                    thermal_level = ThermalLevel.THERMAL_LEVEL_UNKNOWN;
-            }
-        }
-        public int temperature;
-        public ThermalLevel thermal_level;
-    }
-
     /**
      * Get thermal info
      * @param ifname Name of the interface
      * @return thermal temperature and state
      */
-    public ThermalInfo getThermalInfo(String ifname) {
+    public ThermalData getThermalInfo(String ifname) {
         int iface_type = getIfaceType(ifname);
         final String kGetThermalCmd = "GET_THERMAL_INFO";
 
@@ -3626,7 +3638,11 @@ public class WifiNative {
             Log.e(TAG, "invalid result for get thermal info");
             return null;
         }
-        return new ThermalInfo(info[0], info[1]);
+        ThermalData thermal_data = new ThermalData();
+        thermal_data.setTemperature(info[0]);
+        thermal_data.setThermalLevel(toFrameworkThermalLevel(info[1]));
+
+        return thermal_data;
     }
 
     public void registerCongestionChangeListener(CongestionChangeListener listener) {

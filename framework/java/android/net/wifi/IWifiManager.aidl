@@ -45,6 +45,8 @@ import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSuggestion;
+import android.net.wifi.ThermalData;
+import android.net.wifi.IWifiNativeEventCallback;
 
 import android.os.Messenger;
 import android.os.ResultReceiver;
@@ -337,4 +339,15 @@ interface IWifiManager
     void flushPasspointAnqpCache(String packageName);
 
     List<WifiAvailableChannel> getUsableChannels(int band, int mode, int filter);
+
+    List<String> getAvailableInterfaces();
+
+    ThermalData getThermalInfo(String ifname);
+
+    boolean setCongestionReport(String ifname, boolean enable, int threshold, int interval);
+
+    void registerWifiNativeEventCallback(in IWifiNativeEventCallback callback);
+
+    void unregisterWifiNativeEventCallback(in IWifiNativeEventCallback callback);
+
 }

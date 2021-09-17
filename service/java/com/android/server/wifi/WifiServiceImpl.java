@@ -148,6 +148,7 @@ import com.android.server.wifi.util.LastCallerInfoManager;
 import com.android.server.wifi.util.RssiUtil;
 import com.android.server.wifi.util.ScanResultUtil;
 import com.android.server.wifi.util.WifiPermissionsUtil;
+import com.android.server.wifi.WifiConfigurationUtil;
 import com.android.wifi.resources.R;
 
 import java.io.BufferedReader;
@@ -2768,6 +2769,11 @@ public class WifiServiceImpl extends BaseWifiService {
             config.networkId = removeSecurityTypeFromNetworkId(config.networkId);
         }
         mLog.info("addOrUpdateNetwork uid=%").c(Binder.getCallingUid()).flush();
+        if (!validateObsoleteEncryptions(config)) {
+            Log.e(TAG, "bad network configuration with obsolete encryption");
+            return -1;
+        }
+
         return addOrUpdateNetworkInternal(config, packageName, callingUid).networkId;
     }
 
@@ -4959,6 +4965,10 @@ public class WifiServiceImpl extends BaseWifiService {
         }
         final int netIdArg = removeSecurityTypeFromNetworkId(netId);
         mLog.info("connect uid=%").c(uid).flush();
+        if (!validateObsoleteEncryptions(config)) {
+            Log.e(TAG, "bad configuration, connect abort");
+            return;
+        }
         mWifiThreadRunner.post(() -> {
             ActionListenerWrapper wrapper = new ActionListenerWrapper(callback);
             final NetworkUpdateResult result;
@@ -5011,6 +5021,26 @@ public class WifiServiceImpl extends BaseWifiService {
         });
     }
 
+    private boolean validateObsoleteEncryptions(WifiConfiguration config) {
+        if (config == null) return true;
+        if (WifiConfigurationUtil.isConfigForWepNetwork(config)) {
+            Log.e(TAG, "Not supported security type WEP");
+            return false;
+        }
+        if (config.allowedPairwiseCiphers != null
+           && config.allowedPairwiseCiphers.get(WifiConfiguration.PairwiseCipher.TKIP)) {
+            Log.e(TAG, "Not supported pairwise cipher: " + WifiConfiguration.PairwiseCipher.TKIP);
+            return false;
+        }
+        if (config.allowedGroupCiphers != null
+             && (config.allowedGroupCiphers.get(WifiConfiguration.GroupCipher.TKIP)
+             || config.allowedGroupCiphers.get(WifiConfiguration.GroupCipher.WEP40)
+             || config.allowedGroupCiphers.get(WifiConfiguration.GroupCipher.WEP104))) {
+            Log.e(TAG, "Not supported group cipher in: " + config.allowedGroupCiphers);
+            return false;
+        }
+        return true;
+    }
     /**
      * see {@link android.net.wifi.WifiManager#save(WifiConfiguration,
      * WifiManager.ActionListener)}
@@ -5025,6 +5055,10 @@ public class WifiServiceImpl extends BaseWifiService {
             config.networkId = removeSecurityTypeFromNetworkId(config.networkId);
         }
         mLog.info("save uid=%").c(uid).flush();
+        if (!validateObsoleteEncryptions(config)) {
+            mLog.err("bad configuration, ignored");
+            return;
+        }
         mWifiThreadRunner.post(() -> {
             ActionListenerWrapper wrapper = new ActionListenerWrapper(callback);
             NetworkUpdateResult result =

@@ -68,6 +68,7 @@ import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
 import android.os.Handler;
 import android.os.RemoteException;
+import android.os.SystemProperties;
 import android.os.WorkSource;
 import android.text.TextUtils;
 import android.util.Log;
@@ -3214,6 +3215,10 @@ public class WifiVendorHal {
      * Returns whether STA + STA concurrency is supported or not.
      */
     public boolean isStaStaConcurrencySupported() {
+        if (!SystemProperties.getBoolean("ro.vendor.wlan.sta_plus_sta", true)) {
+            mLog.info("disable STA+STA due to ro.vendor.wlan.sta_plus_sta is false");
+            return false;
+        }
         synchronized (sLock) {
             return mHalDeviceManager.canSupportIfaceCombo(new SparseArray<Integer>() {{
                     put(IfaceType.STA, 2);

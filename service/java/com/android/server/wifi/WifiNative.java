@@ -1666,11 +1666,7 @@ public class WifiNative {
             scanRequested = mWifiCondManager.startScan(ifaceName, scanType, freqs,
                             hiddenNetworkSsidsArrays);
         }
-        if (scanRequested &&
-            ((mWifiInjector.getActiveModeWarden().getPrimaryClientModeManager().isDisconnected()) ||
-             mAllowConnectionOnPartialScanResults)) {
-              schedulePeriodicPartialScanResult();
-        }
+        // TODO: fix the partial scan scheduling blocking onResults callback in ScanOnlyMode
         return scanRequested;
     }
 
@@ -3340,6 +3336,10 @@ public class WifiNative {
      */
     public WifiLinkLayerStats getWifiLinkLayerStats(@NonNull String ifaceName) {
         return mWifiVendorHal.getWifiLinkLayerStats(ifaceName);
+    }
+
+    public String doDriverCmd(String ifaceName, String command) {
+        return mSupplicantStaIfaceHal.doDriverCmd(ifaceName, command);
     }
 
     /**

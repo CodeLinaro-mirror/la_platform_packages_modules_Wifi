@@ -71,6 +71,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import java.util.Random;
 import java.util.Set;
 import java.util.TimeZone;
@@ -3407,6 +3408,12 @@ public class WifiNative {
             return true;
         }
         return false;
+    }
+
+
+    // --------------------------------------------------------------------------------
+    public String wpaDriverCmd(String ifname, String cmd) {
+        return mSupplicantStaIfaceHal.doDriverCmd(ifname, cmd);
     }
 
     /**

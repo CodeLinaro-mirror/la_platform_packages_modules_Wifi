@@ -3757,6 +3757,32 @@ public class WifiNative {
         return false;
     }
 
+    /**
+     * Set Max TX power in dBm
+     * @param ifname Name of the interface
+     * @param dbm tx power in dBm.
+     * @return results of setTxPower
+     */
+    public boolean setTxPower(String ifname, int dbm) {
+        int iface_type = getIfaceType(ifname);
+        final String kSetTxPowerCmd = "SET_TXPOWER " + dbm;
+
+        //vendor requirement to limit max tx power >= 8dbm.
+        if (dbm < 8) {
+            Log.e(TAG, "Expecting max tx power limit >= 8dbm, while actual dbm=" + dbm);
+            return false;
+        }
+
+        if (iface_type == Iface.IFACE_TYPE_AP) {
+            return setSuccess(hapdDriverCmd2(ifname, kSetTxPowerCmd));
+        } else if (iface_type == Iface.IFACE_TYPE_STA_FOR_CONNECTIVITY
+                   || iface_type == Iface.IFACE_TYPE_STA_FOR_SCAN) {
+            return setSuccess(wpaDriverCmd(ifname, kSetTxPowerCmd));
+        }
+
+        return false;
+    }
+
     //---------------------------------------------------------------------------------
     /* Wifi Logger commands/events */
     public static interface WifiLoggerEventHandler {

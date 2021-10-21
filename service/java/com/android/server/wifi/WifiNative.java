@@ -3783,6 +3783,27 @@ public class WifiNative {
         return false;
     }
 
+    /**
+     * Set ANI level
+     * @param ifname Name of the interface
+     * @param mode ani level mode (0: fixed, 1: auto)
+     * @param ofdmlvl ANI level
+     * @return results of setAni
+     */
+    public boolean setAni(String ifname, int mode, int ofdmlvl) {
+        int iface_type = getIfaceType(ifname);
+        final String kSetAniCmd = "SET_ANI_LEVEL " + mode + " " + ofdmlvl;
+
+        if (iface_type == Iface.IFACE_TYPE_AP) {
+            return setSuccess(hapdDriverCmd2(ifname, kSetAniCmd));
+        } else if (iface_type == Iface.IFACE_TYPE_STA_FOR_CONNECTIVITY
+                   || iface_type == Iface.IFACE_TYPE_STA_FOR_SCAN) {
+            return setSuccess(wpaDriverCmd(ifname, kSetAniCmd));
+        }
+
+        return false;
+    }
+
     //---------------------------------------------------------------------------------
     /* Wifi Logger commands/events */
     public static interface WifiLoggerEventHandler {

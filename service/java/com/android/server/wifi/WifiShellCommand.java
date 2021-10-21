@@ -1056,6 +1056,29 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     pw.println("set-congestion-report result -> " + result);
                     return 0;
                 }
+                case "qca-set-txpower": {
+                    String ifname = getNextArgRequired();
+                    String value = getNextArgRequired();
+                    if (ifname == null || value == null) {
+                        pw.println("Invalid argument to 'qca-set-txpower <ifname> <max tx power in dBm>' required");
+                        return -1;
+                    }
+                    int dbm = 0;
+                    try {
+                        dbm = Integer.parseInt(value);
+                    } catch(Exception e) {
+                        pw.println("<max tx power in dBm> MUST be integer");
+                        return -1;
+                    }
+                    if (dbm < 0) {
+                        pw.println("<max tx power in dBm> MUST >= 0");
+                        return -1;
+                    }
+
+                    boolean result = mWifiNative.setTxPower(ifname, dbm);
+                    pw.println("set-txpower result -> " + result);
+                    return 0;
+                }
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -1825,6 +1848,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 " [<threshold> [interval]]");
         pw.println("    Sets congestion report, and <iface> is AP iface" +
                 " from 'qca-list-ifaces'");
+        pw.println("  qca-set-txpower <iface> <power in dBm>");
+        pw.println("    Sets max txpower in dBm, and <iface> is from 'qca-list-ifaces'");
     }
 
     @Override

@@ -48,6 +48,7 @@ import android.os.Message;
 import android.os.Process;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
+import android.os.SystemProperties;
 import android.os.WorkSource;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
@@ -426,6 +427,11 @@ public class ActiveModeWarden {
     public boolean canRequestMoreClientModeManagersInRole(@NonNull WorkSource requestorWs,
             @NonNull ClientRole clientRole) {
         if (!mWifiNative.isItPossibleToCreateStaIface(requestorWs)) {
+            return false;
+        }
+        if (!SystemProperties.getBoolean("ro.vendor.wlan.sta_plus_sta", true)) {
+            Log.e(TAG, "Can't create role:"
+                    + clientRole + " due to ro.vendor.wlan.sta_plus_sta is false");
             return false;
         }
         if (clientRole == ROLE_CLIENT_LOCAL_ONLY) {

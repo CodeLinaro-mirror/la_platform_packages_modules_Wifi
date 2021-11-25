@@ -265,6 +265,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     @Nullable
     private WifiNative.ConnectionCapabilities mLastConnectionCapabilities;
 
+    /* if set to true then disconnect due to IP Reachability lost only
+     * when obtained for the first 10 seconds of L2 connection */
+    private boolean mIpReachabilityMonitorActive = true;
+
     private String getTag() {
         return TAG + "[" + (mInterfaceName == null ? "unknown" : mInterfaceName) + "]";
     }
@@ -544,6 +548,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     static final int CMD_START_FILS_CONNECTION                          = BASE + 262;
 
     static final int CMD_CONNECTABLE_STATE_SETUP                        = BASE + 300;
+
+    /* Vendor specific cmd: To handle IP Reachability session */
+    private static final int CMD_IP_REACHABILITY_SESSION_END            = BASE + 311;
 
     /* Tracks if suspend optimizations need to be disabled by DHCP,
      * screen or due to high perf mode.
@@ -1410,8 +1417,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * mark network agent as disconnected and stop the ip client.
      */
     public void handleIfaceDestroyed() {
-        handleNetworkDisconnect(false,
-                WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__IFACE_DESTROYED);
+        mWifiThreadRunner.call(
+            () -> {
+                handleNetworkDisconnect(false,
+                       WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__IFACE_DESTROYED);
+                return true;
+            }, false);
     }
 
     /** Stop this ClientModeImpl. Do not interact with ClientModeImpl after it has been stopped. */
@@ -1947,6 +1958,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 break;
             case WifiMonitor.NETWORK_NOT_FOUND_EVENT:
                 sb.append(" ssid=" + msg.obj);
+                break;
+            case CMD_IP_REACHABILITY_SESSION_END:
+                if (msg.obj != null) {
+                    sb.append(" ").append((String) msg.obj);
+                }
                 break;
             default:
                 sb.append(" ");
@@ -3863,6 +3879,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 case CMD_START_ROAM:
                 case CMD_START_RSSI_MONITORING_OFFLOAD:
                 case CMD_STOP_RSSI_MONITORING_OFFLOAD:
+                case CMD_IP_REACHABILITY_SESSION_END:
                 case CMD_IP_CONFIGURATION_SUCCESSFUL:
                 case CMD_IP_CONFIGURATION_LOST:
                 case CMD_IP_REACHABILITY_LOST: {
@@ -4262,9 +4279,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mCmiMonitor.onConnectionEnd(mClientModeManager);
 
             // Not connected/connecting to any network:
-            // 1. remove the network in supplicant since PMKSA is now saved in framework.
+            // 1. Disable the network in supplicant to prevent it from auto-connecting. We don't
+            // remove the network to avoid losing any cached info in supplicant (reauth, etc) in
+            // case we reconnect back to the same network.
             // 2. Set a random MAC address to ensure that we're not leaking the MAC address.
-            mWifiNative.removeAllNetworks(mInterfaceName);
+            mWifiNative.disableNetwork(mInterfaceName);
             if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
                 if (!mWifiNative.setStaMacAddress(
                         mInterfaceName, MacAddressUtils.createRandomUnicastAddress())) {
@@ -4425,6 +4444,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             mPasspointManager.requestVenueUrlAnqpElement(scanResult);
                         }
                     }
+                    mIpReachabilityMonitorActive = true;
                     transitionTo(mL3ProvisioningState);
                     break;
                 }
@@ -4486,6 +4506,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 case CMD_IP_CONFIGURATION_SUCCESSFUL:
                 case CMD_IPV4_PROVISIONING_FAILURE: {
                     handleStatus = handleL3MessagesWhenNotConnected(message);
+                    break;
+                }
+                case WifiMonitor.TRANSITION_DISABLE_INDICATION: {
+                    log("Received TRANSITION_DISABLE_INDICATION: networkId=" + message.arg1
+                            + ", indication=" + message.arg2);
+                    mWifiConfigManager.updateNetworkTransitionDisable(message.arg1, message.arg2);
                     break;
                 }
                 default: {
@@ -4780,12 +4806,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     }
                     break;
                 }
-                case WifiMonitor.TRANSITION_DISABLE_INDICATION: {
-                    log("Received TRANSITION_DISABLE_INDICATION: networkId=" + message.arg1
-                            + ", indication=" + message.arg2);
-                    mWifiConfigManager.updateNetworkTransitionDisable(message.arg1, message.arg2);
-                    break;
-                }
                 case WifiMonitor.NETWORK_CONNECTION_EVENT: {
                     NetworkConnectionEventInfo connectionInfo =
                             (NetworkConnectionEventInfo) message.obj;
@@ -5019,6 +5039,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             WifiUsabilityStats.LABEL_BAD,
                             WifiUsabilityStats.TYPE_IP_REACHABILITY_LOST, -1);
                     if (mWifiGlobals.getIpReachabilityDisconnectEnabled()) {
+                        if (mWifiGlobals.getDisconnectOnlyOnInitialIpReachability() && !mIpReachabilityMonitorActive) {
+                            logd("CMD_IP_REACHABILITY_LOST Connect session is over, skip ip reachability lost indication.");
+                            break;
+                        }
                         handleIpReachabilityLost();
                     } else {
                         logd("CMD_IP_REACHABILITY_LOST but disconnect disabled -- ignore");
@@ -5051,6 +5075,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         clearTargetBssid("AllowlistRoamingCompleted");
                         sendNetworkChangeBroadcast(DetailedState.CONNECTED);
                     }
+                    mIpReachabilityMonitorActive = true;
+                    sendMessageDelayed(obtainMessage(CMD_IP_REACHABILITY_SESSION_END, 0, 0), 10000);
                     break;
                 }
                 case CMD_ONESHOT_RSSI_POLL: {
@@ -5483,6 +5509,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         //
                         // mIpClient.confirmConfiguration() is called within
                         // the handling of SupplicantState.COMPLETED.
+                        mIpReachabilityMonitorActive = true;
                         transitionTo(mL3ConnectedState);
                     } else {
                         mMessageHandlingStatus = MESSAGE_HANDLING_STATUS_DISCARD;
@@ -5539,6 +5566,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mWifiConnectivityManager.handleConnectionStateChanged(
                     mClientModeManager,
                     WifiConnectivityManager.WIFI_STATE_CONNECTED);
+
+            if (mIpReachabilityMonitorActive)
+                sendMessageDelayed(obtainMessage(CMD_IP_REACHABILITY_SESSION_END, 0, 0), 10000);
+
             registerConnected();
             mTargetWifiConfiguration = null;
             mWifiScoreReport.reset();
@@ -5753,6 +5784,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     handleStatus = NOT_HANDLED;
                     break;
                 }
+                case CMD_IP_REACHABILITY_SESSION_END: {
+                    mIpReachabilityMonitorActive = false;
+                    break;
+                }
                 default: {
                     handleStatus = NOT_HANDLED;
                     break;
@@ -5790,6 +5825,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 mWifiP2pConnection.sendMessage(WifiP2pServiceImpl.DISCONNECT_WIFI_RESPONSE);
                 return;
             }
+
+            mIpReachabilityMonitorActive = false;
+            removeMessages(CMD_IP_REACHABILITY_SESSION_END);
 
             if (mVerboseLoggingEnabled) {
                 logd(" Enter DisconnectedState screenOn=" + mScreenOn);

@@ -239,6 +239,7 @@ public class WifiServiceImpl extends BaseWifiService {
     private final DefaultClientModeManager mDefaultClientModeManager;
 
     private final RemoteCallbackList<IWifiNativeEventCallback> mWifiNativeEventCallbacks;
+    private boolean mIsBootComplete = false;
 
     /**
      * Callback for use with LocalOnlyHotspot to unregister requesting applications upon death.
@@ -563,6 +564,7 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiInjector.getWifiNetworkFactory().register();
             mWifiInjector.getUntrustedWifiNetworkFactory().register();
             mWifiInjector.getOemWifiNetworkFactory().register();
+            mIsBootComplete = true;
             mWifiInjector.getWifiP2pConnection().handleBootCompleted();
             // Start to listen country code change.
             mCountryCode.registerListener(new CountryCodeListenerProxy());
@@ -1307,10 +1309,8 @@ public class WifiServiceImpl extends BaseWifiService {
         private boolean mIsBridgedMode = false;
         // TODO: We need to maintain two capability. One for LTE + SAP and one for WIFI + SAP
         private SoftApCapability mTetheredSoftApCapability = null;
-        private boolean mIsBootComplete = false;
 
         public void handleBootCompleted() {
-            mIsBootComplete = true;
             updateAvailChannelListInSoftApCapability();
         }
 
@@ -3799,6 +3799,10 @@ public class WifiServiceImpl extends BaseWifiService {
             @NonNull String[] args) {
         WifiShellCommand shellCommand =  new WifiShellCommand(mWifiInjector, this, mContext,
                 mWifiGlobals, mWifiThreadRunner);
+        if ( mIsBootComplete != true) {
+            Log.w(TAG, "Received shell command when boot is not ready!");
+            return -1;
+        }
         return shellCommand.exec(this, in.getFileDescriptor(), out.getFileDescriptor(),
                 err.getFileDescriptor(), args);
     }

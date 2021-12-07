@@ -2430,6 +2430,14 @@ public class WifiConnectivityManager {
         }
     }
 
+    /**
+     * Clear all cached candidates.
+     */
+    public void clearCachedCandidates() {
+        mLatestCandidates = null;
+        mLatestCandidatesTimestampMs = 0;
+    }
+
     // Enable auto-join if WifiConnectivityManager is enabled & we have any pending generic network
     // request (trusted or untrusted) and no specific network request in progress.
     private void checkAllStatesAndEnableAutoJoin() {

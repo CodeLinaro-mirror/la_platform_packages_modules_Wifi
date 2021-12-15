@@ -1759,11 +1759,15 @@ public class WifiServiceImpl extends BaseWifiService {
             // For auto only
             if (hasAutomotiveFeature(mContext)) {
                 if (mContext.getResources().getBoolean(R.bool.config_wifiLocalOnlyHotspot6ghz)
-                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_6GHZ, mContext)) {
+                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_6GHZ, mContext)
+                        && mTetheredSoftApTracker.getSoftApCapability()
+                           .getSupportedChannelList(SoftApConfiguration.BAND_6GHZ).length > 1) {
                     band = SoftApConfiguration.BAND_6GHZ;
                 } else if (mContext.getResources().getBoolean(
                         R.bool.config_wifi_local_only_hotspot_5ghz)
-                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_5GHZ, mContext)) {
+                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_5GHZ, mContext)
+                        && mTetheredSoftApTracker.getSoftApCapability()
+                           .getSupportedChannelList(SoftApConfiguration.BAND_5GHZ).length > 1) {
                     band = SoftApConfiguration.BAND_5GHZ;
                 }
             }

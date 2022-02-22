@@ -47,6 +47,8 @@ public class ConnectHelper {
             @NonNull NetworkUpdateResult result,
             @NonNull ActionListenerWrapper wrapper,
             int callingUid) {
+        mActiveModeWarden.disconnectSecondaryClientIfNecessary(
+                mWifiConfigManager.getConfiguredNetwork(result.getNetworkId()));
         connectToNetwork(
                 mActiveModeWarden.getPrimaryClientModeManager(), result, wrapper, callingUid);
     }

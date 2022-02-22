@@ -1311,6 +1311,11 @@ public class ConcreteClientModeManager implements ClientModeManager {
     }
 
     @Override
+    public boolean is2GHzBand() {
+        return getClientMode().is2GHzBand();
+    }
+
+    @Override
     public boolean isConnecting() {
         return getClientMode().isConnecting();
     }

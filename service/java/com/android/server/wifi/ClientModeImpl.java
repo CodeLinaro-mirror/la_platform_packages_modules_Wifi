@@ -1328,6 +1328,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     }
 
     @Override
+    public boolean is2GHzBand() {
+        return mWifiInfo.is24GHz();
+    }
+
+    @Override
     public boolean isConnecting() {
         IState state = getCurrentState();
         return state == mL2ConnectingState || state == mL2ConnectedState

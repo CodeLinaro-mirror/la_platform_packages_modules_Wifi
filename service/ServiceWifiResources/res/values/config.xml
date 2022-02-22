@@ -663,6 +663,9 @@
          name. It is STRONGLY RECOMMENDED to be set to false -->
     <bool translatable="false" name="config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW">false</bool>
 
+    <!-- Switch to enable connection policy for dual staion -->
+    <bool translatable="false" name="config_wifiAllowConnectPolicyForDualStation">true</bool>
+
     <!-- Indicate the max lines for connectivity local log based on the device ram size -->
     <integer translatable="false" name="config_wifiConnectivityLocalLogMaxLinesLowRam">256</integer>
     <integer translatable="false" name="config_wifiConnectivityLocalLogMaxLinesHighRam">512</integer>

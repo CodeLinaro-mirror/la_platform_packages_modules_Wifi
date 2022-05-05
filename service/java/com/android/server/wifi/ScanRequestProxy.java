@@ -87,7 +87,6 @@ public class ScanRequestProxy {
     @VisibleForTesting
     public static final int SCAN_REQUEST_THROTTLE_INTERVAL_BG_APPS_MS = 30 * 60 * 1000;
 
-    private static final int SCAN_REQUEST_THROTTLE_INTERVAL_APPS_MS_DEFAULT = 30 * 1000;
     private static final String SCAN_REQUEST_THROTTLE_INTERVAL_APPS =
             "persist.wifi.scan_request_throttle_interval_app_ms";
 
@@ -223,8 +222,7 @@ public class ScanRequestProxy {
         mSettingsConfigStore = settingsConfigStore;
         mRegisteredScanResultsCallbacks = new RemoteCallbackList<>();
         mScanRequestThrottleIntevalAppMs = SystemProperties.getInt(
-                SCAN_REQUEST_THROTTLE_INTERVAL_APPS,
-                SCAN_REQUEST_THROTTLE_INTERVAL_APPS_MS_DEFAULT);
+                SCAN_REQUEST_THROTTLE_INTERVAL_APPS, 0);
     }
 
     /**
@@ -463,11 +461,7 @@ public class ScanRequestProxy {
     }
 
     private boolean shouldScanRequestBeThrottledForThroughput() {
-        if (mContext.getResources().getBoolean(
-                R.bool.config_wifiAllowConnectPolicyForDualStation) == false) {
-            return false;
-        }
-        if (!isPrimaryStaConnected()) {
+        if (mScanRequestThrottleIntevalAppMs == 0 || !isPrimaryStaConnected()) {
             return false;
         }
         long lastScanMs = mLastScanTimestampForApps;
@@ -488,6 +482,18 @@ public class ScanRequestProxy {
      * @return true if the scan request was placed or a scan is already ongoing, false otherwise.
      */
     public boolean startScan(int callingUid, String packageName) {
+        return startScan(callingUid, packageName, WifiScanner.WIFI_BAND_ALL);
+    }
+
+    /**
+     * Initiate a wifi scan.
+     *
+     * @param callingUid The uid initiating the wifi scan. Blame will be given to this uid.
+     * @param band The specific bands to scan. Could be any combination of WIFI_BAND_24_GHZ,
+     * WIFI_BAND_5_GHZ,WIFI_BAND_5_GHZ_DFS_ONLY,WIFI_BAND_6_GHZ and WIFI_BAND_60_GHZ.
+     * @return true if the scan request was placed or a scan is already ongoing, false otherwise.
+     */
+    public boolean startScan(int callingUid, String packageName, int band) {
         if (!mScanningEnabled || !retrieveWifiScannerIfNecessary()) {
             Log.e(TAG, "Failed to retrieve wifiscanner");
             sendScanResultFailureBroadcastToPackage(packageName);
@@ -507,6 +513,10 @@ public class ScanRequestProxy {
             sendScanResultFailureBroadcastToPackage(packageName);
             return false;
         }
+        if (band <= 0 || band >WifiScanner.WIFI_BAND_ALL) {
+            Log.e(TAG, "Invalid band:" + band);
+            return false;
+        }
         // Create a worksource using the caller's UID.
         WorkSource workSource = new WorkSource(callingUid, packageName);
         mWifiMetrics.getScanMetrics().setWorkSource(workSource);
@@ -523,7 +533,7 @@ public class ScanRequestProxy {
                 settings.set6GhzPscOnlyEnabled(true);
             }
         }
-        settings.band = WifiScanner.WIFI_BAND_ALL;
+        settings.band = band;
         settings.reportEvents = WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN
                 | WifiScanner.REPORT_EVENT_FULL_SCAN_RESULT;
         if (mScanningForHiddenNetworksEnabled) {

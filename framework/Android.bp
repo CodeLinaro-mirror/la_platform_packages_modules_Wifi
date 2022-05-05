@@ -136,6 +136,7 @@ java_sdk_library {
         "//frameworks/opt/net/wifi/service:__subpackages__",
         "//packages/modules/Wifi/service:__subpackages__",
         "//packages/apps/Car/Settings:__subpackages__",
+        "//frameworks/opt/net/wifi/libs/WifiTrackerLib:__subpackages__",
     ] + test_access_hidden_api_whitelist,
 
     apex_available: [

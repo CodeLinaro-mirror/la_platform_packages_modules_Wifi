@@ -86,9 +86,8 @@ public class ScanRequestProxy {
     public static final int SCAN_REQUEST_THROTTLE_MAX_IN_TIME_WINDOW_FG_APPS = 4;
     @VisibleForTesting
     public static final int SCAN_REQUEST_THROTTLE_INTERVAL_BG_APPS_MS = 30 * 60 * 1000;
-
-    private static final String SCAN_REQUEST_THROTTLE_INTERVAL_APPS =
-            "persist.wifi.scan_request_throttle_interval_app_ms";
+    private static final String ALLOW_SINGLE_BAND_SCAN_PROPERTY =
+            "persist.wifi.allow_single_band_scan";
 
     private final Context mContext;
     private final Handler mHandler;
@@ -101,7 +100,7 @@ public class ScanRequestProxy {
     private final Clock mClock;
     private final WifiSettingsConfigStore mSettingsConfigStore;
     private WifiScanner mWifiScanner;
-    private final int mScanRequestThrottleIntevalAppMs;
+    private final boolean mEnableScanSingleBand;
 
     // Verbose logging flag.
     private boolean mVerboseLoggingEnabled = false;
@@ -110,8 +109,6 @@ public class ScanRequestProxy {
     private boolean mScanningEnabled = false;
     // Flag to decide if we need to scan for hidden networks or not.
     private boolean mScanningForHiddenNetworksEnabled = false;
-    // Timestamps for the last scan requested by any app.
-    private long mLastScanTimestampForApps = 0;
     // Timestamps for the last scan requested by any background app.
     private long mLastScanTimestampForBgApps = 0;
     // Timestamps for the list of last few scan requests by each foreground app.
@@ -153,8 +150,9 @@ public class ScanRequestProxy {
             if (mVerboseLoggingEnabled) {
                 Log.d(TAG, "Received " + scanResults.length + " scan results");
             }
-            // Only process full band scan results.
-            if (WifiScanner.isFullBandScan(scanData.getScannedBandsInternal(), false)) {
+            // Only process full band scan results if single band scan is not enabled.
+            if (isSingleBandScanEnabled()
+                    || WifiScanner.isFullBandScan(scanData.getScannedBandsInternal(), false)) {
                 // Store the last scan results & send out the scan completion broadcast.
                 mLastScanResultsMap.clear();
                 Arrays.stream(scanResults).forEach(s -> mLastScanResultsMap.put(s.BSSID, s));
@@ -221,8 +219,8 @@ public class ScanRequestProxy {
         mClock = clock;
         mSettingsConfigStore = settingsConfigStore;
         mRegisteredScanResultsCallbacks = new RemoteCallbackList<>();
-        mScanRequestThrottleIntevalAppMs = SystemProperties.getInt(
-                SCAN_REQUEST_THROTTLE_INTERVAL_APPS, 0);
+        mEnableScanSingleBand = SystemProperties.getBoolean(
+                ALLOW_SINGLE_BAND_SCAN_PROPERTY, false);
     }
 
     /**
@@ -450,29 +448,11 @@ public class ScanRequestProxy {
         return isThrottled;
     }
 
-    private boolean isPrimaryStaConnected() {
-        ActiveModeWarden activemodewarden = mWifiInjector.getActiveModeWarden();
-        if (activemodewarden != null) {
-            ClientModeManager cmm = activemodewarden.getPrimaryClientModeManagerNullable();
-        if (cmm != null && cmm.isConnected())
-            return true;
-        }
-        return false;
-    }
-
-    private boolean shouldScanRequestBeThrottledForThroughput() {
-        if (mScanRequestThrottleIntevalAppMs == 0 || !isPrimaryStaConnected()) {
-            return false;
-        }
-        long lastScanMs = mLastScanTimestampForApps;
-        long elapsedRealtime = mClock.getElapsedSinceBootMillis();
-        if (lastScanMs != 0
-                && (elapsedRealtime - lastScanMs) < mScanRequestThrottleIntevalAppMs) {
-            return true;
-        }
-        // Proceed with the scan request and record the time.
-        mLastScanTimestampForApps = elapsedRealtime;
-        return false;
+    /**
+     * Checks if scan could be performed on specific band rather than full bands.
+     */
+    public boolean isSingleBandScanEnabled() {
+        return mEnableScanSingleBand;
     }
 
     /**
@@ -506,9 +486,8 @@ public class ScanRequestProxy {
         // a) App has either NETWORK_SETTINGS or NETWORK_SETUP_WIZARD permission.
         // b) Throttling has been disabled by user.
         int packageImportance = getPackageImportance(callingUid, packageName);
-        if (shouldScanRequestBeThrottledForThroughput()
-                || (!fromSettingsOrSetupWizard && mThrottleEnabled
-                && shouldScanRequestBeThrottledForApp(callingUid, packageName, packageImportance))) {
+        if (!fromSettingsOrSetupWizard && mThrottleEnabled
+                && shouldScanRequestBeThrottledForApp(callingUid, packageName, packageImportance)) {
             Log.i(TAG, "Scan request from " + packageName + " throttled");
             sendScanResultFailureBroadcastToPackage(packageName);
             return false;
@@ -578,7 +557,6 @@ public class ScanRequestProxy {
      */
     private void clearScanResults() {
         mLastScanResultsMap.clear();
-        mLastScanTimestampForApps = 0;
         mLastScanTimestampForBgApps = 0;
         mLastScanTimestampsForFgApps.clear();
     }

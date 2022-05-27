@@ -4499,4 +4499,27 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         verify(mWifiNative).teardownInterface();
         verify(mWifiMonitor).stopMonitoring(anyString());
     }
+
+    /**
+     * Verify the tethering request is sent with TETHER_PRIVILEGED permission.
+     */
+    @Test
+    public void testTetheringRequestWithTetherPrivilegedPermission() throws Exception {
+        mockEnterGroupCreatedState();
+
+        String[] permission_gold = new String[] {
+                android.Manifest.permission.TETHER_PRIVILEGED};
+        ArgumentCaptor<String []> permissionCaptor = ArgumentCaptor.forClass(String[].class);
+        // 2 connection changed event:
+        // * Enter Enabled state
+        // * Tethering request.
+        verify(mContext, times(2)).sendBroadcastWithMultiplePermissions(
+                argThat(new WifiP2pServiceImplTest
+                       .P2pConnectionChangedIntentMatcherForNetworkState(IDLE)),
+                permissionCaptor.capture());
+        String[] permission = permissionCaptor.getAllValues().get(1);
+        Arrays.sort(permission);
+        Arrays.sort(permission_gold);
+        assertEquals(permission_gold, permission);
+    }
 }

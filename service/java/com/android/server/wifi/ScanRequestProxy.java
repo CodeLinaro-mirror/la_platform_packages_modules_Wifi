@@ -51,6 +51,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import android.os.SystemProperties;
 
 import javax.annotation.concurrent.NotThreadSafe;
 
@@ -85,6 +86,8 @@ public class ScanRequestProxy {
     public static final int SCAN_REQUEST_THROTTLE_MAX_IN_TIME_WINDOW_FG_APPS = 4;
     @VisibleForTesting
     public static final int SCAN_REQUEST_THROTTLE_INTERVAL_BG_APPS_MS = 30 * 60 * 1000;
+    private static final String ALLOW_SINGLE_BAND_SCAN_PROPERTY =
+            "persist.wifi.allow_single_band_scan";
 
     private final Context mContext;
     private final Handler mHandler;
@@ -97,6 +100,7 @@ public class ScanRequestProxy {
     private final Clock mClock;
     private final WifiSettingsConfigStore mSettingsConfigStore;
     private WifiScanner mWifiScanner;
+    private final boolean mEnableScanSingleBand;
 
     // Verbose logging flag.
     private boolean mVerboseLoggingEnabled = false;
@@ -146,8 +150,9 @@ public class ScanRequestProxy {
             if (mVerboseLoggingEnabled) {
                 Log.d(TAG, "Received " + scanResults.length + " scan results");
             }
-            // Only process full band scan results.
-            if (WifiScanner.isFullBandScan(scanData.getScannedBandsInternal(), false)) {
+            // Only process full band scan results if single band scan is not enabled.
+            if (isSingleBandScanEnabled()
+                    || WifiScanner.isFullBandScan(scanData.getScannedBandsInternal(), false)) {
                 // Store the last scan results & send out the scan completion broadcast.
                 mLastScanResultsMap.clear();
                 Arrays.stream(scanResults).forEach(s -> mLastScanResultsMap.put(s.BSSID, s));
@@ -214,6 +219,8 @@ public class ScanRequestProxy {
         mClock = clock;
         mSettingsConfigStore = settingsConfigStore;
         mRegisteredScanResultsCallbacks = new RemoteCallbackList<>();
+        mEnableScanSingleBand = SystemProperties.getBoolean(
+                ALLOW_SINGLE_BAND_SCAN_PROPERTY, false);
     }
 
     /**
@@ -442,12 +449,31 @@ public class ScanRequestProxy {
     }
 
     /**
+     * Checks if scan could be performed on specific band rather than full bands.
+     */
+    public boolean isSingleBandScanEnabled() {
+        return mEnableScanSingleBand;
+    }
+
+    /**
      * Initiate a wifi scan.
      *
      * @param callingUid The uid initiating the wifi scan. Blame will be given to this uid.
      * @return true if the scan request was placed or a scan is already ongoing, false otherwise.
      */
     public boolean startScan(int callingUid, String packageName) {
+        return startScan(callingUid, packageName, WifiScanner.WIFI_BAND_ALL);
+    }
+
+    /**
+     * Initiate a wifi scan.
+     *
+     * @param callingUid The uid initiating the wifi scan. Blame will be given to this uid.
+     * @param band The specific bands to scan. Could be any combination of WIFI_BAND_24_GHZ,
+     * WIFI_BAND_5_GHZ,WIFI_BAND_5_GHZ_DFS_ONLY,WIFI_BAND_6_GHZ and WIFI_BAND_60_GHZ.
+     * @return true if the scan request was placed or a scan is already ongoing, false otherwise.
+     */
+    public boolean startScan(int callingUid, String packageName, int band) {
         if (!mScanningEnabled || !retrieveWifiScannerIfNecessary()) {
             Log.e(TAG, "Failed to retrieve wifiscanner");
             sendScanResultFailureBroadcastToPackage(packageName);
@@ -466,6 +492,10 @@ public class ScanRequestProxy {
             sendScanResultFailureBroadcastToPackage(packageName);
             return false;
         }
+        if (band <= 0 || band >WifiScanner.WIFI_BAND_ALL) {
+            Log.e(TAG, "Invalid band:" + band);
+            return false;
+        }
         // Create a worksource using the caller's UID.
         WorkSource workSource = new WorkSource(callingUid, packageName);
         mWifiMetrics.getScanMetrics().setWorkSource(workSource);
@@ -482,7 +512,7 @@ public class ScanRequestProxy {
                 settings.set6GhzPscOnlyEnabled(true);
             }
         }
-        settings.band = WifiScanner.WIFI_BAND_ALL;
+        settings.band = band;
         settings.reportEvents = WifiScanner.REPORT_EVENT_AFTER_EACH_SCAN
                 | WifiScanner.REPORT_EVENT_FULL_SCAN_RESULT;
         if (mScanningForHiddenNetworksEnabled) {

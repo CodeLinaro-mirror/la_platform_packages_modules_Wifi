@@ -111,6 +111,10 @@ interface IWifiManager
 
     boolean startScan(String packageName, String featureId);
 
+    boolean startScan2(String packageName, String featureId, int band);
+
+    int getBandsWithCriticalConnections(String packageName, int apMode);
+
     List<ScanResult> getScanResults(String callingPackage, String callingFeatureId);
 
     boolean disconnect(String packageName);

@@ -593,6 +593,24 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     /**
+     * See {@link android.net.wifi.WifiManager#getBandsWithCriticalConnections}
+     *
+     * @param packageName Package name of the app that make this request.
+     * @param apMode Interface mode of softap
+     */
+    @Override
+    public int getBandsWithCriticalConnections(String packageName, int apMode) {
+        enforceAccessPermission();
+
+        int uid = Binder.getCallingUid();
+        if (isVerboseLoggingEnabled()) {
+            mLog.info("getBandsWithCriticalConnections uid=%").c(uid).flush();
+        }
+        return mWifiThreadRunner.call(() ->
+                mActiveModeWarden.getBandsWithCriticalConnections(apMode), -1);
+    }
+
+    /**
      * See {@link android.net.wifi.WifiManager#startScan}
      *
      * @param packageName Package name of the app that requests wifi scan.
@@ -600,6 +618,18 @@ public class WifiServiceImpl extends BaseWifiService {
      */
     @Override
     public boolean startScan(String packageName, String featureId) {
+        return startScan2(packageName, featureId, WifiScanner.WIFI_BAND_ALL);
+    }
+
+    /**
+     * See {@link android.net.wifi.WifiManager#startScan}
+     *
+     * @param packageName Package name of the app that requests wifi scan.
+     * @param featureId The feature in the package
+     * @param band The specific bands to scan.
+     */
+    @Override
+    public boolean startScan2(String packageName, String featureId, int band) {
         if (enforceChangePermission(packageName) != MODE_ALLOWED) {
             return false;
         }
@@ -625,7 +655,7 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiPermissionsUtil.enforceCanAccessScanResults(packageName, featureId, callingUid,
                     null);
             Boolean scanSuccess = mWifiThreadRunner.call(() ->
-                    mScanRequestProxy.startScan(callingUid, packageName), null);
+                    mScanRequestProxy.startScan(callingUid, packageName, band), null);
             if (scanSuccess == null) {
                 sendFailedScanBroadcast();
                 return false;

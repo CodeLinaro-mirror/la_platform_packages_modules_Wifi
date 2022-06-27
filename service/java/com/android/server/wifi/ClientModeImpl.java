@@ -4359,6 +4359,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             mWifiInfo.setFrequency(scanResult.frequency);
                         }
                     }
+                    if (mWifiInfo.getFrequency() == -1) {
+                        updateLinkLayerStatsRssiSpeedFrequencyCapabilities();
+                    }
 
                     // We need to get the updated pseudonym from supplicant for EAP-SIM/AKA/AKA'
                     if (config.enterpriseConfig != null

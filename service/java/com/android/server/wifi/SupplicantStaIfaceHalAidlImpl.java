@@ -613,7 +613,8 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
 
             SecurityParams params = config.getNetworkSelectionStatus()
                     .getCandidateSecurityParams();
-            if (params != null && !params.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
+            if (params != null && !(params.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
+                    || params.isSecurityType(WifiConfiguration.SECURITY_TYPE_DPP))) {
                 List<ArrayList<Byte>> pmkDataList = mPmkCacheManager.get(config.networkId);
                 if (pmkDataList != null) {
                     Log.i(TAG, "Set PMK cache for config id " + config.networkId);
@@ -3327,6 +3328,23 @@ public class SupplicantStaIfaceHalAidlImpl implements ISupplicantStaIfaceHal {
                 handleServiceSpecificException(e, methodStr);
             }
             return false;
+        }
+    }
+
+    /**
+     * Set the currently configured network's anonymous identity.
+     *
+     * @param ifaceName Name of the interface.
+     * @param anonymousIdentity the anonymouns identity.
+     * @return true if succeeds, false otherwise.
+     */
+    public boolean setEapAnonymousIdentity(@NonNull String ifaceName, String anonymousIdentity) {
+        synchronized (mLock) {
+            SupplicantStaNetworkHalAidlImpl networkHandle =
+                    checkStaNetworkAndLogFailure(ifaceName, "setEapAnonymousIdentity");
+            if (networkHandle == null) return false;
+            if (anonymousIdentity == null) return false;
+            return networkHandle.setEapAnonymousIdentity(anonymousIdentity.getBytes());
         }
     }
 }

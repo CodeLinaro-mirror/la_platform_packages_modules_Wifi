@@ -95,6 +95,11 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void setOneShotScreenOnConnectivityScanDelayMillis(int delayMs) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public Map<String, Map<Integer, List<ScanResult>>> getAllMatchingFqdnsForScanResults(
             List<ScanResult> scanResults) {
         throw new UnsupportedOperationException();
@@ -839,16 +844,6 @@ public class BaseWifiService extends IWifiManager.Stub {
 
     @Override
     public void removeAppState(int targetAppUid, @NonNull String targetAppPackageName) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public int getSoftApWifiStandard() {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public boolean isVht8ssCapableDevice() {
         throw new UnsupportedOperationException();
     }
 

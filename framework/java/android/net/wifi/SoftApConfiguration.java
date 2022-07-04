@@ -824,6 +824,7 @@ public final class SoftApConfiguration implements Parcelable {
                 break;
             case SECURITY_TYPE_WPA2_PSK:
                 wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA2_PSK);
+                break;
             case SECURITY_TYPE_WPA3_SAE:
             case SECURITY_TYPE_WPA3_SAE_TRANSITION:
                 wifiConfig.allowedKeyManagement.set(WifiConfiguration.KeyMgmt.SAE);

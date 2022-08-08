@@ -649,10 +649,8 @@ public class SecurityParams {
         params.mAllowedProtocols.set(Protocol.WPA);
 
         params.mAllowedPairwiseCiphers.set(PairwiseCipher.CCMP);
-        params.mAllowedPairwiseCiphers.set(PairwiseCipher.TKIP);
 
         params.mAllowedGroupCiphers.set(GroupCipher.CCMP);
-        params.mAllowedGroupCiphers.set(GroupCipher.TKIP);
         return params;
     }
 
@@ -735,10 +733,8 @@ public class SecurityParams {
         params.mAllowedProtocols.set(Protocol.OSEN);
 
         params.mAllowedPairwiseCiphers.set(PairwiseCipher.CCMP);
-        params.mAllowedPairwiseCiphers.set(PairwiseCipher.TKIP);
 
         params.mAllowedGroupCiphers.set(GroupCipher.CCMP);
-        params.mAllowedGroupCiphers.set(GroupCipher.TKIP);
         return params;
     }
 
@@ -791,12 +787,8 @@ public class SecurityParams {
         params.mAllowedAuthAlgorithms.set(AuthAlgorithm.SHARED);
 
         params.mAllowedPairwiseCiphers.set(PairwiseCipher.CCMP);
-        params.mAllowedPairwiseCiphers.set(PairwiseCipher.TKIP);
 
         params.mAllowedGroupCiphers.set(GroupCipher.CCMP);
-        params.mAllowedGroupCiphers.set(GroupCipher.TKIP);
-        params.mAllowedGroupCiphers.set(GroupCipher.WEP40);
-        params.mAllowedGroupCiphers.set(GroupCipher.WEP104);
         return params;
     }
 
@@ -886,12 +878,8 @@ public class SecurityParams {
         params.mAllowedProtocols.set(Protocol.WPA);
 
         params.mAllowedPairwiseCiphers.set(PairwiseCipher.CCMP);
-        params.mAllowedPairwiseCiphers.set(PairwiseCipher.TKIP);
 
         params.mAllowedGroupCiphers.set(GroupCipher.CCMP);
-        params.mAllowedGroupCiphers.set(GroupCipher.TKIP);
-        params.mAllowedGroupCiphers.set(GroupCipher.WEP40);
-        params.mAllowedGroupCiphers.set(GroupCipher.WEP104);
         return params;
     }
 }

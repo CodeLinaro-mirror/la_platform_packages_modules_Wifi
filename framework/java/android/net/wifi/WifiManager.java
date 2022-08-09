@@ -613,6 +613,14 @@ public class WifiManager {
         "android.net.wifi.WIFI_AP_STATE_CHANGED";
 
     /**
+     * Broadcast intent action indicating that clients have been added/removed to/from AP.
+     *
+     * @hide
+     */
+    public static final String WIFI_AP_CLIENTS_CHANGED_ACTION =
+        "android.net.wifi.WIFI_AP_CLIENTS_CHANGED";
+
+    /**
      * The lookup key for an int that indicates whether Wi-Fi AP is enabled,
      * disabled, enabling, disabling, or failed.  Retrieve it with
      * {@link android.content.Intent#getIntExtra(String,int)}.
@@ -3155,6 +3163,39 @@ public class WifiManager {
             throw e.rethrowFromSystemServer();
         }
     }
+
+    /** @hide */
+    @RequiresPermission(android.Manifest.permission.UPDATE_DEVICE_STATS)
+    public boolean startScan(int band) {
+        try {
+            String packageName = mContext.getOpPackageName();
+            String attributionTag = mContext.getAttributionTag();
+            return mService.startScan2(packageName, attributionTag, band);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Query the bands which are occupied by high priorty connections(eg, internet connection on
+     * primary STA or CarPlay connection on LOHS|Tethering), so that app can choose to perform
+     * low rate scan or disable scan on these bands to guarantee link quality of these connections.
+     *
+     * If the bit[0] of return value equals 0x1 which means 2.4G band has critical connection,
+     * bit [2:1] equals 0x3 means 5G band includes DFS channel has critical connection.
+     *
+     * @param apMode Interface IP mode, IFACE_IP_MODE_TETHERED or IFACE_IP_MODE_LOCAL_ONLY.
+     * @return Combination of WIFI_BAND_24_GHZ and WIFI_BAND_5_GHZ_WITH_DFS.
+     * @hide
+     */
+     public int getBandsWithCriticalConnections(int apMode) {
+        try {
+            String packageName = mContext.getOpPackageName();
+            return mService.getBandsWithCriticalConnections(packageName, apMode);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+     }
 
     /**
      * WPS has been deprecated from Client mode operation.

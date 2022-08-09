@@ -39,6 +39,7 @@ import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiScanner;
 import android.net.wifi.ScanResult;
 import android.os.BatteryStatsManager;
 import android.os.Build;
@@ -608,6 +609,30 @@ public class ActiveModeWarden {
     /** Update SoftAp Configuration. */
     public void updateSoftApConfiguration(SoftApConfiguration config) {
         mWifiController.sendMessage(WifiController.CMD_UPDATE_AP_CONFIG, config);
+    }
+
+    /** get the bands that has at least one critical connections */
+    public int getBandsWithCriticalConnections(int apMode) {
+        if (apMode != WifiManager.IFACE_IP_MODE_LOCAL_ONLY &&
+                apMode != WifiManager.IFACE_IP_MODE_TETHERED) {
+            return -1;
+        }
+
+        int bands = 0;
+        // Always treat primary connection critical
+        ClientModeManager primaryCmm = getPrimaryClientModeManager();
+        if (primaryCmm.isConnected()) {
+            bands = primaryCmm.is2GHzBand() ?
+                    WifiScanner.WIFI_BAND_24_GHZ : WifiScanner.WIFI_BAND_5_GHZ_WITH_DFS;
+        }
+
+        // User decide if LOHS connection or Tethering connection is critical
+        for (SoftApManager softApManager : mSoftApManagers) {
+            if (getRoleForSoftApIpMode(apMode) == softApManager.getRole()) {
+                return bands | softApManager.getBandsInUse();
+            }
+        }
+        return bands;
     }
 
     /** Emergency Callback Mode has changed. */

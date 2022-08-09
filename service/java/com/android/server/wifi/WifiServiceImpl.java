@@ -239,6 +239,7 @@ public class WifiServiceImpl extends BaseWifiService {
     private final DefaultClientModeManager mDefaultClientModeManager;
 
     private final RemoteCallbackList<IWifiNativeEventCallback> mWifiNativeEventCallbacks;
+    private boolean mIsBootComplete = false;
 
     /**
      * Callback for use with LocalOnlyHotspot to unregister requesting applications upon death.
@@ -563,6 +564,7 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiInjector.getWifiNetworkFactory().register();
             mWifiInjector.getUntrustedWifiNetworkFactory().register();
             mWifiInjector.getOemWifiNetworkFactory().register();
+            mIsBootComplete = true;
             mWifiInjector.getWifiP2pConnection().handleBootCompleted();
             // Start to listen country code change.
             mCountryCode.registerListener(new CountryCodeListenerProxy());
@@ -591,6 +593,24 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     /**
+     * See {@link android.net.wifi.WifiManager#getBandsWithCriticalConnections}
+     *
+     * @param packageName Package name of the app that make this request.
+     * @param apMode Interface mode of softap
+     */
+    @Override
+    public int getBandsWithCriticalConnections(String packageName, int apMode) {
+        enforceAccessPermission();
+
+        int uid = Binder.getCallingUid();
+        if (isVerboseLoggingEnabled()) {
+            mLog.info("getBandsWithCriticalConnections uid=%").c(uid).flush();
+        }
+        return mWifiThreadRunner.call(() ->
+                mActiveModeWarden.getBandsWithCriticalConnections(apMode), -1);
+    }
+
+    /**
      * See {@link android.net.wifi.WifiManager#startScan}
      *
      * @param packageName Package name of the app that requests wifi scan.
@@ -598,6 +618,18 @@ public class WifiServiceImpl extends BaseWifiService {
      */
     @Override
     public boolean startScan(String packageName, String featureId) {
+        return startScan2(packageName, featureId, WifiScanner.WIFI_BAND_ALL);
+    }
+
+    /**
+     * See {@link android.net.wifi.WifiManager#startScan}
+     *
+     * @param packageName Package name of the app that requests wifi scan.
+     * @param featureId The feature in the package
+     * @param band The specific bands to scan.
+     */
+    @Override
+    public boolean startScan2(String packageName, String featureId, int band) {
         if (enforceChangePermission(packageName) != MODE_ALLOWED) {
             return false;
         }
@@ -623,7 +655,7 @@ public class WifiServiceImpl extends BaseWifiService {
             mWifiPermissionsUtil.enforceCanAccessScanResults(packageName, featureId, callingUid,
                     null);
             Boolean scanSuccess = mWifiThreadRunner.call(() ->
-                    mScanRequestProxy.startScan(callingUid, packageName), null);
+                    mScanRequestProxy.startScan(callingUid, packageName, band), null);
             if (scanSuccess == null) {
                 sendFailedScanBroadcast();
                 return false;
@@ -1307,10 +1339,8 @@ public class WifiServiceImpl extends BaseWifiService {
         private boolean mIsBridgedMode = false;
         // TODO: We need to maintain two capability. One for LTE + SAP and one for WIFI + SAP
         private SoftApCapability mTetheredSoftApCapability = null;
-        private boolean mIsBootComplete = false;
 
         public void handleBootCompleted() {
-            mIsBootComplete = true;
             updateAvailChannelListInSoftApCapability();
         }
 
@@ -1769,11 +1799,15 @@ public class WifiServiceImpl extends BaseWifiService {
             // For auto only
             if (hasAutomotiveFeature(mContext)) {
                 if (mContext.getResources().getBoolean(R.bool.config_wifiLocalOnlyHotspot6ghz)
-                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_6GHZ, mContext)) {
+                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_6GHZ, mContext)
+                        && mTetheredSoftApTracker.getSoftApCapability()
+                           .getSupportedChannelList(SoftApConfiguration.BAND_6GHZ).length > 1) {
                     band = SoftApConfiguration.BAND_6GHZ;
                 } else if (mContext.getResources().getBoolean(
                         R.bool.config_wifi_local_only_hotspot_5ghz)
-                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_5GHZ, mContext)) {
+                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_5GHZ, mContext)
+                        && mTetheredSoftApTracker.getSoftApCapability()
+                           .getSupportedChannelList(SoftApConfiguration.BAND_5GHZ).length > 1) {
                     band = SoftApConfiguration.BAND_5GHZ;
                 }
             }
@@ -2457,6 +2491,24 @@ public class WifiServiceImpl extends BaseWifiService {
             String featureId, boolean callerNetworksOnly) {
         enforceAccessPermission();
         int callingUid = Binder.getCallingUid();
+        // bypass shell: can get various pkg name
+        // also bypass if caller is only retrieving networks added by itself
+        if (callingUid != Process.SHELL_UID && callingUid != Process.ROOT_UID) {
+            mWifiPermissionsUtil.checkPackage(callingUid, packageName);
+            if (!callerNetworksOnly) {
+                long ident = Binder.clearCallingIdentity();
+                try {
+                    mWifiPermissionsUtil.enforceCanAccessScanResults(packageName, featureId,
+                            callingUid, null);
+                } catch (SecurityException e) {
+                    Log.w(TAG, "Permission violation - getConfiguredNetworks not allowed for uid="
+                            + callingUid + ", packageName=" + packageName + ", reason=" + e);
+                    return new ParceledListSlice<>(new ArrayList<>());
+                } finally {
+                    Binder.restoreCallingIdentity(ident);
+                }
+            }
+        }
         boolean isDeviceOrProfileOwner = isDeviceOrProfileOwner(callingUid, packageName);
         boolean isCarrierApp = mWifiInjector.makeTelephonyManager()
                 .checkCarrierPrivilegesForPackageAnyPhone(packageName)
@@ -2467,22 +2519,6 @@ public class WifiServiceImpl extends BaseWifiService {
             if (!isDeviceOrProfileOwner && !isCarrierApp && !isPrivileged) {
                 throw new SecurityException(
                         "Not a DO, PO, carrier or privileged app");
-            }
-        }
-        // bypass shell: can get various pkg name
-        // also bypass if caller is only retrieving networks added by itself
-        if (callingUid != Process.SHELL_UID && callingUid != Process.ROOT_UID
-                && !callerNetworksOnly) {
-            long ident = Binder.clearCallingIdentity();
-            try {
-                mWifiPermissionsUtil.enforceCanAccessScanResults(packageName, featureId,
-                        callingUid, null);
-            } catch (SecurityException e) {
-                Log.w(TAG, "Permission violation - getConfiguredNetworks not allowed for uid="
-                        + callingUid + ", packageName=" + packageName + ", reason=" + e);
-                return new ParceledListSlice<>(new ArrayList<>());
-            } finally {
-                Binder.restoreCallingIdentity(ident);
             }
         }
         boolean isTargetSdkLessThanQOrPrivileged = isTargetSdkLessThanQOrPrivileged(
@@ -3799,6 +3835,10 @@ public class WifiServiceImpl extends BaseWifiService {
             @NonNull String[] args) {
         WifiShellCommand shellCommand =  new WifiShellCommand(mWifiInjector, this, mContext,
                 mWifiGlobals, mWifiThreadRunner);
+        if ( mIsBootComplete != true) {
+            Log.w(TAG, "Received shell command when boot is not ready!");
+            return -1;
+        }
         return shellCommand.exec(this, in.getFileDescriptor(), out.getFileDescriptor(),
                 err.getFileDescriptor(), args);
     }
@@ -5078,6 +5118,7 @@ public class WifiServiceImpl extends BaseWifiService {
             throw new IllegalArgumentException("listener must not be null");
         }
         final int uid = Binder.getCallingUid();
+        mWifiPermissionsUtil.checkPackage(uid, packageName);
         enforceAccessPermission();
         enforceLocationPermission(packageName, featureId, uid);
         if (isVerboseLoggingEnabled()) {

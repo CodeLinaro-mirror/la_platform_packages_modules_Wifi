@@ -374,6 +374,19 @@ public class ApConfigUtil {
             }
         }
 
+        if (resources.getBoolean(R.bool.config_wifiSoftapAcsIncludeDfs) &&
+                scannerBand == WifiScanner.WIFI_BAND_5_GHZ) {
+            int[] dfsFreq5GHZBand = wifiNative.getChannelsForBand(
+                    WifiScanner.WIFI_BAND_5_GHZ_DFS_ONLY);
+            for (int freq : dfsFreq5GHZBand) {
+                if (inFrequencyMHz) {
+                    regulatoryList.add(freq);
+                } else {
+                    regulatoryList.add(ScanResult.convertFrequencyMhzToChannelIfSupported(freq));
+                }
+            }
+        }
+
         if (configuredList == null || configuredList.isEmpty()) {
             return regulatoryList;
         }

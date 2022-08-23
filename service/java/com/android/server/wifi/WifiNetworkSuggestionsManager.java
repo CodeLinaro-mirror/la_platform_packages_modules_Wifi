@@ -39,6 +39,7 @@ import android.net.MacAddress;
 import android.net.wifi.ISuggestionConnectionStatusListener;
 import android.net.wifi.ISuggestionUserApprovalStatusListener;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiEnterpriseConfig;
@@ -172,14 +173,27 @@ public class WifiNetworkSuggestionsManager {
 
     private class OnNetworkUpdateListener implements
             WifiConfigManager.OnNetworkUpdateListener {
+
         @Override
         public void onConnectChoiceSet(@NonNull List<WifiConfiguration> networks,
                 String choiceKey, int rssi) {
-            onUserConnectChoiceSet(networks, choiceKey, rssi);
+            onUserConnectChoiceSetForSuggestion(networks, choiceKey, rssi);
         }
+
         @Override
         public void onConnectChoiceRemoved(String choiceKey) {
-            onUserConnectChoiceRemove(choiceKey);
+            onUserConnectChoiceRemoveForSuggestion(choiceKey);
+        }
+
+        @Override
+        public void onSecurityParamsUpdate(@NonNull WifiConfiguration configuration,
+                @NonNull List<SecurityParams> securityParams) {
+            if (configuration == null || securityParams == null || securityParams.isEmpty()) {
+                Log.e(TAG, "onSecurityParamsUpdate: must have valid config and "
+                        + "securityParams");
+                return;
+            }
+            onSecurityParamsUpdateForSuggestion(configuration, securityParams);
         }
     }
 
@@ -727,7 +741,7 @@ public class WifiNetworkSuggestionsManager {
     }
 
     private void removeFromScanResultMatchInfoMapAndRemoveRelatedScoreCard(
-            @NonNull ExtendedWifiNetworkSuggestion extNetworkSuggestion) {
+            @NonNull ExtendedWifiNetworkSuggestion extNetworkSuggestion, boolean removeScoreCard) {
         ScanResultMatchInfo scanResultMatchInfo =
                 ScanResultMatchInfo.fromWifiConfiguration(
                         extNetworkSuggestion.wns.wifiConfiguration);
@@ -750,7 +764,9 @@ public class WifiNetworkSuggestionsManager {
             if (extNetworkSuggestionsForScanResultMatchInfo.isEmpty()) {
                 mActiveScanResultMatchInfoWithBssid.remove(lookupPair);
                 if (!mActiveScanResultMatchInfoWithNoBssid.containsKey(scanResultMatchInfo)) {
-                    removeNetworkFromScoreCard(extNetworkSuggestion.wns.wifiConfiguration);
+                    if (removeScoreCard) {
+                        removeNetworkFromScoreCard(extNetworkSuggestion.wns.wifiConfiguration);
+                    }
                     mLruConnectionTracker.removeNetwork(
                             extNetworkSuggestion.wns.wifiConfiguration);
                 }
@@ -768,7 +784,9 @@ public class WifiNetworkSuggestionsManager {
             // Remove the set from map if empty.
             if (extNetworkSuggestionsForScanResultMatchInfo.isEmpty()) {
                 mActiveScanResultMatchInfoWithNoBssid.remove(scanResultMatchInfo);
-                removeNetworkFromScoreCard(extNetworkSuggestion.wns.wifiConfiguration);
+                if (removeScoreCard) {
+                    removeNetworkFromScoreCard(extNetworkSuggestion.wns.wifiConfiguration);
+                }
                 mLruConnectionTracker.removeNetwork(
                         extNetworkSuggestion.wns.wifiConfiguration);
             }
@@ -1315,7 +1333,7 @@ public class WifiNetworkSuggestionsManager {
             if (ewns.wns.wifiConfiguration.isEnterprise()) {
                 mWifiKeyStore.removeKeys(ewns.wns.wifiConfiguration.enterpriseConfig);
             }
-            removeFromScanResultMatchInfoMapAndRemoveRelatedScoreCard(ewns);
+            removeFromScanResultMatchInfoMapAndRemoveRelatedScoreCard(ewns, true);
             mWifiConfigManager.removeConnectChoiceFromAllNetworks(ewns
                     .createInternalWifiConfiguration(mWifiCarrierInfoManager)
                     .getProfileKey());
@@ -2644,8 +2662,8 @@ public class WifiNetworkSuggestionsManager {
         return extendedWifiNetworkSuggestion.wns.wifiConfiguration.isOpenNetwork();
     }
 
-    private void onUserConnectChoiceSet(Collection<WifiConfiguration> networks, String choiceKey,
-            int rssi) {
+    private void onUserConnectChoiceSetForSuggestion(Collection<WifiConfiguration> networks,
+            String choiceKey, int rssi) {
         Set<String> networkKeys = networks.stream()
                 .filter(config -> config.fromWifiNetworkSuggestion)
                 .map(WifiConfiguration::getProfileKey)
@@ -2667,7 +2685,7 @@ public class WifiNetworkSuggestionsManager {
         saveToStore();
     }
 
-    private void onUserConnectChoiceRemove(String choiceKey) {
+    private void onUserConnectChoiceRemoveForSuggestion(String choiceKey) {
         mActiveNetworkSuggestionsPerApp.values().stream()
                 .flatMap(e -> e.extNetworkSuggestions.values().stream())
                 .filter(ewns -> TextUtils.equals(ewns.connectChoice, choiceKey))
@@ -2742,5 +2760,24 @@ public class WifiNetworkSuggestionsManager {
 
     private int getLingerDelayMs() {
         return SystemProperties.getInt(LINGER_DELAY_PROPERTY, DEFAULT_LINGER_DELAY_MS);
+    }
+
+    private void onSecurityParamsUpdateForSuggestion(WifiConfiguration config,
+            List<SecurityParams> securityParams) {
+        Set<ExtendedWifiNetworkSuggestion> matchingExtendedWifiNetworkSuggestions =
+                        getNetworkSuggestionsForWifiConfiguration(config, config.BSSID);
+        if (matchingExtendedWifiNetworkSuggestions == null
+                || matchingExtendedWifiNetworkSuggestions.isEmpty()) {
+            if (mVerboseLoggingEnabled) {
+                Log.w(TAG, "onSecurityParamsUpdateForSuggestion: no network matches: " + config);
+            }
+            return;
+        }
+        for (ExtendedWifiNetworkSuggestion ewns : matchingExtendedWifiNetworkSuggestions) {
+            removeFromScanResultMatchInfoMapAndRemoveRelatedScoreCard(ewns, false);
+            ewns.wns.wifiConfiguration.setSecurityParams(securityParams);
+            addToScanResultMatchInfoMap(ewns);
+        }
+        saveToStore();
     }
 }

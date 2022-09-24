@@ -114,6 +114,7 @@ java_library {
         "services.net-module-wifi",
         "wifi-lite-protos",
         "wifi-nano-protos",
+        "PlatformProperties",
     ],
 }
 

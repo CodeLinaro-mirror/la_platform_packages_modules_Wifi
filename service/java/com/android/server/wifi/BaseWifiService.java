@@ -420,6 +420,11 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public void stopLocalOnlyHotspotWithType(int mLohsType) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void startWatchLocalOnlyHotspot(ILocalOnlyHotspotCallback callback) {
         throw new UnsupportedOperationException();
     }
@@ -451,6 +456,11 @@ public class BaseWifiService extends IWifiManager.Stub {
 
     @Override
     public boolean setSoftApConfiguration(SoftApConfiguration softApConfig, String packageName) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean setLohsConfiguration(int lohsType, SoftApConfiguration softApConfig, String packageName) {
         throw new UnsupportedOperationException();
     }
 

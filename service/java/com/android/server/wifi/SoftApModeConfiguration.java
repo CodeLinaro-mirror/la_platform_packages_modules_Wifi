@@ -40,8 +40,10 @@ class SoftApModeConfiguration {
      */
     private final @Nullable SoftApConfiguration mSoftApConfig;
 
+    private final int mLohsType;
+
     SoftApModeConfiguration(int targetMode, @Nullable SoftApConfiguration config,
-            SoftApCapability capability) {
+            SoftApCapability capability, int lohsType) {
         Preconditions.checkArgument(
                 targetMode == WifiManager.IFACE_IP_MODE_TETHERED
                         || targetMode == WifiManager.IFACE_IP_MODE_LOCAL_ONLY);
@@ -49,6 +51,7 @@ class SoftApModeConfiguration {
         mTargetMode = targetMode;
         mSoftApConfig = config;
         mCapability = capability;
+        mLohsType = lohsType;
     }
 
     public int getTargetMode() {
@@ -62,4 +65,9 @@ class SoftApModeConfiguration {
     public SoftApCapability getCapability() {
         return mCapability;
     }
+
+    public int getLohsType() {
+        return mLohsType;
+    }
+
 }

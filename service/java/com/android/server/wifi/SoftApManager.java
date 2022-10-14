@@ -379,7 +379,8 @@ public class SoftApManager implements ActiveModeManager {
         }
         // Store mode configuration before update the configuration.
         mOriginalModeConfiguration = new SoftApModeConfiguration(apConfig.getTargetMode(),
-                mCurrentSoftApConfiguration, mCurrentSoftApCapability);
+                mCurrentSoftApConfiguration, mCurrentSoftApCapability,
+                apConfig.getLohsType());
         if (mCurrentSoftApConfiguration != null) {
             mIsUnsetBssid = mCurrentSoftApConfiguration.getBssid() == null;
             if (mCurrentSoftApCapability.areFeaturesSupported(
@@ -535,7 +536,8 @@ public class SoftApManager implements ActiveModeManager {
      */
     public SoftApModeConfiguration getSoftApModeConfiguration() {
         return new SoftApModeConfiguration(mOriginalModeConfiguration.getTargetMode(),
-                mCurrentSoftApConfiguration, mCurrentSoftApCapability);
+                mCurrentSoftApConfiguration, mCurrentSoftApCapability,
+                mOriginalModeConfiguration.getLohsType());
     }
 
     /**
@@ -622,6 +624,7 @@ public class SoftApManager implements ActiveModeManager {
      */
     private void updateApState(int newState, int currentState, int reason) {
         mSoftApCallback.onStateChanged(newState, reason);
+        mSoftApCallback.onStateChangedWithIface(newState, reason, mApInterfaceName);
 
         //send the AP state change broadcast
         final Intent intent = new Intent(WifiManager.WIFI_AP_STATE_CHANGED_ACTION);

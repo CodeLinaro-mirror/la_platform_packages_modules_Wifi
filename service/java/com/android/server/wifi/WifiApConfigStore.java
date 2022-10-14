@@ -457,7 +457,7 @@ public class WifiApConfigStore {
         }
 
         // Automotive mode can force the LOHS to specific bands
-        if (hasAutomotiveFeature(context)) {
+        if (hasAutomotiveFeature(context) && customConfig == null) {
             if (context.getResources().getBoolean(R.bool.config_wifiLocalOnlyHotspot6ghz)
                     && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_6GHZ, mContext)
                     && !ArrayUtils.isEmpty(capability

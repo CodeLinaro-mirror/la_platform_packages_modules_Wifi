@@ -700,6 +700,12 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         }
 
                         @Override
+                        public void onHotspotStartedWithType(int lohsType, SoftApConfiguration config) {
+                            pw.println("Lohs onStarted, config = " + config + " , lohsType = " + lohsType);
+                            countDownLatch.countDown();
+                        }
+
+                        @Override
                         public void onHotspotStopped() {
                             pw.println("Lohs onStopped");
                             countDownLatch.countDown();

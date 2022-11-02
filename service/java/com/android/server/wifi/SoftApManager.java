@@ -549,6 +549,7 @@ public class SoftApManager implements ActiveModeManager {
 
         intent.putExtra(WifiManager.EXTRA_WIFI_AP_INTERFACE_NAME, mApInterfaceName);
         intent.putExtra(WifiManager.EXTRA_WIFI_AP_MODE, mOriginalModeConfiguration.getTargetMode());
+        intent.putExtra(WifiManager.EXTRA_WIFI_LOHS_TYPE, mOriginalModeConfiguration.getLohsType());
         mContext.sendBroadcastAsUser(intent, UserHandle.ALL,
                 android.Manifest.permission.ACCESS_WIFI_STATE);
     }

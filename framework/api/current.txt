@@ -438,6 +438,7 @@ package android.net.wifi {
     field @Deprecated public static final String EXTRA_SUPPLICANT_CONNECTED = "connected";
     field @Deprecated public static final String EXTRA_SUPPLICANT_ERROR = "supplicantError";
     field @Deprecated public static final String EXTRA_WIFI_INFO = "wifiInfo";
+    field public static final String EXTRA_WIFI_LOHS_TYPE = "android.net.wifi.extra.WIFI_LOHS_TYPE";
     field public static final String EXTRA_WIFI_STATE = "wifi_state";
     field public static final int LOCAL_ONLY_HOTSPOT_TYPE_NONE = -1; // 0xffffffff
     field public static final int LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY = 0; // 0x0

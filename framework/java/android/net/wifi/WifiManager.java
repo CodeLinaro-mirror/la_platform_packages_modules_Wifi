@@ -683,6 +683,15 @@ public class WifiManager {
     @SystemApi
     public static final String EXTRA_WIFI_AP_MODE = "android.net.wifi.extra.WIFI_AP_MODE";
 
+    /**
+     * The lookup key for an int extra that stores the intended LOHS type for this Soft AP.
+     * One of {@link #LOCAL_ONLY_HOTSPOT_TYPE}.
+     * This extra is included in the broadcast {@link #WIFI_AP_STATE_CHANGED_ACTION}.
+     * Retrieve its value with {@link android.content.Intent#getIntExtra(String, int)}.
+     *
+     */
+    public static final String EXTRA_WIFI_LOHS_TYPE = "android.net.wifi.extra.WIFI_LOHS_TYPE";
+
     /** @hide */
     @IntDef(flag = false, prefix = { "WIFI_AP_STATE_" }, value = {
         WIFI_AP_STATE_DISABLING,

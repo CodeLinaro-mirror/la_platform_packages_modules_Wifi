@@ -2878,7 +2878,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (mIpClient != null) {
             Pair<String, String> p = mWifiScoreCard.getL2KeyAndGroupHint(mWifiInfo);
             if (!p.equals(mLastL2KeyAndGroupHint)) {
-                final MacAddress currentBssid = getMacAddressFromBssidString(mWifiInfo.getBSSID());
+                final MacAddress currentBssid =
+                        NativeUtil.getMacAddressOrNull(mWifiInfo.getBSSID());
                 final Layer2Information l2Information = new Layer2Information(
                         p.first, p.second, currentBssid);
                 // Update current BSSID on IpClient side whenever l2Key and groupHint
@@ -3168,6 +3169,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             // If not connected, this should be non-null.
             configuration = getConnectingWifiConfigurationInternal();
         }
+        if (configuration == null) {
+            Log.e(TAG, "Unexpected null WifiConfiguration. Config may have been removed.");
+            return;
+        }
 
         String bssid = mLastBssid == null ? mTargetBssid : mLastBssid;
         String ssid = mWifiInfo.getSSID();
@@ -3199,8 +3204,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             }
         }
 
-        if (configuration != null
-                && configuration.carrierId != TelephonyManager.UNKNOWN_CARRIER_ID) {
+        if (configuration.carrierId != TelephonyManager.UNKNOWN_CARRIER_ID) {
             if (level2FailureCode == WifiMetrics.ConnectionEvent.FAILURE_NONE) {
                 mWifiMetrics.incrementNumOfCarrierWifiConnectionSuccess();
             } else if (level2FailureCode
@@ -3227,18 +3231,16 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         mWifiMetrics.endConnectionEvent(mInterfaceName, level2FailureCode,
                 connectivityFailureCode, level2FailureReason, mWifiInfo.getFrequency());
-        if (configuration != null) {
-            mWifiConnectivityManager.handleConnectionAttemptEnded(
-                    mClientModeManager, level2FailureCode, level2FailureReason, bssid,
-                    configuration);
-            mNetworkFactory.handleConnectionAttemptEnded(level2FailureCode, configuration, bssid);
-            mWifiNetworkSuggestionsManager.handleConnectionAttemptEnded(
-                    level2FailureCode, configuration, getConnectedBssidInternal());
-            ScanResult candidate = configuration.getNetworkSelectionStatus().getCandidate();
-            if (candidate != null
-                    && !TextUtils.equals(candidate.BSSID, getConnectedBssidInternal())) {
-                mWifiMetrics.incrementNumBssidDifferentSelectionBetweenFrameworkAndFirmware();
-            }
+        mWifiConnectivityManager.handleConnectionAttemptEnded(
+                mClientModeManager, level2FailureCode, level2FailureReason, bssid,
+                configuration);
+        mNetworkFactory.handleConnectionAttemptEnded(level2FailureCode, configuration, bssid);
+        mWifiNetworkSuggestionsManager.handleConnectionAttemptEnded(
+                level2FailureCode, configuration, getConnectedBssidInternal());
+        ScanResult candidate = configuration.getNetworkSelectionStatus().getCandidate();
+        if (candidate != null
+                && !TextUtils.equals(candidate.BSSID, getConnectedBssidInternal())) {
+            mWifiMetrics.incrementNumBssidDifferentSelectionBetweenFrameworkAndFirmware();
         }
         handleConnectionAttemptEndForDiagnostics(level2FailureCode);
     }
@@ -3409,6 +3411,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     WifiUsabilityStats.LABEL_BAD,
                     WifiUsabilityStats.TYPE_IP_REACHABILITY_LOST, -1);
             if (mWifiGlobals.getIpReachabilityDisconnectEnabled()) {
+                if (mWifiGlobals.getDisconnectOnlyOnInitialIpReachability()
+                        && !mIpReachabilityMonitorActive) {
+                    logd("CMD_IP_REACHABILITY_LOST Connect session is over, skip ip reachability lost indication.");
+                    return;
+                }
                 handleIpReachabilityLost();
             } else {
                 logd("CMD_IP_REACHABILITY_LOST but disconnect disabled -- ignore");
@@ -3578,7 +3585,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             return;
         }
         String currentMacString = mWifiNative.getMacAddress(mInterfaceName);
-        MacAddress currentMac = getMacAddressFromBssidString(currentMacString);
+        MacAddress currentMac = NativeUtil.getMacAddressOrNull(currentMacString);
         MacAddress newMac = isSecondaryInternet() && mClientModeManager.isSecondaryInternetDbsAp()
                 ? MacAddressUtils.createRandomUnicastAddress()
                 : mWifiConfigManager.getRandomizedMacAndUpdateIfNeeded(config);
@@ -3823,17 +3830,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return scanDetailCache.getScanResult(bssid);
     }
 
-    private MacAddress getMacAddressFromBssidString(@Nullable String bssidStr) {
-        try {
-            return (bssidStr != null) ? MacAddress.fromString(bssidStr) : null;
-        } catch (IllegalArgumentException e) {
-            Log.e(getTag(), "Invalid BSSID format: " + bssidStr);
-            return null;
-        }
-    }
-
     private MacAddress getCurrentBssidInternalMacAddress() {
-        return getMacAddressFromBssidString(mLastBssid);
+        return NativeUtil.getMacAddressOrNull(mLastBssid);
     }
 
     private void connectToNetwork(WifiConfiguration config) {
@@ -4553,6 +4551,22 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     public void updateCapabilities() {
         updateCapabilities(getConnectedWifiConfigurationInternal());
     }
+
+    /**
+     * Check if BSSID belongs to any of the affiliated link BSSID's.
+     * @param bssid BSSID of the AP.
+     * @return true if BSSID matches to one of the affiliated link BSSIDs, false otherwise.
+     */
+    public boolean isAffiliatedLinkBssid(@NonNull MacAddress bssid) {
+        List<MloLink> links = mWifiInfo.getAffiliatedMloLinks();
+        for (MloLink link: links) {
+            if (link.getApMacAddress().equals(bssid)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
 
     private void updateCapabilities(WifiConfiguration currentWifiConfiguration) {
         updateCapabilities(getCapabilities(currentWifiConfiguration, getConnectedBssidInternal()));
@@ -6869,28 +6883,35 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         List<WifiCandidates.Candidate> candidates = mWifiNetworkSelector
                 .getCandidatesForUserSelection(config, scanDetailsList);
         mWifiNetworkSelector.selectNetwork(candidates);
+
+        SecurityParams params = null;
         // Get the fresh copy again to retrieve the candidate security params.
         WifiConfiguration freshConfig = mWifiConfigManager.getConfiguredNetwork(config.networkId);
         if (null != freshConfig
                 && null != freshConfig.getNetworkSelectionStatus().getCandidateSecurityParams()) {
-            config.getNetworkSelectionStatus().setCandidateSecurityParams(
-                    freshConfig.getNetworkSelectionStatus().getCandidateSecurityParams());
-            return;
+            params = freshConfig.getNetworkSelectionStatus().getCandidateSecurityParams();
+            Log.i(getTag(), "Select best-fit security params: " + params.getSecurityType());
+        } else if (null != config.getNetworkSelectionStatus().getLastUsedSecurityParams()
+                && config.getNetworkSelectionStatus().getLastUsedSecurityParams().isEnabled()) {
+            params = config.getNetworkSelectionStatus().getLastUsedSecurityParams();
+            Log.i(getTag(), "Select the last used security params: " + params.getSecurityType());
+        } else {
+            params = config.getSecurityParamsList().stream()
+                    .filter(WifiConfigurationUtil::isSecurityParamsValid)
+                    .findFirst().orElse(null);
+            if (null != params) {
+                Log.i(getTag(), "Select the first available security params: "
+                        + params.getSecurityType());
+            } else {
+                Log.w(getTag(), "No available security params.");
+            }
         }
 
-        // When a connecting request comes from network request or adding a network via
-        // API directly, there might be no scan result to know the proper security params.
-        // In this case, we use the first available security params to have a try first.
-        Log.i(getTag(), "Cannot select a candidate security params from scan results,"
-                + "try to select the first available security params.");
-        SecurityParams defaultParams = config.getSecurityParamsList().stream()
-                .filter(WifiConfigurationUtil::isSecurityParamsValid)
-                .findFirst().orElse(null);
-        config.getNetworkSelectionStatus().setCandidateSecurityParams(defaultParams);
+        config.getNetworkSelectionStatus().setCandidateSecurityParams(params);
         // populate the target security params to the internal configuration manually,
         // and then wifi info could retrieve this information.
         mWifiConfigManager.setNetworkCandidateScanResult(
-                config.networkId, null, 0, defaultParams);
+                config.networkId, null, 0, params);
     }
 
     /**

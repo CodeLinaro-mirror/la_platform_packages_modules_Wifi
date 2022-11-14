@@ -58,7 +58,8 @@ public class ConfigurationMap {
         final UserHandle currentUser = UserHandle.of(mCurrentUserId);
         final UserHandle creatorUser = UserHandle.getUserHandleForUid(config.creatorUid);
         if (config.shared || currentUser.equals(creatorUser)
-                || mUserManager.isSameProfileGroup(currentUser, creatorUser)) {
+                || mUserManager.isSameProfileGroup(currentUser, creatorUser)
+                || config.creatorUid == UserHandle.SYSTEM.getIdentifier()) {
             mPerIDForCurrentUser.put(config.networkId, config);
             // TODO (b/142035508): Add a more generic fix. This cache should only hold saved
             // networks.

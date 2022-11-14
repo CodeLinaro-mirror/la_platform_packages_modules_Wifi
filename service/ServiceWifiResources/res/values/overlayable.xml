@@ -76,6 +76,7 @@
           <item type="integer" name="config_wifiSufficientDurationAfterUserSelectionMilliseconds" />
           <item type="bool" name="config_wifiEnable6ghzPscScanning" />
           <item type="bool" name="config_wifiEnablePartialInitialScan" />
+          <item type="bool" name="config_wifiAllowConnectPolicyForDualStation" />
           <item type="integer" name="config_wifiInitialPartialScanChannelMaxCount" />
           <item type="integer" name="config_wifiInitialPartialScanChannelCacheAgeMins" />
           <item type="bool" name="config_wifi_framework_use_single_radio_chain_scan_results_network_selection" />
@@ -88,6 +89,7 @@
           <item type="bool" name="config_wifiSofapClientForceDisconnectSupported" />
           <item type="bool" name="config_wifi_softap_acs_supported" />
           <item type="bool" name="config_wifi_softap_sae_supported" />
+          <item type="bool" name="config_vendor_wifi_softap_owe_supported" />
           <item type="bool" name="config_wifiSoftapMacAddressCustomizationSupported" />
           <item type="bool" name="config_wifi_softap_ieee80211ac_supported" />
           <item type="bool" name="config_wifiSoftapIeee80211axSupported" />

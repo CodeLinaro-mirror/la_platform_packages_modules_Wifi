@@ -1328,6 +1328,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     }
 
     @Override
+    public boolean is2GHzBand() {
+        return mWifiInfo.is24GHz();
+    }
+
+    @Override
     public boolean isConnecting() {
         IState state = getCurrentState();
         return state == mL2ConnectingState || state == mL2ConnectedState
@@ -4354,6 +4359,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             mWifiInfo.setFrequency(scanResult.frequency);
                         }
                     }
+                    if (mWifiInfo.getFrequency() == -1) {
+                        updateLinkLayerStatsRssiSpeedFrequencyCapabilities();
+                    }
 
                     // We need to get the updated pseudonym from supplicant for EAP-SIM/AKA/AKA'
                     if (config.enterpriseConfig != null
@@ -4527,6 +4535,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiMetrics.ConnectionEvent.FAILURE_NETWORK_NOT_FOUND,
                                 WifiMetricsProto.ConnectionEvent.HLF_NONE,
                                 WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN);
+                        handleNetworkDisconnect(false,
+                                WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__UNSPECIFIED);
                         transitionTo(mDisconnectedState); // End of connection attempt.
                     }
                     break;
@@ -4578,6 +4588,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiLastResortWatchdog.FAILURE_CODE_ASSOCIATION,
                                 isConnected());
                     }
+                    handleNetworkDisconnect(false,
+                            WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__UNSPECIFIED);
                     transitionTo(mDisconnectedState); // End of connection attempt.
                     break;
                 }
@@ -4657,6 +4669,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                                 WifiLastResortWatchdog.FAILURE_CODE_AUTHENTICATION,
                                 isConnected());
                     }
+                    handleNetworkDisconnect(false,
+                            WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__UNSPECIFIED);
                     transitionTo(mDisconnectedState); // End of connection attempt.
                     break;
                 }

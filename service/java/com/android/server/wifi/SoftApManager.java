@@ -35,10 +35,12 @@ import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiClient;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiScanner;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.SystemClock;
+import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.os.WorkSource;
 import android.text.TextUtils;
@@ -390,7 +392,9 @@ public class SoftApManager implements ActiveModeManager {
 
     private boolean isBridgedMode() {
         return (SdkLevel.isAtLeastS() && mCurrentSoftApConfiguration != null
-                && mCurrentSoftApConfiguration.getBands().length > 1);
+                && (mCurrentSoftApConfiguration.getBands().length > 1
+                || mCurrentSoftApConfiguration.getSecurityType()
+                   == SoftApConfiguration.SECURITY_TYPE_OWE_TRANSITION));
     }
 
     private long getShutdownTimeoutMillis() {
@@ -544,6 +548,38 @@ public class SoftApManager implements ActiveModeManager {
         intent.putExtra(WifiManager.EXTRA_WIFI_AP_MODE, mOriginalModeConfiguration.getTargetMode());
         mContext.sendBroadcastAsUser(intent, UserHandle.ALL,
                 android.Manifest.permission.ACCESS_WIFI_STATE);
+    }
+
+    private void sendBroadcastApConnectionsChanged() {
+        final Intent intent = new Intent(WifiManager.WIFI_AP_CLIENTS_CHANGED_ACTION);
+        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
+        intent.putExtra(WifiManager.EXTRA_WIFI_AP_MODE, mOriginalModeConfiguration.getTargetMode());
+
+        Log.d(getTag(), "sendBroadcastApConnectionsChanged, Mode:"
+                + mOriginalModeConfiguration.getTargetMode());
+        mContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
+    }
+
+    // Get the bands that have connection with clients.
+    public int getBandsInUse() {
+        int bands = 0;
+        // A SoftApManager instance may have multiple interfaces.
+        for (String instance : mConnectedClientWithApInfoMap.keySet()) {
+            if (mConnectedClientWithApInfoMap.getOrDefault(
+                    instance, Collections.emptyList()).size() != 0) {
+                // This interface has connections.
+                SoftApInfo sapInfo = mCurrentSoftApInfoMap.get(instance);
+                if (sapInfo != null) {
+                    int band = ApConfigUtil.convertFrequencyToBand(sapInfo.getFrequency());
+                    if (band == SoftApConfiguration.BAND_2GHZ) {
+                        bands |= WifiScanner.WIFI_BAND_24_GHZ;
+                    } else if (band == SoftApConfiguration.BAND_5GHZ) {
+                        bands |= WifiScanner.WIFI_BAND_5_GHZ_WITH_DFS;
+                    }
+                }
+            }
+        }
+        return bands;
     }
 
     private int setMacAddress() {
@@ -713,6 +749,36 @@ public class SoftApManager implements ActiveModeManager {
         return connectedClientList;
     }
 
+    private void softapVendorInit(ArrayList<String> names) {
+        if (names == null || names.size() == 0) return;
+
+        // Below is the sample commands to set vendor/interworking elements.
+        // - wlan.debug.vendor_init can be set for test purpose.
+        // - OEM needs to integrate their implementation as below.
+
+        // SAMPLE COMMANDS START
+        if (SystemProperties.getInt("wlan.sample.vendor_init", 0) != 1) {
+            Log.i(TAG, "wlan.sample.vendor_init not set to 1, not set sample values");
+            return;
+        }
+
+        String ifname = names.get(0); // OEM to pick one AP interface
+        String mac = mWifiNative.hostapdCmd(ifname, "DRIVER Macaddr").replace("Macaddr = ", "");
+        Log.d(TAG, "hostapdCmd(DRIVER Macaddr)=" + mac);
+        // Take this mac and build the vendor element string
+        mWifiNative.hostapdCmd(ifname, "SET vendor_elements dd0411223301");
+        mWifiNative.hostapdCmd(ifname, "SET assocresp_elements dd0411223302");
+        mWifiNative.hostapdCmd(ifname, "SET interworking 1");
+        mWifiNative.hostapdCmd(ifname, "SET access_network_type 4");
+        mWifiNative.hostapdCmd(ifname, "SET esr 1");
+        mWifiNative.hostapdCmd(ifname, "SET internet 1");
+        mWifiNative.hostapdCmd(ifname, "SET venue_type 1");
+        mWifiNative.hostapdCmd(ifname, "SET venue_group 10");
+        mWifiNative.hostapdCmd(ifname, "SET hessid 00:03:7f:89:31:88");
+        mWifiNative.hostapdCmd(ifname, "UPDATE_BEACON");
+        // SAMPLE COMMANDS END
+    }
+
     private boolean checkSoftApClient(SoftApConfiguration config, WifiClient newClient) {
         if (!mCurrentSoftApCapability.areFeaturesSupported(
                 SoftApCapability.SOFTAP_FEATURE_CLIENT_FORCE_DISCONNECT)) {
@@ -785,6 +851,7 @@ public class SoftApManager implements ActiveModeManager {
         public static final int CMD_SAFE_CHANNEL_FREQUENCY_CHANGED = 14;
         public static final int CMD_HANDLE_WIFI_CONNECTED = 15;
         public static final int CMD_UPDATE_COUNTRY_CODE = 16;
+        public static final int CMD_SOFT_AP_VENDOR_INIT = 20;
 
         private final State mIdleState = new IdleState();
         private final State mStartedState = new StartedState();
@@ -1152,6 +1219,7 @@ public class SoftApManager implements ActiveModeManager {
                         + clientList.size() + ": " + clientList + " on the AP which info is "
                         + currentInfoWithClientsChanged);
 
+                sendBroadcastApConnectionsChanged();
                 if (mSoftApCallback != null) {
                     mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                             mConnectedClientWithApInfoMap, isBridgedMode());
@@ -1178,6 +1246,7 @@ public class SoftApManager implements ActiveModeManager {
                     // Clean up
                     mCurrentSoftApInfoMap.clear();
                     mConnectedClientWithApInfoMap.clear();
+                    sendBroadcastApConnectionsChanged();
                     mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                             mConnectedClientWithApInfoMap, isBridgedMode());
                     return;
@@ -1189,6 +1258,7 @@ public class SoftApManager implements ActiveModeManager {
                                 mConnectedClientWithApInfoMap.get(changedInstance).size() > 0;
                         mCurrentSoftApInfoMap.remove(changedInstance);
                         mConnectedClientWithApInfoMap.remove(changedInstance);
+                        sendBroadcastApConnectionsChanged();
                         mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                                 mConnectedClientWithApInfoMap, isBridgedMode());
                         if (isClientConnected) {
@@ -1221,6 +1291,7 @@ public class SoftApManager implements ActiveModeManager {
 
                 mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfo));
                 if (!waitForAnotherSoftApInfoInBridgedMode) {
+                    sendBroadcastApConnectionsChanged();
                     mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                             mConnectedClientWithApInfoMap, isBridgedMode());
                 }
@@ -1249,6 +1320,7 @@ public class SoftApManager implements ActiveModeManager {
                     mWifiMetrics.incrementSoftApStartResult(true, 0);
                     mCurrentSoftApInfoMap.clear();
                     mConnectedClientWithApInfoMap.clear();
+                    sendBroadcastApConnectionsChanged();
                     if (mSoftApCallback != null) {
                         mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                                 mConnectedClientWithApInfoMap, isBridgedMode());
@@ -1291,6 +1363,10 @@ public class SoftApManager implements ActiveModeManager {
                 mPendingDisconnectClients.clear();
                 mEverReportMetricsForMaxClient = false;
                 scheduleTimeoutMessages();
+
+                // No sync mechnism between hostapd and framework.
+                // Try wait 500ms for vendor init
+                sendMessageDelayed(CMD_SOFT_AP_VENDOR_INIT, 500 /*ms*/);
             }
 
             @Override
@@ -1312,6 +1388,7 @@ public class SoftApManager implements ActiveModeManager {
                         }
                     }
                     mConnectedClientWithApInfoMap.clear();
+                    sendBroadcastApConnectionsChanged();
                     if (mSoftApCallback != null) {
                         mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                                 mConnectedClientWithApInfoMap, isBridgedMode());
@@ -1392,6 +1469,16 @@ public class SoftApManager implements ActiveModeManager {
                         apInfo.setAutoShutdownTimeoutMillis(mTimeoutEnabled
                                 ? getShutdownTimeoutMillis() : 0);
                         updateSoftApInfo(apInfo, false);
+                        break;
+                    case CMD_SOFT_AP_VENDOR_INIT:
+                        ArrayList<String> names = mWifiNative.listApInterfaces();
+                        if(names != null && "PONG\n".equals(mWifiNative.hostapdCmd(names.get(0), "PING"))) {
+                            // Hostapd is ready
+                            Log.d(TAG, "start to init softAP vendor");
+                            softapVendorInit(names);
+                        } else {
+                            sendMessageDelayed(CMD_SOFT_AP_VENDOR_INIT, 100 /*ms*/);
+                        }
                         break;
                     case CMD_INTERFACE_STATUS_CHANGED:
                         boolean isUp = message.arg1 == 1;

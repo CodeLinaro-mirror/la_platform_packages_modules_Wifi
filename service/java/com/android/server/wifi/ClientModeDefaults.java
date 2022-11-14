@@ -151,6 +151,10 @@ public interface ClientModeDefaults extends ClientMode {
         return false;
     }
 
+    default boolean is2GHzBand() {
+        return false;
+    }
+
     default boolean isConnecting() {
         return false;
     }

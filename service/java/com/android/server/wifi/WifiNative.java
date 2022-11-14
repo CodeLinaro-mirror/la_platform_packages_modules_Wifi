@@ -32,6 +32,7 @@ import android.net.wifi.WifiAvailableChannel;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
+import android.net.wifi.ThermalData;
 import android.net.wifi.nl80211.DeviceWiphyCapabilities;
 import android.net.wifi.nl80211.NativeScanResult;
 import android.net.wifi.nl80211.NativeWifiClient;
@@ -47,6 +48,7 @@ import android.util.Log;
 
 import com.android.internal.annotations.Immutable;
 import com.android.internal.util.HexDump;
+import com.android.internal.util.RingBuffer;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.hotspot2.NetworkDetail;
 import com.android.server.wifi.util.FrameParser;
@@ -71,6 +73,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 import java.util.Random;
 import java.util.Set;
 import java.util.TimeZone;
@@ -121,6 +124,10 @@ public class WifiNative {
         mRandom = random;
         mBuildProperties = buildProperties;
         mWifiInjector = wifiInjector;
+
+        WifiNativeHalListener halListener = new WifiNativeHalListener();
+        mSupplicantStaIfaceHal.registerHalListener(halListener);
+        mHostapdHal.registerHalListener(halListener);
     }
 
     /**
@@ -347,6 +354,16 @@ public class WifiNative {
                 }
             }
             return false;
+        }
+
+        /** Checks if there are any iface of the given type active. */
+        private Iface findAnyIfaceOfType(@Iface.IfaceType int type) {
+            for (Iface iface : mIfaces.values()) {
+                if (iface.type == type) {
+                    return iface;
+                }
+            }
+            return null;
         }
 
         /** Checks if there are any STA (for connectivity) iface active. */
@@ -1528,7 +1545,46 @@ public class WifiNative {
      */
     public Set<String> getSoftApInterfaceNames() {
         synchronized (mLock) {
-            return mIfaceMgr.findAllApIfaceNames();
+            Set<String> maintainedNames = mIfaceMgr.findAllApIfaceNames();
+            Set<String> detailedNames = new ArraySet<>();
+            for (String name : maintainedNames) {
+                if (name.contains("br")) {
+                    ArrayList<String> ifaces = listApInterfaces();
+                    detailedNames.add(name + String.valueOf(ifaces));
+                } else {
+                    detailedNames.add(name);
+                }
+            }
+            return detailedNames;
+        }
+    }
+
+    /**
+     * Get names of all available interfaces for apps use.
+     *
+     * Note: For bridge interface, it only returns inner managed interfaces.
+     *
+     * @return List of interface name of all active interfaces.
+     */
+    public List<String> getAvailableInterfaces() {
+        synchronized (mLock) {
+            List<String> interfaces = new ArrayList<String>();
+            Set<String> staIfaces = mIfaceMgr.findAllStaIfaceNames();
+            Set<String> apIfaces = mIfaceMgr.findAllApIfaceNames();
+            for (String name : staIfaces) {
+                interfaces.add(name);
+            }
+            for (String name : apIfaces) {
+                if (name.contains("br")) {
+                    List<String> ifaces = listApInterfaces();
+                    for (String innerName : ifaces) {
+                        interfaces.add(innerName);
+                    }
+                } else {
+                    interfaces.add(name);
+                }
+            }
+            return interfaces;
         }
     }
 
@@ -3409,6 +3465,12 @@ public class WifiNative {
         return false;
     }
 
+
+    // --------------------------------------------------------------------------------
+    public String wpaDriverCmd(String ifname, String cmd) {
+        return mSupplicantStaIfaceHal.doDriverCmd(ifname, cmd);
+    }
+
     /**
      * Set country code for this chip
      * @param countryCode - two-letter country code (as ISO 3166)
@@ -3421,6 +3483,324 @@ public class WifiNative {
             }
             return true;
         }
+        return false;
+    }
+
+    // --------------------------------------------------------------------------------
+    /* HIDL vendor event string */
+    public static final String THERMAL_EVENT_STR = "CTRL-EVENT-THERMAL-CHANGED";
+    public static final Pattern THERMAL_PATTERN =
+            Pattern.compile(THERMAL_EVENT_STR + " level=([0-9]+)");
+    public static final String CONGESTION_EVENT_STR = "CTRL-EVENT-CONGESTION-REPORT";
+    public static final Pattern CONGESTION_PATTERN =
+            Pattern.compile(CONGESTION_EVENT_STR + " percentage=([0-9]+)");
+
+    /* HIDL vendor callbacks */
+    private final HashSet<CongestionChangeListener> mCongestionListeners = new HashSet<>();
+    private final RingBuffer<String> mCongestionEventLogs = new RingBuffer(String.class, 16);
+    private final HashSet<ThermalChangeListener> mThermalListeners = new HashSet<>();
+    private final RingBuffer<String> mThermalEventLogs = new RingBuffer(String.class, 16);
+
+    // Defined to be used by framework
+    public interface ThermalChangeListener {
+        void onStateChanged(String ifname, int thermal_state);
+    }
+
+    public interface CongestionChangeListener {
+        void onStateChanged(String ifname, int percentage);
+    }
+    // Defined to be used by Hal
+    public interface WifiHalListener {
+        void onThermalChanged(String ifname, int thermal_state);
+        void onCongestionChanged(String ifname, int percentage);
+    }
+
+    private int toFrameworkThermalLevel(int original_val) {
+        switch (original_val) {
+            case 0:
+                return ThermalData.THERMAL_INFO_LEVEL_FULL_PERF;
+            case 2:
+                return ThermalData.THERMAL_INFO_LEVEL_REDUCED_PERF;
+            case 4:
+                return ThermalData.THERMAL_INFO_LEVEL_TX_OFF;
+            case 5:
+                return ThermalData.THERMAL_INFO_LEVEL_SHUT_DOWN;
+        }
+        return ThermalData.THERMAL_INFO_LEVEL_UNKNOWN;
+    }
+
+    private class WifiNativeHalListener implements WifiHalListener {
+        int mLastThermalLevel = ThermalData.THERMAL_INFO_LEVEL_UNKNOWN;
+        @Override
+        public void onThermalChanged(String ifname, int thermal_state) {
+            synchronized (mThermalListeners) {
+                thermal_state = toFrameworkThermalLevel(thermal_state);
+                // Reduce duplicate Thermal change event report.
+                if (thermal_state == mLastThermalLevel) {
+                    Log.d(TAG, "ignore duplicate report thermal with same level " + thermal_state);
+                    return;
+                }
+                mLastThermalLevel = thermal_state;
+                // Put into log events
+                SimpleDateFormat formatter= new SimpleDateFormat("MM-dd HH:mm:ss.S");
+                Date date = new Date(System.currentTimeMillis());
+                mThermalEventLogs.append(formatter.format(date)
+                         + "  WifiNative[" + ifname + "] -> new thermal state "
+                         + thermal_state + "\n");
+
+                // Trigger callbacks
+                if (mThermalListeners.isEmpty()) {
+                    Log.d(TAG, "no Thermal state change listener registered");
+                    return;
+                }
+                Iterator<ThermalChangeListener> it = mThermalListeners.iterator();
+                while (it.hasNext()) {
+                    ThermalChangeListener listener = it.next();
+                    listener.onStateChanged(ifname, thermal_state);
+                }
+            }
+        }
+        @Override
+        public void onCongestionChanged(String ifname, int percentage) {
+            synchronized (mCongestionListeners) {
+                // Put into log events
+                SimpleDateFormat formatter= new SimpleDateFormat("MM-dd HH:mm:ss.S");
+                Date date = new Date(System.currentTimeMillis());
+                mCongestionEventLogs.append(formatter.format(date)
+                         + "  WifiNative[" + ifname + "] -> new congestion percentage "
+                         + percentage + "\n");
+
+                // Trigger callbacks
+                if (mCongestionListeners.isEmpty()) {
+                    Log.d(TAG, "no Congestion percentage change listener registered");
+                    return;
+                }
+                Iterator<CongestionChangeListener> it = mCongestionListeners.iterator();
+                while (it.hasNext()) {
+                    CongestionChangeListener listener = it.next();
+                    listener.onStateChanged(ifname, percentage);
+                }
+            }
+        }
+    }
+
+    public void registerThermalChangeListener(ThermalChangeListener listener) {
+        if (listener == null) return;
+
+        synchronized (mThermalListeners) {
+            mThermalListeners.add(listener);
+        }
+    }
+
+    public void unregisterThermalChangeListener(ThermalChangeListener listener) {
+        if (listener == null) return;
+
+        synchronized (mThermalListeners) {
+            mThermalListeners.remove(listener);
+        }
+    }
+
+    public String getThermalEventStr() {
+        StringBuffer sb = new StringBuffer();
+        sb.append("Thermal Event log entries: " + mThermalEventLogs.size() + "\n");
+        for (String entry : mThermalEventLogs.toArray()) {
+            sb.append(entry);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Get thermal info
+     * @param ifname Name of the interface
+     * @return thermal temperature and state
+     */
+    public ThermalData getThermalInfo(String ifname) {
+        int iface_type = getIfaceType(ifname);
+        final String kGetThermalCmd = "GET_THERMAL_INFO";
+
+        String reply;
+        if (iface_type == Iface.IFACE_TYPE_AP) {
+            reply = hapdDriverCmd(ifname, kGetThermalCmd);
+        } else if (iface_type == Iface.IFACE_TYPE_STA_FOR_CONNECTIVITY
+                   || iface_type == Iface.IFACE_TYPE_STA_FOR_SCAN) {
+            reply = wpaDriverCmd(ifname, kGetThermalCmd);
+        } else {
+            return null;
+        }
+
+        int[] info = null;
+        String[] infoString = reply.split("\\s+");
+        try {
+            info = new int[2];
+            info[0] = Integer.parseInt(infoString[0]);
+            info[1] = Integer.parseInt(infoString[1]);
+        } catch (Exception e) {
+            Log.e(TAG, "invalid result for get thermal info");
+            return null;
+        }
+        ThermalData thermal_data = new ThermalData();
+        thermal_data.setTemperature(info[0]);
+        thermal_data.setThermalLevel(toFrameworkThermalLevel(info[1]));
+
+        return thermal_data;
+    }
+
+    public void registerCongestionChangeListener(CongestionChangeListener listener) {
+        if (listener == null) return;
+
+        synchronized (mCongestionListeners) {
+            mCongestionListeners.add(listener);
+        }
+    }
+
+    public void unregisterCongestionChangeListener(CongestionChangeListener listener) {
+        if (listener == null) return;
+
+        synchronized (mCongestionListeners) {
+            mCongestionListeners.remove(listener);
+        }
+    }
+
+    public String getCongestionEventStr() {
+        StringBuffer sb = new StringBuffer();
+        sb.append("Congestion Event log entries: " + mCongestionEventLogs.size() + "\n");
+        for (String entry : mCongestionEventLogs.toArray()) {
+            sb.append(entry);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * Set congestion report parameter
+     * @param ifname Name of the interface
+     * @param enable Enable or disable congestion report
+     * @param threshold Only when congestion achieved the threshold need to report
+     * @param interval Interval to report congestion
+     * @return result of set congestion report
+     */
+    public boolean setCongestionReport(String ifname, int enable, int threshold, int interval) {
+        int iface_type = getIfaceType(ifname);
+        final String kSetCongestionReportCmd = "SET_CONGESTION_REPORT "
+            + enable + " " + threshold + " " + interval;
+        if (iface_type == Iface.IFACE_TYPE_AP) {
+            return setSuccess(hapdDriverCmd(ifname, kSetCongestionReportCmd));
+        }
+        return false;
+    }
+
+    // ---------------------------------------------------------------------------------
+    /* Hostapd Vendor APIs */
+    public ArrayList<String> listApInterfaces() {
+        return mHostapdHal.listInterfaces();
+    }
+
+    public String hostapdCmd(String ifname, String cmd) {
+        return mHostapdHal.hostapdCmd(ifname, cmd);
+    }
+
+    public String hapdDriverCmd(String ifname, String cmd) {
+        if (ifname.contains("br")) {
+            // bridge interface
+            ArrayList<String> ifaces = listApInterfaces();
+            if (ifaces != null && ifaces.size() > 0) {
+                return mHostapdHal.hostapdCmd(ifaces.get(0), "DRIVER " + cmd);
+            } else {
+                return "iface not ready";
+            }
+        }
+        return mHostapdHal.hostapdCmd(ifname, "DRIVER " + cmd);
+    }
+
+    //Used for cmds requiring all internal ifaces to take effect when
+    //bridge iface is set
+    public String hapdDriverCmd2(String ifname, String cmd) {
+        String reply = "";
+        if (ifname.contains("br")) {
+            // bridge interface
+            ArrayList<String> ifaces = listApInterfaces();
+            if (ifaces != null && ifaces.size() > 0) {
+                for (String iface : ifaces) {
+                    reply = mHostapdHal.hostapdCmd(iface, "DRIVER " + cmd);
+                    if (!reply.contains("OK")) {
+                        return reply;
+                    }
+                }
+            } else {
+                reply = "iface not ready";
+            }
+        } else {
+            reply = mHostapdHal.hostapdCmd(ifname, "DRIVER " + cmd);
+        }
+        return reply;
+    }
+
+    private int getIfaceType(String ifname) {
+        int iface_type = -1;
+        synchronized (mLock) {
+            Iface iface = mIfaceMgr.getIface(ifname);
+            if (iface != null) {
+                iface_type = iface.type;
+            } else { //internal ifaces
+                ArrayList<String> ifaces = listApInterfaces();
+                if (ifaces != null && ifaces.contains(ifname)) {
+                    iface_type = Iface.IFACE_TYPE_AP;
+                }
+            }
+            return iface_type;
+        }
+    }
+
+    private boolean setSuccess(String reply) {
+        if (reply != null && reply.contains("OK")) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Set Max TX power in dBm
+     * @param ifname Name of the interface
+     * @param dbm tx power in dBm.
+     * @return results of setTxPower
+     */
+    public boolean setTxPower(String ifname, int dbm) {
+        int iface_type = getIfaceType(ifname);
+        final String kSetTxPowerCmd = "SET_TXPOWER " + dbm;
+
+        //vendor requirement to limit max tx power >= 8dbm.
+        if (dbm < 8) {
+            Log.e(TAG, "Expecting max tx power limit >= 8dbm, while actual dbm=" + dbm);
+            return false;
+        }
+
+        if (iface_type == Iface.IFACE_TYPE_AP) {
+            return setSuccess(hapdDriverCmd2(ifname, kSetTxPowerCmd));
+        } else if (iface_type == Iface.IFACE_TYPE_STA_FOR_CONNECTIVITY
+                   || iface_type == Iface.IFACE_TYPE_STA_FOR_SCAN) {
+            return setSuccess(wpaDriverCmd(ifname, kSetTxPowerCmd));
+        }
+
+        return false;
+    }
+
+    /**
+     * Set ANI level
+     * @param ifname Name of the interface
+     * @param mode ani level mode (0: fixed, 1: auto)
+     * @param ofdmlvl ANI level
+     * @return results of setAni
+     */
+    public boolean setAni(String ifname, int mode, int ofdmlvl) {
+        int iface_type = getIfaceType(ifname);
+        final String kSetAniCmd = "SET_ANI_LEVEL " + mode + " " + ofdmlvl;
+
+        if (iface_type == Iface.IFACE_TYPE_AP) {
+            return setSuccess(hapdDriverCmd2(ifname, kSetAniCmd));
+        } else if (iface_type == Iface.IFACE_TYPE_STA_FOR_CONNECTIVITY
+                   || iface_type == Iface.IFACE_TYPE_STA_FOR_SCAN) {
+            return setSuccess(wpaDriverCmd(ifname, kSetAniCmd));
+        }
+
         return false;
     }
 

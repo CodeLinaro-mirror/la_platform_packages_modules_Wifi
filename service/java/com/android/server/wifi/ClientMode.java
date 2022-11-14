@@ -136,6 +136,7 @@ public interface ClientMode {
     WifiMulticastLockManager.FilterController getMcastLockManagerFilterController();
 
     boolean isConnected();
+    boolean is2GHzBand();
 
     boolean isConnecting();
 

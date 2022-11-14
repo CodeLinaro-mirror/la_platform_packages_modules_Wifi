@@ -47,6 +47,7 @@ import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.ProvisioningCallback;
+import android.net.wifi.ThermalData;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -610,6 +611,14 @@ public class WifiManager {
     @SystemApi
     public static final String WIFI_AP_STATE_CHANGED_ACTION =
         "android.net.wifi.WIFI_AP_STATE_CHANGED";
+
+    /**
+     * Broadcast intent action indicating that clients have been added/removed to/from AP.
+     *
+     * @hide
+     */
+    public static final String WIFI_AP_CLIENTS_CHANGED_ACTION =
+        "android.net.wifi.WIFI_AP_CLIENTS_CHANGED";
 
     /**
      * The lookup key for an int that indicates whether Wi-Fi AP is enabled,
@@ -3154,6 +3163,39 @@ public class WifiManager {
             throw e.rethrowFromSystemServer();
         }
     }
+
+    /** @hide */
+    @RequiresPermission(android.Manifest.permission.UPDATE_DEVICE_STATS)
+    public boolean startScan(int band) {
+        try {
+            String packageName = mContext.getOpPackageName();
+            String attributionTag = mContext.getAttributionTag();
+            return mService.startScan2(packageName, attributionTag, band);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Query the bands which are occupied by high priorty connections(eg, internet connection on
+     * primary STA or CarPlay connection on LOHS|Tethering), so that app can choose to perform
+     * low rate scan or disable scan on these bands to guarantee link quality of these connections.
+     *
+     * If the bit[0] of return value equals 0x1 which means 2.4G band has critical connection,
+     * bit [2:1] equals 0x3 means 5G band includes DFS channel has critical connection.
+     *
+     * @param apMode Interface IP mode, IFACE_IP_MODE_TETHERED or IFACE_IP_MODE_LOCAL_ONLY.
+     * @return Combination of WIFI_BAND_24_GHZ and WIFI_BAND_5_GHZ_WITH_DFS.
+     * @hide
+     */
+     public int getBandsWithCriticalConnections(int apMode) {
+        try {
+            String packageName = mContext.getOpPackageName();
+            return mService.getBandsWithCriticalConnections(packageName, apMode);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+     }
 
     /**
      * WPS has been deprecated from Client mode operation.
@@ -8157,4 +8199,195 @@ public class WifiManager {
             throw e.rethrowFromSystemServer();
         }
     }
+
+    /** @hide */
+    @RequiresPermission(android.Manifest.permission.NETWORK_SETTINGS)
+    @Nullable public List<String> getAvailableInterfaces() {
+        try {
+            return mService.getAvailableInterfaces();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * get thermal info
+     *
+     * @param ifname is the interface to get thermal info
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.NETWORK_SETTINGS)
+    public ThermalData getThermalInfo(String ifname) {
+        if (ifname == null) throw new IllegalArgumentException("ifname cannot be null");
+        Log.v(TAG, "getThermalInfo: ifname=" + ifname);
+        try {
+            return mService.getThermalInfo(ifname);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Set congestion report parameters
+     *
+     * when disable, threshold and interval would be ignored.
+     *
+     * @param ifname is the interface to report congestion event
+     * @param enable true to enable, false to disable
+     * @param threshold, the threshold to report congestion, value should be [0, 100]
+     * @param interval, the interval to report, value should be [1, 255]
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.NETWORK_SETTINGS)
+    public boolean setCongestionReport(String ifname, boolean enable, int threshold, int interval) {
+        if (ifname == null) throw new IllegalArgumentException("ifname cannot be null");
+        Log.v(TAG, "setCongestionReport: ifname=" + ifname + ", enable=" + enable + ", threshold="
+                + threshold + ", interval=" + interval);
+        try {
+            return mService.setCongestionReport(ifname, enable, threshold, interval);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Abstract class for WifiNative Event callback. Should be extended by applications and set when
+     * calling {@link WifiManager#registerWifiNativeEventCallback(Executor, WifiNativeEventCallback)}
+     * @hide
+     */
+    public abstract static class WifiNativeEventCallback {
+        private final WifiNativeEventCallbackProxy mWifiNativeEventCallbackProxy;
+
+        public WifiNativeEventCallback() {
+            mWifiNativeEventCallbackProxy = new WifiNativeEventCallbackProxy();
+        }
+
+        /**
+         * Called when thermal info received.
+         */
+        public abstract void onThermalChanged(@NonNull String ifname, int thermal_state);
+
+        /**
+         * Called when congestion report received.
+         */
+        public abstract void onCongestionReport(@NonNull String ifname, int percentage);
+
+        /*package*/ @NonNull WifiNativeEventCallbackProxy getProxy() {
+            return mWifiNativeEventCallbackProxy;
+        }
+
+        private static class WifiNativeEventCallbackProxy extends IWifiNativeEventCallback.Stub {
+            private final Object mLock = new Object();
+            @Nullable @GuardedBy("mLock") private Executor mExecutor;
+            @Nullable @GuardedBy("mLock") private WifiNativeEventCallback mCallback;
+
+            WifiNativeEventCallbackProxy() {
+                mCallback = null;
+                mExecutor = null;
+            }
+
+            /*package*/ void initProxy(@NonNull Executor executor,
+                    @NonNull WifiNativeEventCallback callback) {
+                synchronized (mLock) {
+                    mExecutor = executor;
+                    mCallback = callback;
+                }
+            }
+
+            /*package*/ void cleanUpProxy() {
+                synchronized (mLock) {
+                    mExecutor = null;
+                    mCallback = null;
+                }
+            }
+
+            @Override
+            public void onThermalChanged(String ifname, int thermal_state) {
+                WifiNativeEventCallback callback;
+                Executor executor;
+                synchronized (mLock) {
+                    executor = mExecutor;
+                    callback = mCallback;
+                }
+                if (callback == null || executor == null) {
+                    return;
+                }
+                Binder.clearCallingIdentity();
+                executor.execute(() ->
+                    callback.onThermalChanged(ifname, thermal_state));
+            }
+
+            @Override
+            public void onCongestionReport(String ifname, int percentage) {
+                WifiNativeEventCallback callback;
+                Executor executor;
+                synchronized (mLock) {
+                    executor = mExecutor;
+                    callback = mCallback;
+                }
+                if (callback == null || executor == null) {
+                    return;
+                }
+                Binder.clearCallingIdentity();
+                executor.execute(() ->
+                    callback.onCongestionReport(ifname, percentage));
+            }
+        }
+
+    }
+
+    /**
+     * Register a callback for WifiNative Events (thermal change or congestion report).
+     * See {@link WifiNativeEventCallback}.
+     * Caller will receive the event when WifiNative events are available.
+     * Caller can remove a previously registered callback using
+     * {@link WifiManager#unregisterWifiNativeEventCallback(WifiNativeEventCallback)}
+     * Same caller can add multiple listeners.
+     * <p>
+     * Applications should have the
+     * {@link android.Manifest.permission#ACCESS_WIFI_STATE} permission. Callers
+     * without the permission will trigger a {@link java.lang.SecurityException}.
+     * <p>
+     * @param executor The executor to execute the callback of the {@code callback} object.
+     * @param callback Callback for WifiNative events
+     * @hide
+     */
+
+    @RequiresPermission(ACCESS_WIFI_STATE)
+    public void registerWifiNativeEventCallback(@NonNull @CallbackExecutor Executor executor,
+            @NonNull WifiNativeEventCallback callback) {
+        if (executor == null) throw new IllegalArgumentException("executor cannot be null");
+        if (callback == null) throw new IllegalArgumentException("callback cannot be null");
+
+        Log.v(TAG, "registerWifiNativeEventCallback: callback=" + callback
+                + ", executor=" + executor);
+        WifiNativeEventCallback.WifiNativeEventCallbackProxy proxy = callback.getProxy();
+        proxy.initProxy(executor, callback);
+        try {
+            mService.registerWifiNativeEventCallback(proxy);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Allow callers to unregister a previously registered callback. After calling this method,
+     * applications will no longer receive WifiNative Events.
+     * @param callback Callback to unregister for WifiNative events
+     * @hide
+     */
+    @RequiresPermission(ACCESS_WIFI_STATE)
+    public void unregisterWifiNativeEventCallback(@NonNull WifiNativeEventCallback callback) {
+        if (callback == null) throw new IllegalArgumentException("callback cannot be null");
+        Log.v(TAG, "unregisterWifiNativeEventCallback: Callback=" + callback);
+        WifiNativeEventCallback.WifiNativeEventCallbackProxy proxy = callback.getProxy();
+        try {
+            mService.unregisterWifiNativeEventCallback(proxy);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        } finally {
+            proxy.cleanUpProxy();
+        }
+    }
+
 }

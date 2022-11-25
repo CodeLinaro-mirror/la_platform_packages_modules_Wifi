@@ -770,20 +770,20 @@ public class WifiManager {
      * Type for tether hotspot.
      *
      */
-    public static final int LOCAL_ONLY_HOTSPOT_TYPE_NONE = -1;
+    public static final int LOCAL_ONLY_HOTSPOT_TYPE_NONE = 0;
 
     /**
      * One of dual types for LOHS, it's set by Application start one of dual LOHS
      * with API {@link #setLohsSoftApConfiguration(LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY, config)}
      * If Application start LOHS without specifing LOHS type, PRIMARY is the default type.
      */
-    public static final int LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY = 0;
+    public static final int LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY = 1;
 
     /**
      * One of dual types for LOHS, it's set when Application start one of dual LOHS
      * with API {@link #setLohsSoftApConfiguration(LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY, config)}
      */
-    public static final int LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY = 1;
+    public static final int LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY = 2;
 
     /** @hide */
     @IntDef(flag = false, prefix = { "SAP_START_FAILURE_" }, value = {

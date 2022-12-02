@@ -38,6 +38,12 @@ import java.io.PrintWriter;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import java.util.List;
+import java.util.Arrays;
+import java.util.ArrayList;
+import android.net.wifi.ScanResult;
+import android.net.wifi.p2p.WifiP2pManager.ExternalApproverRequestListener;
+
 /**
  * Interprets and executes 'adb shell cmd wifip2p [args]'.
  * The leading command name is defined by android.content.Context.WIFI_P2P_SERVICE.
@@ -50,6 +56,35 @@ public class WifiP2pShellCommand extends BasicShellCommandHandler {
     private final Context mContext;
 
     private final WifiP2pManager mWifiP2pManager;
+
+    private static final List<ScanResult.InformationElement> TEST_VENDOR_ELEMENTS =
+        new ArrayList<>(Arrays.asList(
+            new ScanResult.InformationElement(221, 0, new byte[]{ 1, 2, 3, 4 }),
+            new ScanResult.InformationElement(
+                221,
+                0,
+                new byte[]{ (byte) 170, (byte) 187, (byte) 204, (byte) 221 })
+        ));
+
+    private static final MacAddress TEST_EXTERNAL_APPROVER =
+        MacAddress.fromString("11:22:33:44:55:66");
+
+    private ExternalApproverRequestListener TEST_LISTENER =
+                new ExternalApproverRequestListener() {
+                    @Override
+                    public void onAttached(MacAddress deviceAddress) {
+                    }
+                    @Override
+                    public void onDetached(MacAddress deviceAddress, int reason) {
+                    }
+                    @Override
+                    public void onConnectionRequested(int requestType, WifiP2pConfig config,
+                            WifiP2pDevice device) {
+                    }
+                    @Override
+                    public void onPinGenerated(MacAddress deviceAddress, String pin) {
+                    }
+            };
 
     public WifiP2pShellCommand(Context context) {
         mContext = context;
@@ -381,6 +416,21 @@ public class WifiP2pShellCommand extends BasicShellCommandHandler {
                 countDownLatch.await(1000, TimeUnit.MILLISECONDS);
                 return 0;
             }
+            case "qca-set-vendor-ie": {
+                mWifiP2pManager.setVendorElements(sWifiP2pChannel, TEST_VENDOR_ELEMENTS,
+                        actionListener);
+                return 0;
+            }
+            case "qca-add-external-approver": {
+                mWifiP2pManager.addExternalApprover(sWifiP2pChannel,
+                        TEST_EXTERNAL_APPROVER, TEST_LISTENER);
+                return 0;
+            }
+            case "qca-remove-external-approver": {
+                mWifiP2pManager.removeExternalApprover(sWifiP2pChannel,
+                        TEST_EXTERNAL_APPROVER, actionListener);
+                return 0;
+            }
             default:
                 return handleDefaultCommands(cmd);
         }
@@ -576,6 +626,12 @@ public class WifiP2pShellCommand extends BasicShellCommandHandler {
         pw.println("    Create an autonomous group with a configuration.");
         pw.println("  remove-group");
         pw.println("    Remove current formed group.");
+        pw.println("  set-vendor-ie");
+        pw.println("    Set testing vendor elements");
+        pw.println("  add-external-approver");
+        pw.println("    Add testing external approver");
+        pw.println("  remove-external-approver");
+        pw.println("    Remove testing external approver");
         pw.println();
     }
 }

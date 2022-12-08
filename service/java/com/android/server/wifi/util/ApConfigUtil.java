@@ -18,6 +18,7 @@ package com.android.server.wifi.util;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.os.SystemProperties;
 import android.content.Context;
 import android.content.res.Resources;
 import android.net.wifi.CoexUnsafeChannel;
@@ -818,7 +819,9 @@ public class ApConfigUtil {
     public static boolean isSoftAp6GhzSupported(@NonNull Context context) {
         return context.getResources().getBoolean(R.bool.config_wifi6ghzSupport)
                 && context.getResources().getBoolean(
-                R.bool.config_wifiSoftap6ghzSupported);
+                R.bool.config_wifiSoftap6ghzSupported)
+                && SystemProperties.getBoolean(
+                "ro.vendor.wlan.6ghz", false);
     }
 
     /**

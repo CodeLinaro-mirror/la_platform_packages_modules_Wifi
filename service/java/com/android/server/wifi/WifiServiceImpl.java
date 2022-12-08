@@ -123,6 +123,7 @@ import android.os.UserManager;
 import android.os.WorkSource;
 import android.os.RemoteCallbackList;
 import android.os.connectivity.WifiActivityEnergyInfo;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.telephony.CarrierConfigManager;
 import android.telephony.PhoneStateListener;
@@ -3731,7 +3732,8 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     private boolean is6GhzBandSupportedInternal() {
-        if (mContext.getResources().getBoolean(R.bool.config_wifi6ghzSupport)) {
+        if (mContext.getResources().getBoolean(R.bool.config_wifi6ghzSupport)
+            && SystemProperties.getBoolean("ro.vendor.wlan.6ghz", false)) {
             return true;
         }
         return mWifiThreadRunner.call(

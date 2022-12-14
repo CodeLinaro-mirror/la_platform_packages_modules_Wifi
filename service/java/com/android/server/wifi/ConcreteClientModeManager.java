@@ -1316,6 +1316,11 @@ public class ConcreteClientModeManager implements ClientModeManager {
     }
 
     @Override
+    public int getFrequency() {
+        return getClientMode().getFrequency();
+    }
+
+    @Override
     public boolean isConnecting() {
         return getClientMode().isConnecting();
     }

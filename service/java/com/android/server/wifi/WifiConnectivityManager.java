@@ -341,10 +341,10 @@ public class WifiConnectivityManager {
      */
     private List<WifiCandidates.Candidate> getSecondaryCandidatesFiltered(
            @NonNull List<WifiCandidates.Candidate> secondaryCmmCandidates) {
-        if (!mActiveModeWarden.shouldEnableConnectionPolicyForDualSta()) {
+        if (!shouldEnableConnectionPolicyForDualSta()) {
             return secondaryCmmCandidates;
         }
-        if (!getPrimaryClientModeManager().isConnected()) {
+        if (getPrimaryClientModeManager().isDisconnected()) {
             Log.w(TAG, "Primary STA is disconnected");
             return secondaryCmmCandidates;
         }
@@ -1374,12 +1374,6 @@ public class WifiConnectivityManager {
             return;
         }
 
-        // Disconnect secondary STA if primary STA is going to to connect with AP that
-        // is on same band with secondary STA.
-        if (clientModeManager.getRole() == ClientModeManager.ROLE_CLIENT_PRIMARY) {
-           mActiveModeWarden.disconnectSecondaryClientIfNecessary(targetNetwork);
-        }
-
         WifiConfiguration currentNetwork = coalesce(
                 clientModeManager.getConnectedWifiConfiguration(),
                 clientModeManager.getConnectingWifiConfiguration());
@@ -1899,6 +1893,60 @@ public class WifiConnectivityManager {
         }
     }
 
+    public boolean shouldEnableConnectionPolicyForDualSta() {
+        if (mContext.getResources().getBoolean(
+                R.bool.config_wifiAllowConnectPolicyForDualStation)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Disconnect secondary STA if a, primary STA is going to connect with AP that is
+     * on same band with secondary STA or b, both stations are already on same band.
+     */
+    public boolean disconnectSecondaryClientIfNecessary(WifiConfiguration targetNetwork) {
+        boolean needDisconnect = false;
+        if (!shouldEnableConnectionPolicyForDualSta()) {
+            return needDisconnect;
+        }
+        ClientModeManager secondaryCmm =
+                mActiveModeWarden.getClientModeManagerInRole(ROLE_CLIENT_SECONDARY_LONG_LIVED);
+        if (secondaryCmm != null && (!secondaryCmm.isDisconnected())) {
+            ClientModeManager primaryCmm = mActiveModeWarden.getPrimaryClientModeManager();
+            Log.d(TAG, "2nd STA working frequency: " + secondaryCmm.getFrequency());
+            if (targetNetwork != null) {
+                // Primary STA is going to connect with targetNetwork.
+                ScanResult scanResult =
+                        targetNetwork.getNetworkSelectionStatus().getCandidate();
+                if (scanResult == null) {
+                    needDisconnect = true;
+                    Log.d(TAG, "not found candidate that match with targetNetwork: " + targetNetwork +
+                          " force disconnect 2nd STA no matter its working band");
+                } else {
+                    if (scanResult.is24GHz() == secondaryCmm.is2GHzBand()) {
+                        needDisconnect = true;
+                        Log.d(TAG, "primary STA work on same band with 2nd STA at frequency: "
+                              + primaryCmm.getFrequency());
+                    }
+                }
+            } else if (primaryCmm.isConnected()) {
+                // Primary STA has just established a new network.
+                if (primaryCmm.is2GHzBand() == secondaryCmm.is2GHzBand()) {
+                    needDisconnect = true;
+                    Log.d(TAG, "primary STA work on same band with 2nd STA at frequency: "
+                          + primaryCmm.getFrequency());
+                }
+            }
+            if (needDisconnect) {
+                Log.d(TAG, "disconnect 2nd STA");
+                secondaryCmm.disconnect();
+            }
+        }
+        return needDisconnect;
+    }
+
     /**
      * Pass device mobility state to WifiChannelUtilization and
      * alter the PNO scan interval based on the current device mobility state.
@@ -2297,7 +2345,7 @@ public class WifiConnectivityManager {
             }
             startConnectivityScan(SCAN_ON_SCHEDULE);
             // Primary STA is just connected, check if need to disconnect secondary STA
-            mActiveModeWarden.disconnectSecondaryClientIfNecessary(null);
+            disconnectSecondaryClientIfNecessary(null);
         } else {
             // Intermediate state, no applicable single scanning schedule
             setSingleScanningSchedule(null);

@@ -402,9 +402,9 @@ public class WifiApConfigStore {
             configBuilder = new SoftApConfiguration.Builder();
             // Default to disable the auto shutdown
             configBuilder.setAutoShutdownEnabled(false);
+            configBuilder.setBand(apBand);
         }
 
-        configBuilder.setBand(apBand);
 
         if (customConfig == null || customConfig.getSsid() == null) {
             configBuilder.setSsid(generateLohsSsid(context));

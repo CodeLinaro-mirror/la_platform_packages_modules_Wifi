@@ -26,6 +26,9 @@ import static android.net.wifi.WifiManager.WIFI_AP_STATE_DISABLING;
 import static android.net.wifi.WifiManager.WIFI_AP_STATE_ENABLED;
 import static android.net.wifi.WifiManager.WIFI_AP_STATE_ENABLING;
 import static android.net.wifi.WifiManager.WIFI_AP_STATE_FAILED;
+import static android.net.wifi.WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_NONE;
+import static android.net.wifi.WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY;
+import static android.net.wifi.WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY;
 
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_LOCAL_ONLY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_LONG_LIVED;
@@ -232,7 +235,13 @@ public class WifiServiceImpl extends BaseWifiService {
 
     private final TetheredSoftApTracker mTetheredSoftApTracker;
 
+    private final ArrayList<LohsSoftApTracker> mLohsSoftApTrackers;
+
+    //used when Lohs type is LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY
     private final LohsSoftApTracker mLohsSoftApTracker;
+
+    //used when Lohs type is LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY
+    private final LohsSoftApTracker mLohsSoftApTrackerSecondary;
 
     private final BuildProperties mBuildProperties;
 
@@ -241,6 +250,36 @@ public class WifiServiceImpl extends BaseWifiService {
     private final RemoteCallbackList<IWifiNativeEventCallback> mWifiNativeEventCallbacks;
     private boolean mIsBootComplete = false;
 
+    // store the mapping Info from WifiManager.setLohsConfiguration(int mLohsType, SoftApConfiguratin apConfig)
+    private Map<Integer, SoftApConfiguration> mLohsConfigMap = new HashMap<>();
+
+    /**
+     * find the right instance of {@link #LohsSoftApTracker} per {@link LocalOnlyHotspotRequestInfo}
+     * @param requestor {@link LocalOnlyHotspotRequestInfo}
+     *
+     * @return instance of {@link LohsSoftApTracker}
+     */
+    private LohsSoftApTracker findLohsSoftApTrackerByRequestor(LocalOnlyHotspotRequestInfo requestor) {
+           if (findLohsTypeByCustomConfig(requestor.getCustomConfig()) == LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY)
+               return mLohsSoftApTrackers.get(1);
+           else
+               return mLohsSoftApTrackers.get(0);
+    }
+
+    /**
+     * find the Lohs type per the custom softApConfiguration
+     * @param customConfig {@link SoftApConfiguration}
+     *
+     * @return Lohs type {@link WifiManager#LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY} or
+     * {@link WifiManager#LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY}
+     */
+    private int findLohsTypeByCustomConfig(SoftApConfiguration customConfig) {
+           SoftApConfiguration lohsSecondaryConfig = mLohsConfigMap.get(LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY);
+           if (customConfig != null && customConfig.equals(lohsSecondaryConfig))
+               return LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY;
+           else
+               return LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY;
+    }
     /**
      * Callback for use with LocalOnlyHotspot to unregister requesting applications upon death.
      */
@@ -253,7 +292,8 @@ public class WifiServiceImpl extends BaseWifiService {
         public void onLocalOnlyHotspotRequestorDeath(LocalOnlyHotspotRequestInfo requestor) {
             mLog.trace("onLocalOnlyHotspotRequestorDeath pid=%")
                     .c(requestor.getPid()).flush();
-            mLohsSoftApTracker.stopByRequest(requestor);
+            LohsSoftApTracker mApTracker = findLohsSoftApTrackerByRequestor(requestor);
+            mApTracker.stopByRequest(requestor);
         }
     }
 
@@ -301,6 +341,7 @@ public class WifiServiceImpl extends BaseWifiService {
          */
         default void onStateChanged(@WifiApState int state, @SapStartFailure int failureReason) {}
 
+        default void onStateChangedWithIface(@WifiApState int state, @SapStartFailure int failureReason, String ifaceName) {}
         /**
          * The callback which only is used in service internally and pass to WifiManager.
          * It will base on the change to send corresponding callback as below:
@@ -352,6 +393,11 @@ public class WifiServiceImpl extends BaseWifiService {
         mActiveModeWarden.registerSoftApCallback(mTetheredSoftApTracker);
         mLohsSoftApTracker = new LohsSoftApTracker();
         mActiveModeWarden.registerLohsCallback(mLohsSoftApTracker);
+        mLohsSoftApTrackerSecondary = new LohsSoftApTracker();
+        mActiveModeWarden.registerLohsCallbackSecondary(mLohsSoftApTrackerSecondary);
+        mLohsSoftApTrackers = new ArrayList<LohsSoftApTracker>(2);
+        mLohsSoftApTrackers.add(mLohsSoftApTracker);
+        mLohsSoftApTrackers.add(mLohsSoftApTrackerSecondary);
         mWifiNetworkSuggestionsManager = mWifiInjector.getWifiNetworkSuggestionsManager();
         mDppManager = mWifiInjector.getDppManager();
         mWifiThreadRunner = mWifiInjector.getWifiThreadRunner();
@@ -1072,10 +1118,15 @@ public class WifiServiceImpl extends BaseWifiService {
 
     /**
      * see {@link android.net.wifi.WifiManager#updateInterfaceIpState(String, int)}
+     * Actually this API is used to update LOHS status(interface name and mode).
+     * To dinguish dual LOHS, need to find right instance of {@link #LohsSoftApTracker}
+     * by interface name. If could not find right instance that match
+     * then update on both instance of {@link LohsSoftApTracker}
      *
      * The possible modes include: {@link WifiManager#IFACE_IP_MODE_TETHERED},
      *                             {@link WifiManager#IFACE_IP_MODE_LOCAL_ONLY},
      *                             {@link WifiManager#IFACE_IP_MODE_CONFIGURATION_ERROR}
+     *                             {@link WifiManager#IFACE_IP_MODE_UNSPECIFIED}
      *
      * @param ifaceName String name of the updated interface
      * @param mode new operating mode of the interface
@@ -1087,8 +1138,30 @@ public class WifiServiceImpl extends BaseWifiService {
         // NETWORK_STACK is a signature only permission.
         enforceNetworkStackPermission();
         mLog.info("updateInterfaceIpState uid=%").c(Binder.getCallingUid()).flush();
+
+        LohsSoftApTracker mApTracker = findLohsSoftApTrackerByIfaceName(ifaceName);
         // hand off the work to our handler thread
-        mWifiThreadRunner.post(() -> mLohsSoftApTracker.updateInterfaceIpState(ifaceName, mode));
+        if (mApTracker != null) {
+            mWifiThreadRunner.post(() -> mApTracker.updateInterfaceIpState(ifaceName, mode));
+        } else {
+            for (LohsSoftApTracker mLohsSoftApTracker: mLohsSoftApTrackers)
+                    mWifiThreadRunner.post(() -> mLohsSoftApTracker.updateInterfaceIpState(ifaceName, mode));
+        }
+    }
+
+    /**
+     * find the right instance of {@link LohsSoftApTracker} by interface name
+     * @param ifaceName String name of the updated interface
+     * @return mApTracker if find the instance {@link LohsSoftApTracker}, null otherwise
+     */
+    private LohsSoftApTracker findLohsSoftApTrackerByIfaceName(String ifaceName) {
+           for (LohsSoftApTracker mApTracker: mLohsSoftApTrackers) {
+                String mLohsIfaceName = mApTracker.mLohsInterfaceName;
+               if (mLohsIfaceName != null && mLohsIfaceName.equals(ifaceName))
+                    return mApTracker;
+           }
+           Log.d(TAG, "Not found LohsSoftApTracker by IfaceName: " + ifaceName);
+           return null;
     }
 
     /**
@@ -1194,12 +1267,13 @@ public class WifiServiceImpl extends BaseWifiService {
         if (!mWifiThreadRunner.call(
                 () -> mActiveModeWarden.canRequestMoreSoftApManagers(requestorWs), false)) {
             // Take down LOHS if it is up.
-            mLohsSoftApTracker.stopAll();
+            for (LohsSoftApTracker  mApTracker : mLohsSoftApTrackers)
+                 mApTracker.stopAll();
         }
 
         if (!startSoftApInternal(new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, softApConfig,
-                mTetheredSoftApTracker.getSoftApCapability()), requestorWs)) {
+                mTetheredSoftApTracker.getSoftApCapability(), LOCAL_ONLY_HOTSPOT_TYPE_NONE), requestorWs)) {
             mTetheredSoftApTracker.setFailedWhileEnabling();
             return false;
         }
@@ -1231,12 +1305,13 @@ public class WifiServiceImpl extends BaseWifiService {
         if (!mWifiThreadRunner.call(
                 () -> mActiveModeWarden.canRequestMoreSoftApManagers(requestorWs), false)) {
             // Take down LOHS if it is up.
-            mLohsSoftApTracker.stopAll();
+            for (LohsSoftApTracker mApTracker : mLohsSoftApTrackers)
+                 mApTracker.stopAll();
         }
 
         if (!startSoftApInternal(new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, softApConfig,
-                mTetheredSoftApTracker.getSoftApCapability()), requestorWs)) {
+                mTetheredSoftApTracker.getSoftApCapability(), LOCAL_ONLY_HOTSPOT_TYPE_NONE), requestorWs)) {
             mTetheredSoftApTracker.setFailedWhileEnabling();
             return false;
         }
@@ -1306,6 +1381,21 @@ public class WifiServiceImpl extends BaseWifiService {
 
         mActiveModeWarden.stopSoftAp(mode);
     }
+
+    /**
+     * Internal method to stop local only hotspot with type
+     * {@link WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY} or
+     * {@link WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY}
+     *
+     *
+     * @Param config {@link SoftApModeConfiguration}
+     */
+    private void stopLohsInternal(SoftApModeConfiguration config) {
+        mLog.trace("stopLohsInternal uid=% ").c(Binder.getCallingUid()).flush();
+
+        mActiveModeWarden.stopLohs(config);
+    }
+
 
     private final class CountryCodeListenerProxy implements WifiCountryCode.ChangeListener {
         @Override
@@ -1643,14 +1733,18 @@ public class WifiServiceImpl extends BaseWifiService {
             synchronized (mLocalOnlyHotspotRequests) {
                 Log.d(TAG, "updateInterfaceIpState: ifaceName=" + ifaceName + " mode=" + mode
                         + " previous LOHS mode= " + mLohsInterfaceMode);
-
+                if (mode == mLohsInterfaceMode && ifaceName != null && ifaceName.equals(mLohsInterfaceName)) {
+                    Log.d(TAG, "current iface " + ifaceName + " mode remain the same with previous LOHS mode: "
+                            + mode + ", ingore");
+                    return;
+                }
                 switch (mode) {
                     case WifiManager.IFACE_IP_MODE_LOCAL_ONLY:
                         // first make sure we have registered requests.
                         if (mLocalOnlyHotspotRequests.isEmpty()) {
                             // we don't have requests...  stop the hotspot
                             Log.wtf(TAG, "Starting LOHS without any requests?");
-                            stopSoftApInternal(WifiManager.IFACE_IP_MODE_LOCAL_ONLY);
+                            stopLohsInternal(mActiveConfig);
                             return;
                         }
                         // LOHS is ready to go!  Call our registered requestors!
@@ -1687,7 +1781,7 @@ public class WifiServiceImpl extends BaseWifiService {
                             mLohsInterfaceMode = mode;
                             sendHotspotFailedMessageToAllLOHSRequestInfoEntriesLocked(
                                     LocalOnlyHotspotCallback.ERROR_GENERIC);
-                            stopSoftApInternal(WifiManager.IFACE_IP_MODE_LOCAL_ONLY);
+                            stopLohsInternal(mActiveConfig);
                         } else {
                             // Not for LOHS. This is the wrong place to do this, but...
                             stopSoftApInternal(WifiManager.IFACE_IP_MODE_TETHERED);
@@ -1781,7 +1875,8 @@ public class WifiServiceImpl extends BaseWifiService {
                     // current config to the incoming request right away.
                     try {
                         mLog.trace("LOHS already up, trigger onStarted callback").flush();
-                        request.sendHotspotStartedMessage(mActiveConfig.getSoftApConfiguration());
+                        request.sendHotspotStartedMessageWithType(mActiveConfig.getLohsType(),
+                            mActiveConfig.getSoftApConfiguration());
                     } catch (RemoteException e) {
                         return LocalOnlyHotspotCallback.ERROR_GENERIC;
                     }
@@ -1795,7 +1890,7 @@ public class WifiServiceImpl extends BaseWifiService {
         @GuardedBy("mLocalOnlyHotspotRequests")
         private void startForFirstRequestLocked(LocalOnlyHotspotRequestInfo request) {
             int band = WifiApConfigStore.generateDefaultBand(mContext);
-
+            int lohsType = findLohsTypeByCustomConfig(request.getCustomConfig());
             // For auto only
             if (hasAutomotiveFeature(mContext)) {
                 if (mContext.getResources().getBoolean(R.bool.config_wifiLocalOnlyHotspot6ghz)
@@ -1816,8 +1911,12 @@ public class WifiServiceImpl extends BaseWifiService {
 
             mActiveConfig = new SoftApModeConfiguration(
                     WifiManager.IFACE_IP_MODE_LOCAL_ONLY,
-                    softApConfig, mLohsSoftApTracker.getSoftApCapability());
-            mIsExclusive = (request.getCustomConfig() != null);
+                    softApConfig, mLohsSoftApTracker.getSoftApCapability(), lohsType);
+             mIsExclusive = (request.getCustomConfig() != null);
+
+            //lohsType already pass to mActivConfig,so remove it in mLohsConfigMap in case
+            //of failure while starting LOHS
+            mLohsConfigMap.remove(lohsType);
 
             startSoftApInternal(mActiveConfig, request.getWorkSource());
         }
@@ -1867,11 +1966,9 @@ public class WifiServiceImpl extends BaseWifiService {
         @GuardedBy("mLocalOnlyHotspotRequests")
         private void stopIfEmptyLocked() {
             if (mLocalOnlyHotspotRequests.isEmpty()) {
-                mActiveConfig = null;
                 mIsExclusive = false;
-                mLohsInterfaceName = null;
-                mLohsInterfaceMode = WifiManager.IFACE_IP_MODE_UNSPECIFIED;
-                stopSoftApInternal(WifiManager.IFACE_IP_MODE_LOCAL_ONLY);
+                stopLohsInternal(mActiveConfig);
+                mActiveConfig = null;
             }
         }
 
@@ -1885,21 +1982,30 @@ public class WifiServiceImpl extends BaseWifiService {
         private void sendHotspotStartedMessageToAllLOHSRequestInfoEntriesLocked() {
             for (LocalOnlyHotspotRequestInfo requestor : mLocalOnlyHotspotRequests.values()) {
                 try {
-                    requestor.sendHotspotStartedMessage(mActiveConfig.getSoftApConfiguration());
+                    requestor.sendHotspotStartedMessageWithType(mActiveConfig.getLohsType(),
+                        mActiveConfig.getSoftApConfiguration());
                 } catch (RemoteException e) {
                     // This will be cleaned up by binder death handling
                 }
             }
         }
 
+        /**
+         *  called by {@link SoftApManager#updateApState()}. Due to there are two LOHS exist,
+         *  {@link LohsSoftApTracker#mLohsInterfaceName} need update before connectiviy service
+         *  call {@link WifiManager#updateInterfaceIpState} to pass interface name with mode change.
+         *  Then {@link WifiService#updateInterfaceIpState} could find the right instance of
+         *  {@link LohsSoftApTracker} by interface name
+         */
         @Override
-        public void onStateChanged(int state, int failureReason) {
+        public void onStateChangedWithIface(int state, int failureReason, String ifaceName) {
             // The AP state update from ClientModeImpl for softap
             synchronized (mLocalOnlyHotspotRequests) {
                 Log.d(TAG, "lohs.onStateChanged: currentState=" + state
                         + " previousState=" + mLohsState + " errorCode= " + failureReason
-                        + " ifaceName=" + mLohsInterfaceName);
+                        + " ifaceName=" + ifaceName);
 
+                 mLohsInterfaceName = ifaceName;
                 // check if we have a failure - since it is possible (worst case scenario where
                 // WifiController and ClientModeImpl are out of sync wrt modes) to get two FAILED
                 // notifications in a row, we need to handle this first.
@@ -1912,8 +2018,8 @@ public class WifiServiceImpl extends BaseWifiService {
                     // holding the required lock: send message to requestors and clear the list
                     sendHotspotFailedMessageToAllLOHSRequestInfoEntriesLocked(errorToReport);
                     // also need to clear interface ip state
-                    updateInterfaceIpState(mLohsInterfaceName,
-                            WifiManager.IFACE_IP_MODE_UNSPECIFIED);
+                    mLohsInterfaceName = null;
+                    mLohsInterfaceMode = WifiManager.IFACE_IP_MODE_UNSPECIFIED;
                 } else if (state == WIFI_AP_STATE_DISABLING || state == WIFI_AP_STATE_DISABLED) {
                     // softap is shutting down or is down...  let requestors know via the
                     // onStopped call
@@ -1928,8 +2034,8 @@ public class WifiServiceImpl extends BaseWifiService {
                         sendHotspotFailedMessageToAllLOHSRequestInfoEntriesLocked(ERROR_GENERIC);
                     }
                     // also clear interface ip state
-                    updateInterfaceIpState(mLohsInterfaceName,
-                            WifiManager.IFACE_IP_MODE_UNSPECIFIED);
+                    mLohsInterfaceName = null;
+                    mLohsInterfaceMode = WifiManager.IFACE_IP_MODE_UNSPECIFIED;
                 }
                 // For enabling and enabled, just record the new state
                 mLohsState = state;
@@ -2123,7 +2229,11 @@ public class WifiServiceImpl extends BaseWifiService {
         LocalOnlyHotspotRequestInfo request = new LocalOnlyHotspotRequestInfo(
                 requestorWs, callback, new LocalOnlyRequestorCallback(), customConfig);
 
-        return mLohsSoftApTracker.start(pid, request);
+        if (findLohsTypeByCustomConfig(customConfig) == LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY) {
+            return mLohsSoftApTrackers.get(1).start(pid, request);
+        } else {
+            return mLohsSoftApTrackers.get(0).start(pid, request);
+        }
     }
 
     /**
@@ -2144,6 +2254,25 @@ public class WifiServiceImpl extends BaseWifiService {
         mLog.info("stopLocalOnlyHotspot uid=% pid=%").c(uid).c(pid).flush();
 
         mLohsSoftApTracker.stopByPid(pid);
+    }
+
+    /**
+     * see {@link WifiManager#stopLocalOnlyHotspotWithType(int mLohsType)}
+     */
+    public void stopLocalOnlyHotspotWithType(int mLohsType) {
+        // don't do a permission check here. if the app's permission to change the wifi state is
+        // revoked, we still want them to be able to stop a previously created hotspot (otherwise
+        // it could cost the user money). When the app created the hotspot, its permission was
+        // checked.
+        final int uid = Binder.getCallingUid();
+        final int pid = Binder.getCallingPid();
+
+        mLog.info("stopLocalOnlyHotspot uid=% pid=%").c(uid).c(pid).flush();
+
+        if (mLohsType == LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY)
+            mLohsSoftApTrackers.get(1).stopByPid(pid);
+        else
+            mLohsSoftApTrackers.get(0).stopByPid(pid);
     }
 
     /**
@@ -2291,6 +2420,56 @@ public class WifiServiceImpl extends BaseWifiService {
             return false;
         }
     }
+
+    /**
+     * see {@link WifiManager#setLohsConfiguration(SoftApConfiguration)}
+     * @param lohsType vaild value is {@link WifiManager#LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY} or
+     * {@link WifiManager#LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY}
+     * @param softApConfig {@link SoftApConfiguration} details for soft access point
+     * @return boolean indicating success or failure of the operation
+     * @throws SecurityException if the caller does not have permission to write the softap config
+     */
+    @Override
+    public boolean setLohsConfiguration(@NonNull int lohsType,
+            @NonNull SoftApConfiguration softApConfig, @NonNull String packageName) {
+        int uid = Binder.getCallingUid();
+        boolean privileged = mWifiPermissionsUtil.checkNetworkSettingsPermission(uid);
+        if (!mWifiPermissionsUtil.checkConfigOverridePermission(uid)
+                && !privileged) {
+            // random apps should not be allowed to read the user specified config
+            throw new SecurityException("App not allowed to read or update stored WiFi local only hotspot config "
+                    + "(uid = " + uid + ")");
+        }
+        mLog.info("setLohsConfiguration uid=%").c(uid).flush();
+        if (softApConfig == null) return false;
+        if (lohsType != LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY &&
+                lohsType != LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY) {
+            Log.e(TAG, "invalid LOHS type: this API only support LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY "
+                  + "and LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY for dual LOHS case");
+            return false;
+        }
+        if (mLohsConfigMap.containsValue(softApConfig)) {
+            Log.e(TAG, "App not allow to set duplicated softApConfig that one of dual LOHS already has "
+                  + "since dual LOHS could not be distinguished if they have same softApConfig");
+            return false;
+        }
+        if (WifiApConfigStore.validateApWifiConfiguration(softApConfig, privileged, mContext)) {
+            mLohsConfigMap.put(lohsType, softApConfig);
+            return true;
+        } else {
+            Log.e(TAG, "Invalid SoftAp Configuration");
+            return false;
+        }
+    }
+
+   /**
+    * Used in unit test for function {@link #setLohsConfiguration}
+    * This method allow to verify the result of {@link #setLohsConfiguration}
+    */
+   @VisibleForTesting
+   SoftApConfiguration getLohsConfigurationForTest(int lohsType) {
+       return  mLohsConfigMap.get(lohsType);
+   }
 
     /**
      * see {@link android.net.wifi.WifiManager#setScanAlwaysAvailable(boolean)}

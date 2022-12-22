@@ -349,6 +349,18 @@ public class WifiNetworkSelector {
             localLog("Empty connectivity scan results. Skip network selection.");
             return false;
         }
+
+        for (ScanDetail scanDetail: scanDetails) {
+            Log.d(TAG, "in isNetworkSelectionNeed, the SSID of AP is " + scanDetail.getSSID());
+
+            for (ClientModeManagerState cmmState : cmmStates) {
+                Log.d(TAG, "The connected AP is " + cmmState.wifiInfo.getSSID());
+                if (!cmmState.wifiInfo.getSSID().equals(scanDetail.getSSID())) {
+                    return true;
+                }
+            }
+        }
+
         for (ClientModeManagerState cmmState : cmmStates) {
             // network selection needed by this CMM instance, perform network selection
             if (isNetworkSelectionNeededForCmm(cmmState)) {
@@ -462,12 +474,16 @@ public class WifiNetworkSelector {
             for (ClientModeManagerState cmmState : cmmStates) {
                 // TODO (b/169413079): Disable network selection on corresponding CMM instead.
                 if (cmmState.connected && cmmState.wifiInfo.getScore() >= WIFI_POOR_SCORE
-                        && !scanResultPresentForCurrentBssids.contains(
-                        cmmState.wifiInfo.getBSSID())) {
-                    localLog("Current connected BSSID " + cmmState.wifiInfo.getBSSID()
-                            + " is not in the scan results. Skip network selection.");
-                    validScanDetails.clear();
-                    return validScanDetails;
+                    && !scanResultPresentForCurrentBssids.contains(cmmState.wifiInfo.getBSSID())) {
+                    for (ScanDetail validScanDetail: validScanDetails) {
+                        ScanResult scanResult = validScanDetail.getScanResult();
+                        if (scanResult.SSID.equals(cmmState.wifiInfo.getSSID())) {
+                            localLog("Current connnected BSSID " + cmmState.wifiInfo.getBSSID()
+                                    + " is not in the scan results. Skip network selection.");
+                            validScanDetails.clear();
+                            return validScanDetails;
+                        }
+                    }
                 }
             }
         }

@@ -127,6 +127,7 @@ import android.telephony.PhoneStateListener;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.util.EventLog;
 import android.util.Log;
 
 import androidx.annotation.RequiresApi;
@@ -287,6 +288,7 @@ public class WifiServiceImpl extends BaseWifiService {
     private final SimRequiredNotifier mSimRequiredNotifier;
     private final MakeBeforeBreakManager mMakeBeforeBreakManager;
     private final LastCallerInfoManager mLastCallerInfoManager;
+    private boolean mIsBootComplete;
 
     /**
      * The wrapper of SoftApCallback is used in WifiService internally.
@@ -563,6 +565,7 @@ public class WifiServiceImpl extends BaseWifiService {
             mCountryCode.registerListener(new CountryCodeListenerProxy());
             mTetheredSoftApTracker.handleBootCompleted();
             mWifiInjector.getSarManager().handleBootCompleted();
+            mIsBootComplete = true;
 
             handleBootCompletedForCoverageExtendFeature();
         });
@@ -1310,10 +1313,8 @@ public class WifiServiceImpl extends BaseWifiService {
         private boolean mIsBridgedMode = false;
         // TODO: We need to maintain two capability. One for LTE + SAP and one for WIFI + SAP
         private SoftApCapability mTetheredSoftApCapability = null;
-        private boolean mIsBootComplete = false;
 
         public void handleBootCompleted() {
-            mIsBootComplete = true;
             updateAvailChannelListInSoftApCapability();
         }
 
@@ -3834,8 +3835,12 @@ public class WifiServiceImpl extends BaseWifiService {
     public int handleShellCommand(@NonNull ParcelFileDescriptor in,
             @NonNull ParcelFileDescriptor out, @NonNull ParcelFileDescriptor err,
             @NonNull String[] args) {
-        WifiShellCommand shellCommand =  new WifiShellCommand(mWifiInjector, this, mContext,
-                mWifiGlobals, mWifiThreadRunner);
+        if (!mIsBootComplete) {
+            Log.w(TAG, "Received shell command when boot is not complete!");
+            return -1;
+        }
+
+        WifiShellCommand shellCommand =  mWifiInjector.makeWifiShellCommand(this);
         return shellCommand.exec(this, in.getFileDescriptor(), out.getFileDescriptor(),
                 err.getFileDescriptor(), args);
     }
@@ -4132,12 +4137,18 @@ public class WifiServiceImpl extends BaseWifiService {
             return;
         }
         // Delete all Wifi SSIDs
-        List<WifiConfiguration> networks = mWifiThreadRunner.call(
-                () -> mWifiConfigManager.getSavedNetworks(Process.WIFI_UID),
-                Collections.emptyList());
-        for (WifiConfiguration network : networks) {
-            removeNetwork(network.networkId, packageName);
-        }
+        mWifiThreadRunner.run(() -> {
+            List<WifiConfiguration> networks = mWifiConfigManager
+                    .getSavedNetworks(Process.WIFI_UID);
+            EventLog.writeEvent(0x534e4554, "231985227", -1,
+                    "Remove certs for factory reset");
+            for (WifiConfiguration network : networks) {
+                if (network.isEnterprise()) {
+                    mWifiInjector.getWifiKeyStore().removeKeys(network.enterpriseConfig, true);
+                }
+                removeNetwork(network.networkId, packageName);
+            }
+        });
         // Delete all Passpoint configurations
         List<PasspointConfiguration> configs = mWifiThreadRunner.call(
                 () -> mPasspointManager.getProviderConfigs(Process.WIFI_UID /* ignored */, true),

@@ -583,6 +583,16 @@ public class WifiApConfigStore {
             }
         }
 
+        if (ApConfigUtil.isSecurityTypeRestrictedFor6gBand(authType)) {
+            for (int band : apConfig.getBands()) {
+                // Only return failure if requested band is limitted to 6GHz only
+                if (band == SoftApConfiguration.BAND_6GHZ) {
+                    Log.d(TAG, "security type is not allowed for softap in 6GHz band");
+                    return false;
+                }
+            }
+        }
+
         return true;
     }
 

@@ -995,6 +995,13 @@ public class SoftApManager implements ActiveModeManager {
                         }
                         setSoftApIfaceOnSecondWlan();
                         Log.d(getTag(), "wifi.softap.iface.on.dual.wlan set to " + WifiProperties.softap_iface_on_dual_wlan());
+
+                        // Remove 6GHz from requested bands if security type is restricted
+                        // Note: 6GHz only band is already handled by initial validation
+                        mCurrentSoftApConfiguration =
+                                ApConfigUtil.remove6gBandForUnsupportedSecurity(
+                                    mCurrentSoftApConfiguration);
+
                         mApInterfaceName = mWifiNative.setupInterfaceForSoftApMode(
                                 mWifiNativeInterfaceCallback, mRequestorWs,
                                 mCurrentSoftApConfiguration.getBand(), isBridgedMode());

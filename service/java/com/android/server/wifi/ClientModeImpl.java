@@ -175,8 +175,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     @VisibleForTesting public static final short NUM_LOG_RECS_VERBOSE_LOW_MEMORY = 200;
     @VisibleForTesting public static final short NUM_LOG_RECS_VERBOSE = 3000;
 
-    public static final int TIME_WAIT_FOR_DICONNECT_COMPLETE_MS = 200;
-
     private static final String TAG = "WifiClientModeImpl";
 
     private static final int IPCLIENT_STARTUP_TIMEOUT_MS = 2_000;
@@ -1332,11 +1330,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     @Override
     public boolean is2GHzBand() {
         return mWifiInfo.is24GHz();
-    }
-
-    @Override
-    public int getFrequency() {
-        return mWifiInfo.getFrequency();
     }
 
     @Override
@@ -5925,16 +5918,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * @param bssid BSSID of the network
      */
     public void startConnectToNetwork(int networkId, int uid, String bssid) {
-        WifiConfiguration config =
-                            mWifiConfigManager.getConfiguredNetworkWithoutMasking(networkId);
-        if (mWifiConnectivityManager.disconnectSecondaryClientIfNecessary(config)){
-            Log.d(TAG, "Need to disconnect 2nd STA before connection");
-            //delay to make sure disconnect 2nd STA completed before primary STA prepare to connect
-            sendMessageDelayed(CMD_START_CONNECT, networkId, uid, bssid, TIME_WAIT_FOR_DICONNECT_COMPLETE_MS);
-        }
-        else {
-            sendMessage(CMD_START_CONNECT, networkId, uid, bssid);
-        }
+        sendMessage(CMD_START_CONNECT, networkId, uid, bssid);
     }
 
     /**

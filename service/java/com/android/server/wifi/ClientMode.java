@@ -138,8 +138,6 @@ public interface ClientMode {
     boolean isConnected();
     boolean is2GHzBand();
 
-    int getFrequency();
-
     boolean isConnecting();
 
     boolean isRoaming();

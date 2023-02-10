@@ -155,10 +155,6 @@ public interface ClientModeDefaults extends ClientMode {
         return false;
     }
 
-    default int getFrequency() {
-        return -1;
-    }
-
     default boolean isConnecting() {
         return false;
     }

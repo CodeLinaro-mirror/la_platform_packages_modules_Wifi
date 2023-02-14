@@ -1335,6 +1335,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     }
 
     @Override
+    public boolean is5GHzBand() {
+        return mWifiInfo.is5GHz();
+    }
+
+    @Override
     public int getFrequency() {
         return mWifiInfo.getFrequency();
     }
@@ -5925,16 +5930,23 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * @param bssid BSSID of the network
      */
     public void startConnectToNetwork(int networkId, int uid, String bssid) {
-        WifiConfiguration config =
-                            mWifiConfigManager.getConfiguredNetworkWithoutMasking(networkId);
-        if (mWifiConnectivityManager.disconnectSecondaryClientIfNecessary(config)){
-            Log.d(TAG, "Need to disconnect 2nd STA before connection");
-            //delay to make sure disconnect 2nd STA completed before primary STA prepare to connect
-            sendMessageDelayed(CMD_START_CONNECT, networkId, uid, bssid, TIME_WAIT_FOR_DICONNECT_COMPLETE_MS);
+        ClientRole role = mClientModeManager.getRole();
+        if (role == ROLE_CLIENT_PRIMARY) {
+            WifiConfiguration config =
+                      mWifiConfigManager.getConfiguredNetworkWithoutMasking(networkId);
+            //Before disconnecting 2nd STA, need to know the freq of selected candidate network
+            //Here do the selecting candidate before handling CMD_START_CONNECT, otherwise
+            //it could not make sure disconnect 2nd STA completed before primary STA prepare to connect
+            //since selecting condidate is followed by connecting candidate.
+            selectCandidateBeforePrepareToConnect(config);
+            if (mWifiConnectivityManager.disconnectSecondaryClientIfNecessary(config)){
+                Log.d(TAG, "Need to disconnect 2nd STA before connection");
+                //delay to make sure disconnect 2nd STA completed before primary STA prepare to connect
+                sendMessageDelayed(CMD_START_CONNECT, networkId, uid, bssid, TIME_WAIT_FOR_DICONNECT_COMPLETE_MS);
+                return;
+            }
         }
-        else {
-            sendMessage(CMD_START_CONNECT, networkId, uid, bssid);
-        }
+        sendMessage(CMD_START_CONNECT, networkId, uid, bssid);
     }
 
     /**
@@ -6233,6 +6245,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         // and then wifi info could retrieve this information.
         mWifiConfigManager.setNetworkCandidateScanResult(
                 config.networkId, null, 0, defaultParams);
+    }
+
+   void selectCandidateBeforePrepareToConnect(WifiConfiguration config) {
+        List<ScanResult> scanResults = mScanRequestProxy.getScanResults();
+        selectCandidateSecurityParamsIfNecessary(config, scanResults);
     }
 
     /**

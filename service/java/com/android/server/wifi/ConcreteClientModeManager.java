@@ -1316,6 +1316,11 @@ public class ConcreteClientModeManager implements ClientModeManager {
     }
 
     @Override
+    public boolean is5GHzBand() {
+        return getClientMode().is5GHzBand();
+    }
+
+    @Override
     public int getFrequency() {
         return getClientMode().getFrequency();
     }

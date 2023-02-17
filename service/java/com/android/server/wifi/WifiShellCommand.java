@@ -191,6 +191,14 @@ public class WifiShellCommand extends BasicShellCommandHandler {
     private final @NonNull WifiDialogManager mWifiDialogManager;
     private final HalDeviceManager mHalDeviceManager;
     private final InterfaceConflictManager mInterfaceConflictManager;
+    private static final List<ScanResult.InformationElement> TEST_VENDOR_ELEMENTS =
+            new ArrayList<>(Arrays.asList(
+                    new ScanResult.InformationElement(221, 0, new byte[]{ 1, 2, 3, 4 }),
+                    new ScanResult.InformationElement(
+                            221,
+                            0,
+                            new byte[]{ (byte) 170, (byte) 187, (byte) 204, (byte) 221 })
+            ));
 
     private class SoftApCallbackProxy extends ISoftApCallback.Stub {
         private final PrintWriter mPrintWriter;
@@ -733,6 +741,17 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     // Wait for softap to start and complete callback
                     countDownLatch.await(10000, TimeUnit.MILLISECONDS);
                     mWifiService.unregisterSoftApCallback(softApCallback);
+                    return 0;
+                }
+                case "get-randomized-setting": {
+                    SoftApConfiguration config = mWifiService.getSoftApConfiguration();
+                    if (config == null) {
+                        pw.println("start a soft ap first please");
+                        return -1;
+                    }
+                    pw.println("macRandomizedSetting: setting = " +
+                           config.getMacRandomizationSetting()
+                           + " mac = " + config.getBssid());
                     return 0;
                 }
                 case "stop-lohs": {
@@ -1764,9 +1783,40 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         throw new IllegalArgumentException(
                                 "-b bridged option is not supported before S");
                     }
+                } else if (preferredBand.equals("bridged26")) {
+                    if (SdkLevel.isAtLeastS()) {
+                        int[] dualBands = new int[] {
+                                SoftApConfiguration.BAND_2GHZ, SoftApConfiguration.BAND_6GHZ};
+                        configBuilder.setBands(dualBands);
+                    } else {
+                        throw new IllegalArgumentException(
+                                "-b bridged26 option is not supported");
+                    }
+                } else if (preferredBand.equals("bridged56")) {
+                    if (SdkLevel.isAtLeastS()) {
+                        int[] dualBands = new int[] {
+                                SoftApConfiguration.BAND_5GHZ, SoftApConfiguration.BAND_6GHZ};
+                        configBuilder.setBands(dualBands);
+                    } else {
+                        throw new IllegalArgumentException(
+                                "-b bridged56 option is not supported");
+                    }
                 } else {
                     throw new IllegalArgumentException("Invalid band option " + preferredBand);
                 }
+            } else if (option.equals("-p")) {
+                String privacy = getNextArgRequired();
+                if (privacy.equals("0")) {
+                    configBuilder.setMacRandomizationSetting(SoftApConfiguration.RANDOMIZATION_NONE);
+                } else if (privacy.equals("1")) {
+                    configBuilder.setMacRandomizationSetting(SoftApConfiguration.RANDOMIZATION_PERSISTENT);
+                } else if (privacy.equals("2")) {
+                    configBuilder.setMacRandomizationSetting(SoftApConfiguration.RANDOMIZATION_NON_PERSISTENT);
+                } else {
+                    throw new IllegalArgumentException("Invalid privacy option " + privacy);
+                }
+            } else if (SdkLevel.isAtLeastT() && option.equals("-v")) {
+                configBuilder.setVendorElements(TEST_VENDOR_ELEMENTS);
             } else if (SdkLevel.isAtLeastT() && option.equals("-x")) {
                 configBuilder.setWifiSsid(WifiSsid.fromString(ssidStr));
             } else {
@@ -2260,7 +2310,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    Turns on the default connected scorer.");
         pw.println("    Note: Will clear any external scorer set.");
         pw.println("  start-softap <ssid> (open|wpa2|wpa3|wpa3_transition|owe|owe_transition) "
-                + "<passphrase> [-b 2|5|6|any|bridged]");
+                + "<passphrase> [-b 2|5|6|any|bridged] [-p 0|1|2] [-v]");
         pw.println("    Start softap with provided params");
         pw.println("    Note that the shell command doesn't activate internet tethering. In some "
                 + "devices, internet sharing is possible when Wi-Fi STA is also enabled and is"
@@ -2270,16 +2320,22 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 + "network.");
         pw.println("        - Use 'open', 'owe', 'owe_transition' for networks with no passphrase");
         pw.println("        - Use 'wpa2', 'wpa3', 'wpa3_transition' for networks with passphrase");
-        pw.println("    -b 2|5|6|any|bridged - select the preferred band.");
+        pw.println("    -b 2|5|6|any|bridged|bridged26|bridged56 - select the preferred band.");
         pw.println("        - Use '2' to select 2.4GHz band as the preferred band");
         pw.println("        - Use '5' to select 5GHz band as the preferred band");
         pw.println("        - Use '6' to select 6GHz band as the preferred band");
         pw.println("        - Use 'any' to indicate no band preference");
         pw.println("        - Use 'bridged' to indicate bridged AP which enables APs on both "
                 + "2.4G + 5G");
+        pw.println("        - Use 'bridged26' to indicate bridged AP which enables APs on both "
+                + "2.4G + 6G");
+        pw.println("        - Use 'bridged56' to indicate bridged AP which enables APs on both "
+                + "5G + 6G");
         pw.println("    Note: If the band option is not provided, 2.4GHz is the preferred band.");
         pw.println("          The exact channel is auto-selected by FW unless overridden by "
                 + "force-softap-channel command");
+        pw.println("    -p 0|1|2 - select the mac randomization configuration.");
+        pw.println("    -v set testing vendor elements.");
         pw.println("    -x - Specifies the SSID as hex digits instead of plain text (T and above)");
         pw.println("  stop-softap");
         pw.println("    Stop softap (hotspot)");

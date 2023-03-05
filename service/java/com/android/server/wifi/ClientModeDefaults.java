@@ -155,6 +155,10 @@ public interface ClientModeDefaults extends ClientMode {
         return false;
     }
 
+    default boolean is5GHzBand() {
+        return false;
+    }
+
     default int getFrequency() {
         return -1;
     }

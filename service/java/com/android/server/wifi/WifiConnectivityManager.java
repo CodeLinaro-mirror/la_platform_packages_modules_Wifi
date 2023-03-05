@@ -349,11 +349,12 @@ public class WifiConnectivityManager {
             return secondaryCmmCandidates;
         }
         boolean isPrimary2G = getPrimaryClientModeManager().is2GHzBand();
+        boolean isPrimary5G = getPrimaryClientModeManager().is5GHzBand();
         List<WifiCandidates.Candidate> filtered = new ArrayList<WifiCandidates.Candidate>();
         Log.d(TAG, "isPrimary2G = " + isPrimary2G);
         for (WifiCandidates.Candidate entry : secondaryCmmCandidates) {
             Log.d(TAG, "Candidate freq is " + entry.getFrequency());
-            if ((isPrimary2G && ScanResult.is5GHz(entry.getFrequency()))
+            if ((!isPrimary5G && ScanResult.is5GHz(entry.getFrequency()))
                     || (!isPrimary2G && ScanResult.is24GHz(entry.getFrequency()))) {
                 filtered.add(entry);
             }
@@ -1918,22 +1919,27 @@ public class WifiConnectivityManager {
             Log.d(TAG, "2nd STA working frequency: " + secondaryCmm.getFrequency());
             if (targetNetwork != null) {
                 // Primary STA is going to connect with targetNetwork.
+                // need to get the latest WifiConfiguration from networkId
+                // since it has updated in function selectCandidateBeforePrepareToConnect()
+                int netId = targetNetwork.networkId;
                 ScanResult scanResult =
-                        targetNetwork.getNetworkSelectionStatus().getCandidate();
+                        mConfigManager.getConfiguredNetwork(netId).getNetworkSelectionStatus().getCandidate();
                 if (scanResult == null) {
                     needDisconnect = true;
                     Log.d(TAG, "not found candidate that match with targetNetwork: " + targetNetwork +
                           " force disconnect 2nd STA no matter its working band");
                 } else {
-                    if (scanResult.is24GHz() == secondaryCmm.is2GHzBand()) {
+                    if ((scanResult.is24GHz() && secondaryCmm.is2GHzBand())
+                           || (scanResult.is5GHz() && secondaryCmm.is5GHzBand())) {
                         needDisconnect = true;
                         Log.d(TAG, "primary STA work on same band with 2nd STA at frequency: "
-                              + primaryCmm.getFrequency());
+                              + scanResult.frequency);
                     }
                 }
             } else if (primaryCmm.isConnected()) {
                 // Primary STA has just established a new network.
-                if (primaryCmm.is2GHzBand() == secondaryCmm.is2GHzBand()) {
+                if ((primaryCmm.is2GHzBand() && secondaryCmm.is2GHzBand())
+                       || (primaryCmm.is5GHzBand() && secondaryCmm.is5GHzBand())) {
                     needDisconnect = true;
                     Log.d(TAG, "primary STA work on same band with 2nd STA at frequency: "
                           + primaryCmm.getFrequency());

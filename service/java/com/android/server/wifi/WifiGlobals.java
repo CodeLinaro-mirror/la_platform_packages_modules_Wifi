@@ -71,6 +71,7 @@ public class WifiGlobals {
     // This is read from the overlay, cache it after boot up.
     private final boolean mWifiAllowInsecureEnterpriseConfiguration;
     private final boolean mIsWepDeprecated;
+    private final boolean mIsWpaPersonalDeprecated;
 
     // This is set by WifiManager#setVerboseLoggingEnabled(int).
     private boolean mIsShowKeyVerboseLoggingModeEnabled = false;
@@ -105,6 +106,8 @@ public class WifiGlobals {
                 R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW);
         mIsWepDeprecated = mContext.getResources()
                 .getBoolean(R.bool.config_wifiWepDeprecated);
+        mIsWpaPersonalDeprecated = mContext.getResources()
+                .getBoolean(R.bool.config_wifiWpaPersonalDeprecated);
     }
 
     /** Get the interval between RSSI polls, in milliseconds. */
@@ -176,6 +179,15 @@ public class WifiGlobals {
     }
 
     /**
+     * Helper method to check if WPA-Personal networks are deprecated.
+     *
+     * @return boolean true if WPA-Personal networks are deprecated, false otherwise.
+     */
+    public boolean isWpaPersonalDeprecated() {
+        return mIsWpaPersonalDeprecated;
+    }
+
+    /**
      * Helper method to check if the device may not connect to the configuration
      * due to deprecated security type
      */
@@ -184,6 +196,9 @@ public class WifiGlobals {
             return false;
         }
         if (isWepDeprecated() && config.isSecurityType(WifiConfiguration.SECURITY_TYPE_WEP)) {
+            return true;
+        }
+        if (isWpaPersonalDeprecated() && config.isWpaPersonalOnlyConfiguration()) {
             return true;
         }
         return false;
@@ -314,5 +329,6 @@ public class WifiGlobals {
         pw.println("mWifiAllowInsecureEnterpriseConfiguratio"
                 + mWifiAllowInsecureEnterpriseConfiguration);
         pw.println("mIsWepDeprecated=" + mIsWepDeprecated);
+        pw.println("mIsWpaPersonalDeprecated=" + mIsWpaPersonalDeprecated);
     }
 }

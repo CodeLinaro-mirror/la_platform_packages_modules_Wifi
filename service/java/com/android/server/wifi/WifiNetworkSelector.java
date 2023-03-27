@@ -542,11 +542,16 @@ public class WifiNetworkSelector {
             }
 
             // Skip network that has deprecated security type
-            if (mWifiGlobals.isWepDeprecated()) {
+            if (mWifiGlobals.isWpaPersonalDeprecated() || mWifiGlobals.isWepDeprecated()) {
                 boolean securityTypeDeprecated = false;
                 @WifiInfo.SecurityType int[] securityTypes = scanResult.getSecurityTypes();
                 for (int type : securityTypes) {
-                    if (type == WifiInfo.SECURITY_TYPE_WEP) {
+                    if (mWifiGlobals.isWepDeprecated() && type == WifiInfo.SECURITY_TYPE_WEP) {
+                        securityTypeDeprecated = true;
+                        break;
+                    }
+                    if (mWifiGlobals.isWpaPersonalDeprecated() && type == WifiInfo.SECURITY_TYPE_PSK
+                            && ScanResultUtil.isScanResultForWpaPersonalOnlyNetwork(scanResult)) {
                         securityTypeDeprecated = true;
                         break;
                     }

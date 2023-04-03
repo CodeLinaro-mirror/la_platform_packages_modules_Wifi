@@ -139,6 +139,7 @@ import com.android.server.wifi.hotspot2.PasspointProvider;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.UserActionEvent;
 import com.android.server.wifi.util.ActionListenerWrapper;
 import com.android.server.wifi.util.ApConfigUtil;
+import com.android.server.wifi.util.ArrayUtils;
 import com.android.server.wifi.util.GeneralUtil.Mutable;
 import com.android.server.wifi.util.LastCallerInfoManager;
 import com.android.server.wifi.util.RssiUtil;
@@ -1756,15 +1757,19 @@ public class WifiServiceImpl extends BaseWifiService {
         @GuardedBy("mLocalOnlyHotspotRequests")
         private void startForFirstRequestLocked(LocalOnlyHotspotRequestInfo request) {
             int band = WifiApConfigStore.generateDefaultBand(mContext);
-
+            SoftApCapability capability = mTetheredSoftApTracker.getSoftApCapability();
             // For auto only
             if (hasAutomotiveFeature(mContext)) {
                 if (mContext.getResources().getBoolean(R.bool.config_wifiLocalOnlyHotspot6ghz)
-                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_6GHZ, mContext)) {
+                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_6GHZ, mContext)
+                        && !ArrayUtils.isEmpty(capability
+                           .getSupportedChannelList(SoftApConfiguration.BAND_6GHZ))) {
                     band = SoftApConfiguration.BAND_6GHZ;
                 } else if (mContext.getResources().getBoolean(
                         R.bool.config_wifi_local_only_hotspot_5ghz)
-                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_5GHZ, mContext)) {
+                        && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_5GHZ, mContext)
+                        && !ArrayUtils.isEmpty(capability
+                           .getSupportedChannelList(SoftApConfiguration.BAND_5GHZ))) {
                     band = SoftApConfiguration.BAND_5GHZ;
                 }
             }

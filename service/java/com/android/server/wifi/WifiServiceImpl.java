@@ -145,12 +145,14 @@ import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.WorkSource;
 import android.os.connectivity.WifiActivityEnergyInfo;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.telephony.CarrierConfigManager;
 import android.telephony.PhoneStateListener;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.util.EventLog;
 import android.util.Log;
 import android.util.Pair;
 import android.util.SparseArray;
@@ -4405,7 +4407,8 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     private boolean is6GhzBandSupportedInternal() {
-        if (mContext.getResources().getBoolean(R.bool.config_wifi6ghzSupport)) {
+        if (mContext.getResources().getBoolean(R.bool.config_wifi6ghzSupport)
+            && SystemProperties.getBoolean("ro.vendor.wlan.6ghz", false)) {
             return true;
         }
         return mWifiThreadRunner.call(
@@ -5003,12 +5006,18 @@ public class WifiServiceImpl extends BaseWifiService {
             return;
         }
         // Delete all Wifi SSIDs
-        List<WifiConfiguration> networks = mWifiThreadRunner.call(
-                () -> mWifiConfigManager.getSavedNetworks(Process.WIFI_UID),
-                Collections.emptyList());
-        for (WifiConfiguration network : networks) {
-            removeNetwork(network.networkId, packageName);
-        }
+        mWifiThreadRunner.run(() -> {
+            List<WifiConfiguration> networks = mWifiConfigManager
+                    .getSavedNetworks(Process.WIFI_UID);
+            EventLog.writeEvent(0x534e4554, "231985227", -1,
+                    "Remove certs for factory reset");
+            for (WifiConfiguration network : networks) {
+                if (network.isEnterprise()) {
+                    mWifiInjector.getWifiKeyStore().removeKeys(network.enterpriseConfig, true);
+                }
+                removeNetwork(network.networkId, packageName);
+            }
+        });
         // Delete all Passpoint configurations
         List<PasspointConfiguration> configs = mWifiThreadRunner.call(
                 () -> mPasspointManager.getProviderConfigs(Process.WIFI_UID /* ignored */, true),
@@ -5017,6 +5026,9 @@ public class WifiServiceImpl extends BaseWifiService {
             removePasspointConfigurationInternal(null, config.getUniqueId());
         }
         mWifiThreadRunner.post(() -> {
+            EventLog.writeEvent(0x534e4554, "241927115", -1,
+                    "Reset SoftApConfiguration to default configuration");
+            mWifiApConfigStore.setApConfiguration(null);
             mPasspointManager.clearAnqpRequestsAndFlushCache();
             mWifiConfigManager.clearUserTemporarilyDisabledList();
             mWifiConfigManager.removeAllEphemeralOrPasspointConfiguredNetworks();

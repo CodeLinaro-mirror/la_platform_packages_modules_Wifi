@@ -76,7 +76,7 @@ public class HalDeviceManager {
     // Number of attempts a start() is re-tried. A value of 0 means no retries after a single
     // attempt.
     @VisibleForTesting
-    public static final int START_HAL_RETRY_TIMES = 3;
+    public static final int START_HAL_RETRY_TIMES = 20;
 
     private final Clock mClock;
     private final WifiInjector mWifiInjector;
@@ -1425,7 +1425,7 @@ public class HalDeviceManager {
                                          + triedCount + " times");
                             }
                             return true;
-                        } else if (status.code == WifiStatusCode.ERROR_NOT_AVAILABLE) {
+                        } else if (status.code == WifiStatusCode.ERROR_NOT_AVAILABLE || status.code == WifiStatusCode.ERROR_UNKNOWN) {
                             // Should retry. Hal might still be stopping.
                             Log.e(TAG, "Cannot start IWifi: " + statusString(status)
                                     + ", Retrying...");

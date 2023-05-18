@@ -3668,6 +3668,11 @@ public class WifiServiceImpl extends BaseWifiService {
                     .c(netId).flush();
             return false;
         }
+        if (mWifiGlobals.isDeprecatedSecurityTypeNetwork(configuration)) {
+            mLog.info("enableNetwork not allowed for deprecated security type network Id=%")
+                    .c(netId).flush();
+            return false;
+        }
 
         // TODO b/33807876 Log netId
         mLog.info("enableNetwork uid=% disableOthers=%")
@@ -5920,6 +5925,11 @@ public class WifiServiceImpl extends BaseWifiService {
             }
             if (mWifiPermissionsUtil.isAdminRestrictedNetwork(configuration)) {
                 Log.e(TAG, "connect to network Id=" + netId + "restricted by admin");
+                wrapper.sendFailure(WifiManager.ActionListener.FAILURE_INTERNAL_ERROR);
+                return;
+            }
+            if (mWifiGlobals.isDeprecatedSecurityTypeNetwork(configuration)) {
+                Log.e(TAG, "connect to network Id=" + netId + " security type deprecated.");
                 wrapper.sendFailure(WifiManager.ActionListener.FAILURE_INTERNAL_ERROR);
                 return;
             }

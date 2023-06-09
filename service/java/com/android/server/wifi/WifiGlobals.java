@@ -16,7 +16,9 @@
 
 package com.android.server.wifi;
 
+import android.annotation.Nullable;
 import android.content.Context;
+import android.net.wifi.WifiConfiguration;
 
 import com.android.modules.utils.build.SdkLevel;
 import com.android.wifi.resources.R;
@@ -68,6 +70,8 @@ public class WifiGlobals {
     private final int mWifiLowConnectedScoreScanPeriodSeconds;
     // This is read from the overlay, cache it after boot up.
     private final boolean mWifiAllowInsecureEnterpriseConfiguration;
+    private final boolean mIsWepDeprecated;
+    private final boolean mIsWpaPersonalDeprecated;
 
     // This is set by WifiManager#setVerboseLoggingEnabled(int).
     private boolean mIsShowKeyVerboseLoggingModeEnabled = false;
@@ -100,6 +104,10 @@ public class WifiGlobals {
                 R.integer.config_wifiLowConnectedScoreScanPeriodSeconds);
         mWifiAllowInsecureEnterpriseConfiguration = mContext.getResources().getBoolean(
                 R.bool.config_wifiAllowInsecureEnterpriseConfigurationsForSettingsAndSUW);
+        mIsWepDeprecated = mContext.getResources()
+                .getBoolean(R.bool.config_wifiWepDeprecated);
+        mIsWpaPersonalDeprecated = mContext.getResources()
+                .getBoolean(R.bool.config_wifiWpaPersonalDeprecated);
     }
 
     /** Get the interval between RSSI polls, in milliseconds. */
@@ -159,6 +167,41 @@ public class WifiGlobals {
     public boolean isConnectedMacRandomizationEnabled() {
         return mContext.getResources().getBoolean(
                 R.bool.config_wifi_connected_mac_randomization_supported);
+    }
+
+    /**
+     * Helper method to check if WEP networks are deprecated.
+     *
+     * @return boolean true if WEP networks are deprecated, false otherwise.
+     */
+    public boolean isWepDeprecated() {
+        return mIsWepDeprecated;
+    }
+
+    /**
+     * Helper method to check if WPA-Personal networks are deprecated.
+     *
+     * @return boolean true if WPA-Personal networks are deprecated, false otherwise.
+     */
+    public boolean isWpaPersonalDeprecated() {
+        return mIsWpaPersonalDeprecated;
+    }
+
+    /**
+     * Helper method to check if the device may not connect to the configuration
+     * due to deprecated security type
+     */
+    public boolean isDeprecatedSecurityTypeNetwork(@Nullable WifiConfiguration config) {
+        if (config == null) {
+            return false;
+        }
+        if (isWepDeprecated() && config.isSecurityType(WifiConfiguration.SECURITY_TYPE_WEP)) {
+            return true;
+        }
+        if (isWpaPersonalDeprecated() && config.isWpaPersonalOnlyConfiguration()) {
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -285,5 +328,7 @@ public class WifiGlobals {
                 + mIsUsingExternalScorer);
         pw.println("mWifiAllowInsecureEnterpriseConfiguratio"
                 + mWifiAllowInsecureEnterpriseConfiguration);
+        pw.println("mIsWepDeprecated=" + mIsWepDeprecated);
+        pw.println("mIsWpaPersonalDeprecated=" + mIsWpaPersonalDeprecated);
     }
 }

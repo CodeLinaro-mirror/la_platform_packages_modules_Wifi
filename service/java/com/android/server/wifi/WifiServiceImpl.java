@@ -130,6 +130,7 @@ import android.telephony.PhoneStateListener;
 import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
+import android.util.EventLog;
 import android.util.Log;
 
 import androidx.annotation.RequiresApi;
@@ -147,6 +148,7 @@ import com.android.server.wifi.hotspot2.PasspointProvider;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.UserActionEvent;
 import com.android.server.wifi.util.ActionListenerWrapper;
 import com.android.server.wifi.util.ApConfigUtil;
+import com.android.server.wifi.util.ArrayUtils;
 import com.android.server.wifi.util.GeneralUtil.Mutable;
 import com.android.server.wifi.util.LastCallerInfoManager;
 import com.android.server.wifi.util.RssiUtil;
@@ -1892,18 +1894,19 @@ public class WifiServiceImpl extends BaseWifiService {
         private void startForFirstRequestLocked(LocalOnlyHotspotRequestInfo request) {
             int band = WifiApConfigStore.generateDefaultBand(mContext);
             int lohsType = findLohsTypeByCustomConfig(request.getCustomConfig());
+            SoftApCapability capability = mTetheredSoftApTracker.getSoftApCapability();
             // For auto only
             if (hasAutomotiveFeature(mContext)) {
                 if (mContext.getResources().getBoolean(R.bool.config_wifiLocalOnlyHotspot6ghz)
                         && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_6GHZ, mContext)
-                        && mTetheredSoftApTracker.getSoftApCapability()
-                           .getSupportedChannelList(SoftApConfiguration.BAND_6GHZ).length > 1) {
+                        && !ArrayUtils.isEmpty(capability
+                           .getSupportedChannelList(SoftApConfiguration.BAND_6GHZ))) {
                     band = SoftApConfiguration.BAND_6GHZ;
                 } else if (mContext.getResources().getBoolean(
                         R.bool.config_wifi_local_only_hotspot_5ghz)
                         && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_5GHZ, mContext)
-                        && mTetheredSoftApTracker.getSoftApCapability()
-                           .getSupportedChannelList(SoftApConfiguration.BAND_5GHZ).length > 1) {
+                        && !ArrayUtils.isEmpty(capability
+                           .getSupportedChannelList(SoftApConfiguration.BAND_5GHZ))) {
                     band = SoftApConfiguration.BAND_5GHZ;
                 }
             }
@@ -4316,12 +4319,18 @@ public class WifiServiceImpl extends BaseWifiService {
             return;
         }
         // Delete all Wifi SSIDs
-        List<WifiConfiguration> networks = mWifiThreadRunner.call(
-                () -> mWifiConfigManager.getSavedNetworks(Process.WIFI_UID),
-                Collections.emptyList());
-        for (WifiConfiguration network : networks) {
-            removeNetwork(network.networkId, packageName);
-        }
+        mWifiThreadRunner.run(() -> {
+            List<WifiConfiguration> networks = mWifiConfigManager
+                    .getSavedNetworks(Process.WIFI_UID);
+            EventLog.writeEvent(0x534e4554, "231985227", -1,
+                    "Remove certs for factory reset");
+            for (WifiConfiguration network : networks) {
+                if (network.isEnterprise()) {
+                    mWifiInjector.getWifiKeyStore().removeKeys(network.enterpriseConfig, true);
+                }
+                mWifiConfigManager.removeNetwork(network.networkId, Binder.getCallingUid(), packageName);
+            }
+        });
         // Delete all Passpoint configurations
         List<PasspointConfiguration> configs = mWifiThreadRunner.call(
                 () -> mPasspointManager.getProviderConfigs(Process.WIFI_UID /* ignored */, true),
@@ -4330,6 +4339,9 @@ public class WifiServiceImpl extends BaseWifiService {
             removePasspointConfigurationInternal(null, config.getUniqueId());
         }
         mWifiThreadRunner.post(() -> {
+            EventLog.writeEvent(0x534e4554, "241927115", -1,
+                    "Reset SoftApConfiguration to default configuration");
+            mWifiApConfigStore.setApConfiguration(null);
             mPasspointManager.clearAnqpRequestsAndFlushCache();
             mWifiConfigManager.clearUserTemporarilyDisabledList();
             mWifiConfigManager.removeAllEphemeralOrPasspointConfiguredNetworks();

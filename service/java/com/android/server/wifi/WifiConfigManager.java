@@ -971,13 +971,26 @@ public class WifiConfigManager {
      *
      * @param reason  The reason for the change, should be one of WifiManager.CHANGE_REASON_ADDED,
      *                WifiManager.CHANGE_REASON_REMOVED, or WifiManager.CHANGE_REASON_CHANGE.
+     * @param config The related to the change. This is only sent out for system users, and could
+     *               be null if multiple WifiConfigurations are affected by the change.
      */
-    private void sendConfiguredNetworkChangedBroadcast(int reason) {
+    private void sendConfiguredNetworkChangedBroadcast(int reason,
+            @Nullable WifiConfiguration config) {
         Intent intent = new Intent(WifiManager.CONFIGURED_NETWORKS_CHANGED_ACTION);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
         intent.putExtra(WifiManager.EXTRA_MULTIPLE_NETWORKS_CHANGED, true);
         intent.putExtra(WifiManager.EXTRA_CHANGE_REASON, reason);
         mContext.sendBroadcastAsUser(intent, UserHandle.ALL, Manifest.permission.ACCESS_WIFI_STATE);
+
+        // Send another broadcast including the WifiConfiguration to System only
+        Intent intentForSystem = new Intent(WifiManager.CONFIGURED_NETWORKS_CHANGED_ACTION);
+        intentForSystem.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
+        intentForSystem.putExtra(WifiManager.EXTRA_MULTIPLE_NETWORKS_CHANGED, config == null);
+        intentForSystem.putExtra(WifiManager.EXTRA_CHANGE_REASON, reason);
+        intentForSystem.putExtra(WifiManager.EXTRA_WIFI_CONFIGURATION,
+                config == null ? null : createExternalWifiConfiguration(config, true, -1));
+        mContext.sendBroadcastAsUser(intentForSystem, UserHandle.SYSTEM,
+                Manifest.permission.NETWORK_STACK);
     }
 
     /**
@@ -1069,7 +1082,8 @@ public class WifiConfigManager {
         int newType = externalConfig.getDefaultSecurityParams().getSecurityType();
         if (oldType != newType) {
             if (internalConfig.isSecurityType(newType)) {
-                internalConfig.setSecurityParamsIsAddedByAutoUpgrade(newType, false);
+                internalConfig.setSecurityParamsIsAddedByAutoUpgrade(newType,
+                        externalConfig.getDefaultSecurityParams().isAddedByAutoUpgrade());
             } else if (externalConfig.isSecurityType(oldType)) {
                 internalConfig.setSecurityParams(newType);
                 internalConfig.addSecurityParams(oldType);
@@ -1529,6 +1543,7 @@ public class WifiConfigManager {
         if (hasCredentialChanged) {
             newInternalConfig.getNetworkSelectionStatus().setHasEverConnected(false);
             newInternalConfig.setHasPreSharedKeyChanged(true);
+            Log.i(TAG, "Credential changed for netId=" + newInternalConfig.networkId);
         }
 
         // Add it to our internal map. This will replace any existing network configuration for
@@ -1630,7 +1645,7 @@ public class WifiConfigManager {
         sendConfiguredNetworkChangedBroadcast(
                 result.isNewNetwork()
                         ? WifiManager.CHANGE_REASON_ADDED
-                        : WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+                        : WifiManager.CHANGE_REASON_CONFIG_CHANGE, newConfig);
         // Unless the added network is ephemeral or Passpoint, persist the network update/addition.
         if (!config.ephemeral && !config.isPasspoint()) {
             saveToStore(true);
@@ -1689,7 +1704,8 @@ public class WifiConfigManager {
     private boolean isDeviceOwnerProfileOwnerOrSystem(int uid, String packageName) {
         return mWifiPermissionsUtil.isDeviceOwner(uid, packageName)
                 || mWifiPermissionsUtil.isProfileOwner(uid, packageName)
-                || mWifiPermissionsUtil.isSystem(packageName, uid);
+                || mWifiPermissionsUtil.isSystem(packageName, uid)
+                || mWifiPermissionsUtil.isSignedWithPlatformKey(uid);
     }
 
     /**
@@ -1849,7 +1865,7 @@ public class WifiConfigManager {
         if (!config.ephemeral && !config.isPasspoint()) {
             mLruConnectionTracker.removeNetwork(config);
         }
-        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_REMOVED);
+        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_REMOVED, config);
         // Unless the removed network is ephemeral or Passpoint, persist the network removal.
         if (!config.ephemeral && !config.isPasspoint()) {
             saveToStore(true);
@@ -2025,7 +2041,7 @@ public class WifiConfigManager {
      */
     private void setNetworkStatus(WifiConfiguration config, int status) {
         config.status = status;
-        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
     }
 
     /**
@@ -2061,7 +2077,7 @@ public class WifiConfigManager {
                 .getNetworkSelectionStatus();
         if (prevNetworkSelectionStatus != newNetworkSelectionStatus) {
             sendNetworkSelectionStatusChangedUpdate(config, newNetworkSelectionStatus, reason);
-            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
         }
         saveToStore(false);
         return true;
@@ -2169,6 +2185,7 @@ public class WifiConfigManager {
                 networkId, WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE)) {
             return false;
         }
+        mWifiBlocklistMonitor.clearBssidBlocklistForSsid(config.SSID);
         saveToStore(true);
         return true;
     }
@@ -2236,7 +2253,7 @@ public class WifiConfigManager {
             removeConnectChoiceFromAllNetworks(config.getProfileKey());
             clearConnectChoiceInternal(config);
         }
-        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
         if (!config.ephemeral) {
             saveToStore(true);
         }
@@ -2276,14 +2293,16 @@ public class WifiConfigManager {
      * 4. Set the hasEverConnected| flag in the associated |NetworkSelectionStatus|.
      * 5. Set the status of network to |CURRENT|.
      * 6. Set the |isCurrentlyConnected| flag to true.
+     * 7. Set the |isUserSelected| flag.
      *
      * @param networkId network ID corresponding to the network.
+     * @param isUserSelected network is user selected.
      * @param shouldSetUserConnectChoice setup user connect choice on this network.
      * @param rssi signal strength of the connected network.
      * @return true if the network was found, false otherwise.
      */
-    public boolean updateNetworkAfterConnect(int networkId, boolean shouldSetUserConnectChoice,
-            int rssi) {
+    public boolean updateNetworkAfterConnect(int networkId, boolean isUserSelected,
+            boolean shouldSetUserConnectChoice, int rssi) {
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "Update network after connect for " + networkId);
         }
@@ -2306,6 +2325,7 @@ public class WifiConfigManager {
         config.getNetworkSelectionStatus().setHasEverConnected(true);
         setNetworkStatus(config, WifiConfiguration.Status.CURRENT);
         config.isCurrentlyConnected = true;
+        config.setIsUserSelected(isUserSelected);
         saveToStore(false);
         return true;
     }
@@ -2349,6 +2369,7 @@ public class WifiConfigManager {
             setNetworkStatus(config, WifiConfiguration.Status.ENABLED);
         }
         config.isCurrentlyConnected = false;
+        config.setIsUserSelected(false);
         saveToStore(false);
         return true;
     }
@@ -3366,7 +3387,7 @@ public class WifiConfigManager {
             }
         }
         if (!removedNetworkIds.isEmpty()) {
-            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_REMOVED);
+            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_REMOVED, null);
         }
         mUserTemporarilyDisabledList.clear();
         mNonCarrierMergedNetworksStatusTracker.clear();
@@ -3519,7 +3540,7 @@ public class WifiConfigManager {
         // on load (i.e. boot) so that if the user changed SIMs while the device was powered off,
         // we do not reuse stale credentials that would lead to authentication failure.
         resetSimNetworks();
-        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_ADDED);
+        sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_ADDED, null);
         mPendingStoreRead = false;
     }
 
@@ -3800,7 +3821,7 @@ public class WifiConfigManager {
         int previousReason = config.recentFailure.getAssociationStatus();
         config.recentFailure.setAssociationStatus(reason, mClock.getElapsedSinceBootMillis());
         if (previousReason != reason) {
-            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+            sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE, config);
         }
     }
 
@@ -3827,7 +3848,8 @@ public class WifiConfigManager {
                     && mClock.getElapsedSinceBootMillis()
                     >= config.recentFailure.getLastUpdateTimeSinceBootMillis() + timeoutDuration) {
                 config.recentFailure.clear();
-                sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE);
+                sendConfiguredNetworkChangedBroadcast(WifiManager.CHANGE_REASON_CONFIG_CHANGE,
+                        config);
             }
         }
     }
@@ -4180,16 +4202,21 @@ public class WifiConfigManager {
     }
 
     /**
-     * This method updates the Root CA certifiate and the domain name of the
+     * This method updates the Root CA certificate and the domain name of the
      * server in the internal network.
      *
      * @param networkId networkId corresponding to the network to be updated.
      * @param caCert Root CA certificate to be updated.
      * @param serverCert Server certificate to be updated.
+     * @param certHash Server certificate hash (for TOFU case with no Root CA). Replaces the use of
+     *                 a Root CA certificate for authentication.
+     * @param useSystemTrustStore Indicate if to use the system trust store for authentication. If
+     *                            this flag is set, then any Root CA or certificate hash specified
+     *                            is not used.
      * @return true if updating Root CA certificate successfully; otherwise, false.
      */
     public boolean updateCaCertificate(int networkId, @NonNull X509Certificate caCert,
-            @NonNull X509Certificate serverCert) {
+            @NonNull X509Certificate serverCert, String certHash, boolean useSystemTrustStore) {
         WifiConfiguration internalConfig = getInternalConfiguredNetwork(networkId);
         if (internalConfig == null) {
             Log.e(TAG, "No network for network ID " + networkId);
@@ -4212,7 +4239,7 @@ public class WifiConfigManager {
             return false;
         }
         CertificateSubjectInfo serverCertInfo = CertificateSubjectInfo.parse(
-                serverCert.getSubjectDN().getName());
+                serverCert.getSubjectX500Principal().getName());
         if (null == serverCertInfo) {
             Log.e(TAG, "Invalid Server CA cert subject");
             return false;
@@ -4221,11 +4248,18 @@ public class WifiConfigManager {
         WifiConfiguration newConfig = new WifiConfiguration(internalConfig);
         try {
             if (newConfig.enterpriseConfig.isTrustOnFirstUseEnabled()) {
-                newConfig.enterpriseConfig.setCaCertificateForTrustOnFirstUse(caCert);
-                // setCaCertificate will mark that this CA certificate should be removed on
-                // removing this configuration.
+                if (useSystemTrustStore) {
+                    newConfig.enterpriseConfig
+                            .setCaPath(WifiConfigurationUtil.getSystemTrustStorePath());
+                } else if (TextUtils.isEmpty(certHash)) {
+                    newConfig.enterpriseConfig.setCaCertificateForTrustOnFirstUse(caCert);
+                } else {
+                    newConfig.enterpriseConfig.setServerCertificateHash(certHash);
+                }
                 newConfig.enterpriseConfig.enableTrustOnFirstUse(false);
             } else {
+                // setCaCertificate will mark that this CA certificate should be removed on
+                // removing this configuration.
                 newConfig.enterpriseConfig.setCaCertificate(caCert);
             }
         } catch (IllegalArgumentException ex) {
@@ -4247,7 +4281,7 @@ public class WifiConfigManager {
             newConfig.enterpriseConfig.setDomainSuffixMatch(serverCertInfo.commonName);
         }
         newConfig.enterpriseConfig.setUserApproveNoCaCert(false);
-        // Trigger an update to install CA certifiate and the corresponding configuration.
+        // Trigger an update to install CA certificate and the corresponding configuration.
         NetworkUpdateResult result = addOrUpdateNetwork(newConfig, internalConfig.creatorUid);
         if (!result.isSuccess()) {
             Log.e(TAG, "Failed to install CA cert for network " + internalConfig.SSID);

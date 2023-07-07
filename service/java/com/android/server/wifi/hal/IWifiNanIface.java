@@ -269,16 +269,17 @@ public interface IWifiNanIface {
 
     /**
      * Initiate a bootstrapping request for this publish/subscribe session
+     *
      * @param transactionId Transaction ID for the transaction - used in the
-     *            async callback to match with the original request.
-     * @param peerId ID of the peer. Obtained through previous communication (a
-     *            match indication).
-     * @param peer The MAC address of the peer to create a connection with.
-     * @param method the proposed bootstrapping method
+     *                      async callback to match with the original request.
+     * @param peerId        ID of the peer. Obtained through previous communication (a
+     *                      match indication).
+     * @param peer          The MAC address of the peer to create a connection with.
+     * @param method        the proposed bootstrapping method
      * @return True if the request send succeed.
      */
     boolean initiateNanBootstrappingRequest(short transactionId, int peerId, MacAddress peer,
-            int method);
+            int method, byte[] cookie);
 
     /**
      * Respond to a bootstrapping request
@@ -292,7 +293,11 @@ public interface IWifiNanIface {
             boolean accept);
 
     /**
-     * Suspend the specified Aware session.
+     * Suspend the specified Aware session. During the suspend state, the Wi-Fi Aware device
+     * must not transmit or receive frames for this Wi-Fi Aware discovery session including any
+     * active NDPs. If all discovery sessions are suspended then the Wi-Fi Aware device must not
+     * transmit or receive any Wi-Fi Aware frames.
+     *
      * @param transactionId Transaction ID for the transaction - used in the
      *            async callback to match with the original request.
      * @param pubSubId ID of the existing publish/subscribe session.
@@ -301,7 +306,12 @@ public interface IWifiNanIface {
     boolean suspend(short transactionId, byte pubSubId);
 
     /**
-     * Resume the specified (suspended) Aware session.
+     * Resume the specified (suspended) Aware session. Resume cancels an ongoing suspend for this
+     * Wi-Fi Aware discovery session and automatically resumes the session and any associated
+     * NDPs to the state before they were suspended. The Wi-Fi Aware resume operation should be
+     * faster than recreating the corresponding discovery session and NDPs with the same benefit of
+     * power.
+     *
      * @param transactionId Transaction ID for the transaction - used in the
      *            async callback to match with the original request.
      * @param pubSubId ID of the existing publish/subscribe session.

@@ -26,6 +26,7 @@ import static com.android.server.wifi.WifiSettingsConfigStore.WIFI_NATIVE_SUPPOR
 import android.annotation.IntDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.SuppressLint;
 import android.hardware.wifi.WifiStatusCode;
 import android.net.MacAddress;
 import android.net.TrafficStats;
@@ -196,6 +197,7 @@ public class WifiNative {
         }
     }
 
+    @SuppressLint("NewApi")
     private static class CountryCodeChangeListenerInternal implements
             WifiNl80211Manager.CountryCodeChangedListener {
         private WifiCountryCode.ChangeListener mListener;
@@ -1074,11 +1076,13 @@ public class WifiNative {
      * For devices which do not the support the HAL, this will bypass HalDeviceManager &
      * teardown any existing iface.
      */
-    private String createStaIface(@NonNull Iface iface, @NonNull WorkSource requestorWs) {
+    private String createStaIface(@NonNull Iface iface, @NonNull WorkSource requestorWs,
+            @NonNull ConcreteClientModeManager concreteClientModeManager) {
         synchronized (mLock) {
             if (mWifiVendorHal.isVendorHalSupported()) {
                 return mWifiVendorHal.createStaIface(
-                        new InterfaceDestoyedListenerInternal(iface.id), requestorWs);
+                        new InterfaceDestoyedListenerInternal(iface.id), requestorWs,
+                        concreteClientModeManager);
             } else {
                 Log.i(TAG, "Vendor Hal not supported, ignoring createStaIface.");
                 return handleIfaceCreationWhenVendorHalNotSupported(iface);
@@ -1299,10 +1303,12 @@ public class WifiNative {
      *
      * @param interfaceCallback Associated callback for notifying status changes for the iface.
      * @param requestorWs Requestor worksource.
+     * @param concreteClientModeManager ConcreteClientModeManager requesting the interface.
      * @return Returns the name of the allocated interface, will be null on failure.
      */
     public String setupInterfaceForClientInScanMode(
-            @NonNull InterfaceCallback interfaceCallback, @NonNull WorkSource requestorWs) {
+            @NonNull InterfaceCallback interfaceCallback, @NonNull WorkSource requestorWs,
+            @NonNull ConcreteClientModeManager concreteClientModeManager) {
         synchronized (mLock) {
             if (!startHal()) {
                 Log.e(TAG, "Failed to start Hal");
@@ -1315,7 +1321,7 @@ public class WifiNative {
                 return null;
             }
             iface.externalListener = interfaceCallback;
-            iface.name = createStaIface(iface, requestorWs);
+            iface.name = createStaIface(iface, requestorWs, concreteClientModeManager);
             if (TextUtils.isEmpty(iface.name)) {
                 Log.e(TAG, "Failed to create iface in vendor HAL");
                 mIfaceMgr.removeIface(iface.id);
@@ -1347,7 +1353,6 @@ public class WifiNative {
             iface.featureSet = getSupportedFeatureSetInternal(iface.name);
             updateSupportedBandForStaInternal(iface);
 
-            //TODO(b/269664218): we will enable it during startHal()
             mWifiVendorHal.enableStaChannelForPeerNetwork(mContext.getResources().getBoolean(
                             R.bool.config_wifiEnableStaIndoorChannelForPeerNetwork),
                     mContext.getResources().getBoolean(
@@ -5124,10 +5129,13 @@ public class WifiNative {
     }
 
     /**
-     * Set DTIM multiplier used when the system is in the suspended mode.
+     * Set maximum acceptable DTIM multiplier to hardware driver. Any multiplier larger than the
+     * maximum value must not be accepted, it will cause packet loss higher than what the system
+     * can accept, which will cause unexpected behavior for apps, and may interrupt the network
+     * connection.
      *
      * @param ifaceName Name of the interface.
-     * @param multiplier integer DTIM multiplier value to set.
+     * @param multiplier integer maximum DTIM multiplier value to set.
      * @return true for success
      */
     public boolean setDtimMultiplier(String ifaceName, int multiplier) {
@@ -5196,5 +5204,33 @@ public class WifiNative {
      */
     public int getMaxMloStrLinkCount(@NonNull String ifaceName) {
         return mWifiVendorHal.getMaxMloStrLinkCount(ifaceName);
+    }
+
+    /**
+     * Check the given band combination is supported simultaneously by the Wi-Fi chip.
+     *
+     * Note: This method is for checking simultaneous band operations and not for multichannel
+     * concurrent operation (MCC).
+     *
+     * @param ifaceName Name of the interface.
+     * @param bands A list of bands in the combination. See {@link WifiScanner.WifiBand}
+     * for the band enums. List of bands can be in any order.
+     * @return true if the provided band combination is supported by the chip, otherwise false.
+     */
+    public boolean isBandCombinationSupported(@NonNull String ifaceName, List<Integer> bands) {
+        return mWifiVendorHal.isBandCombinationSupported(ifaceName, bands);
+    }
+
+    /**
+     * Get the set of band combinations supported simultaneously by the Wi-Fi Chip.
+     *
+     * Note: This method returns simultaneous band operation combination and not multichannel
+     * concurrent operation (MCC) combination.
+     *
+     * @param ifaceName Name of the interface.
+     * @return An unmodifiable set of supported band combinations.
+     */
+    public Set<List<Integer>> getSupportedBandCombinations(@NonNull String ifaceName) {
+        return mWifiVendorHal.getSupportedBandCombinations(ifaceName);
     }
 }

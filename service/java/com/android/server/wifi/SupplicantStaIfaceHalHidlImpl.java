@@ -163,6 +163,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                             Log.e(TAG, "Registering ISupplicant death recipient failed.");
                             return;
                         }
+                        linkToSupplicantVendorDeath();
                         Log.i(TAG, "Completed service registration of ISupplicant.");
                     }
                 }
@@ -720,6 +721,8 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 return false;
             }
         }
+        if (!initSupplicantVendorService())
+            Log.e(TAG, "Failed to init SupplicantVendor service");
         return true;
     }
 
@@ -1063,11 +1066,12 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                     if (config.SSID != null) {
                         // No actual SSID supplied, so select from the network selection BSSID
                         // or the latest candidate BSSID.
+                        WifiSsid configSsid = WifiSsid.fromString(config.SSID);
                         WifiSsid supplicantSsid = mSsidTranslator.getOriginalSsid(config);
                         if (supplicantSsid != null) {
                             supplicantConfig.SSID = supplicantSsid.toString();
                             List<WifiSsid> allPossibleSsids = mSsidTranslator
-                                    .getAllPossibleOriginalSsids(WifiSsid.fromString(config.SSID));
+                                    .getAllPossibleOriginalSsids(configSsid);
                             WifiSsid selectedSsid = mSsidTranslator.getOriginalSsid(config);
                             allPossibleSsids.remove(selectedSsid);
                             if (!allPossibleSsids.isEmpty()) {
@@ -1079,6 +1083,9 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                             Log.d(TAG, "Selecting supplicant SSID " + supplicantSsid);
                             supplicantConfig.SSID = supplicantSsid.toString();
                         }
+                        // Set the actual translation of the original SSID in case the untranslated
+                        // SSID has an ambiguous encoding.
+                        mSsidTranslator.setTranslatedSsidForStaIface(configSsid, ifaceName);
                     }
                 }
                 Pair<SupplicantStaNetworkHalHidlImpl, WifiConfiguration> pair =
@@ -4075,7 +4082,10 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
 
     private boolean linkToSupplicantVendorDeath() {
         synchronized (mLock) {
-            if (mISupplicantVendor == null) return false;
+            if (mISupplicantVendor == null) {
+                Log.e(TAG, "ISupplicantVendor interface is null!");
+                return false;
+            }
             try {
                 if (!mISupplicantVendor.linkToDeath(mSupplicantVendorDeathRecipient, 0)) {
                     Log.wtf(TAG, "Error on linkToDeath on ISupplicantVendor");
@@ -4104,10 +4114,6 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
             }
             if (mISupplicantVendor == null) {
                 Log.e(TAG, "Got null ISupplicantVendor service. Stopping supplicantVendor HIDL startup");
-                return false;
-            }
-            // check mISupplicantVendor service and trigger death service
-            if (!linkToSupplicantVendorDeath()) {
                 return false;
             }
         }

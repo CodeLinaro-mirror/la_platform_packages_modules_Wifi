@@ -4253,6 +4253,24 @@ public class WifiManager {
         }
     }
 
+   /**
+    * Allow system applications to stop LocalOnlyHotspot in some speical cases such as suspend to disk.
+    *
+    * @hide
+    */
+    @SystemApi
+    @RequiresPermission(android.Manifest.permission.CHANGE_WIFI_STATE)
+    public boolean stopAllLocalOnlyHotspotRequests() {
+        synchronized (mLock) {
+            try {
+                mLOHSCallbackProxy = null;
+                return mService.stopAllLocalOnlyHotspotRequests(mContext.getOpPackageName());
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
     /**
      * Allow callers (Settings UI) to watch LocalOnlyHotspot state changes.  Callers will
      * receive a {@link LocalOnlyHotspotSubscription} object as a parameter of the
@@ -4338,6 +4356,38 @@ public class WifiManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public boolean isWifiApEnabled() {
         return getWifiApState() == WIFI_AP_STATE_ENABLED;
+    }
+
+    /**
+     * Gets the local-only Wi-Fi hotspot enabled state.
+     * @return One of {@link #WIFI_AP_STATE_DISABLED},
+     *         {@link #WIFI_AP_STATE_DISABLING}, {@link #WIFI_AP_STATE_ENABLED},
+     *         {@link #WIFI_AP_STATE_ENABLING}, {@link #WIFI_AP_STATE_FAILED}
+     * @see #isWifiLocalOnlyHotspotEnabled()
+     *
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
+    public int getWifiLocalOnlyHotspotState() {
+        try {
+            return mService.getWifiLocalOnlyHotspotEnabledState();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Return whether local-only Wi-Fi hotspot is enabled or disabled.
+     * @return {@code true} if local-only Wi-Fi hotspot is enabled
+     * @see #getWifiLocalOnlyHotspotState()
+     *
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
+    public boolean isWifiLocalOnlyHotspotEnabled() {
+        return getWifiLocalOnlyHotspotState() == WIFI_AP_STATE_ENABLED;
     }
 
     /**

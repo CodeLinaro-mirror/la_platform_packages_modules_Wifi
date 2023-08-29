@@ -188,6 +188,10 @@ interface IWifiManager
 
     void stopLocalOnlyHotspot();
 
+    int getWifiLocalOnlyHotspotEnabledState();
+
+    boolean stopAllLocalOnlyHotspotRequests(String packageName);
+
     void startWatchLocalOnlyHotspot(in ILocalOnlyHotspotCallback callback);
 
     void stopWatchLocalOnlyHotspot();

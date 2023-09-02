@@ -144,6 +144,7 @@ import com.android.server.wifi.hotspot2.PasspointProvider;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.UserActionEvent;
 import com.android.server.wifi.util.ActionListenerWrapper;
 import com.android.server.wifi.util.ApConfigUtil;
+import com.android.server.wifi.util.ArrayUtils;
 import com.android.server.wifi.util.GeneralUtil.Mutable;
 import com.android.server.wifi.util.LastCallerInfoManager;
 import com.android.server.wifi.util.RssiUtil;
@@ -1072,6 +1073,23 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     /**
+     * see {@link WifiManager#getWifiLocalOnlyHotspotEnabledState()}
+     * @return One of {@link WifiManager#WIFI_AP_STATE_DISABLED},
+     *         {@link WifiManager#WIFI_AP_STATE_DISABLING},
+     *         {@link WifiManager#WIFI_AP_STATE_ENABLED},
+     *         {@link WifiManager#WIFI_AP_STATE_ENABLING},
+     *         {@link WifiManager#WIFI_AP_STATE_FAILED}
+     */
+    @Override
+    public int getWifiLocalOnlyHotspotEnabledState() {
+        enforceAccessPermission();
+        if (isVerboseLoggingEnabled()) {
+            mLog.info("getWifiLocalOnlyHotspotEnabledState uid=%").c(Binder.getCallingUid()).flush();
+        }
+        return mLohsSoftApTracker.getState();
+    }
+
+    /**
      * see {@link android.net.wifi.WifiManager#updateInterfaceIpState(String, int)}
      *
      * The possible modes include: {@link WifiManager#IFACE_IP_MODE_TETHERED},
@@ -1639,6 +1657,10 @@ public class WifiServiceImpl extends BaseWifiService {
             return mLohsSoftApCapability;
         }
 
+        public int getState() {
+            return mLohsState;
+        }
+
         public void updateInterfaceIpState(String ifaceName, int mode) {
             // update interface IP state related to local-only hotspot
             synchronized (mLocalOnlyHotspotRequests) {
@@ -1796,19 +1818,20 @@ public class WifiServiceImpl extends BaseWifiService {
         @GuardedBy("mLocalOnlyHotspotRequests")
         private void startForFirstRequestLocked(LocalOnlyHotspotRequestInfo request) {
             int band = WifiApConfigStore.generateDefaultBand(mContext);
+            SoftApCapability capability = mTetheredSoftApTracker.getSoftApCapability();
 
             // For auto only
             if (hasAutomotiveFeature(mContext)) {
                 if (mContext.getResources().getBoolean(R.bool.config_wifiLocalOnlyHotspot6ghz)
                         && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_6GHZ, mContext)
-                        && mTetheredSoftApTracker.getSoftApCapability()
-                           .getSupportedChannelList(SoftApConfiguration.BAND_6GHZ).length > 1) {
+                        && !ArrayUtils.isEmpty(capability
+                           .getSupportedChannelList(SoftApConfiguration.BAND_6GHZ))) {
                     band = SoftApConfiguration.BAND_6GHZ;
                 } else if (mContext.getResources().getBoolean(
                         R.bool.config_wifi_local_only_hotspot_5ghz)
                         && ApConfigUtil.isBandSupported(SoftApConfiguration.BAND_5GHZ, mContext)
-                        && mTetheredSoftApTracker.getSoftApCapability()
-                           .getSupportedChannelList(SoftApConfiguration.BAND_5GHZ).length > 1) {
+                        && !ArrayUtils.isEmpty(capability
+                           .getSupportedChannelList(SoftApConfiguration.BAND_5GHZ))) {
                     band = SoftApConfiguration.BAND_5GHZ;
                 }
             }
@@ -1863,6 +1886,19 @@ public class WifiServiceImpl extends BaseWifiService {
                 }
                 stopIfEmptyLocked();
             }
+        }
+
+      /**
+         * Unregisters LocalOnlyHotspot requests and stops the hotspot.
+         */
+        public void stopAllRequests() {
+          synchronized (mLocalOnlyHotspotRequests) {
+              if (!mLocalOnlyHotspotRequests.isEmpty()) {
+                  // This is used to take down LOHS in some cases such as suspend to disk.
+                  sendHotspotStoppedMessageToAllLOHSRequestInfoEntriesLocked();
+                  stopIfEmptyLocked();
+              }
+          }
         }
 
         @GuardedBy("mLocalOnlyHotspotRequests")
@@ -2057,7 +2093,8 @@ public class WifiServiceImpl extends BaseWifiService {
         final int uid = Binder.getCallingUid();
         final int pid = Binder.getCallingPid();
 
-        mLog.info("start uid=% pid=%").c(uid).c(pid).flush();
+        mLog.info("startLocalOnlyHotspot package=% uid=% pid=%").c(packageName)
+                .c(uid).c(pid).flush();
 
         final WorkSource requestorWs;
         // Permission requirements are different with/without custom config.
@@ -2145,6 +2182,26 @@ public class WifiServiceImpl extends BaseWifiService {
         mLog.info("stopLocalOnlyHotspot uid=% pid=%").c(uid).c(pid).flush();
 
         mLohsSoftApTracker.stopByPid(pid);
+    }
+
+   /**
+     * see {@link WifiManager#stopAllLocalOnlyHotspotRequests()}
+     *
+     */
+    @Override
+    public boolean stopAllLocalOnlyHotspotRequests(String packageName) {
+        if (enforceChangePermission(packageName) != MODE_ALLOWED) {
+           return false;
+        }
+
+        final int uid = Binder.getCallingUid();
+        final int pid = Binder.getCallingPid();
+
+        mLog.info("stopAllLocalOnlyHotspotRequests package=% uid=% pid=%").c(packageName)
+                .c(uid).c(pid).flush();
+
+        mLohsSoftApTracker.stopAllRequests();
+        return true;
     }
 
     /**

@@ -420,6 +420,16 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public int getWifiLocalOnlyHotspotEnabledState() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean stopAllLocalOnlyHotspotRequests(String packageName) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public void startWatchLocalOnlyHotspot(ILocalOnlyHotspotCallback callback) {
         throw new UnsupportedOperationException();
     }

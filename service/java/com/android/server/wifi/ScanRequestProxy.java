@@ -55,6 +55,7 @@ import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import android.os.SystemProperties;
 
 import javax.annotation.concurrent.NotThreadSafe;
 
@@ -89,6 +90,8 @@ public class ScanRequestProxy {
     public static final int SCAN_REQUEST_THROTTLE_MAX_IN_TIME_WINDOW_FG_APPS = 4;
     @VisibleForTesting
     public static final int SCAN_REQUEST_THROTTLE_INTERVAL_BG_APPS_MS = 30 * 60 * 1000;
+    private static final String ALLOW_SINGLE_BAND_SCAN_PROPERTY =
+            "persist.wifi.allow_single_band_scan";
 
     private final Context mContext;
     private final Handler mHandler;
@@ -101,6 +104,7 @@ public class ScanRequestProxy {
     private final Clock mClock;
     private final WifiSettingsConfigStore mSettingsConfigStore;
     private WifiScannerInternal mWifiScanner;
+    private final boolean mEnableScanSingleBand;
 
     // Verbose logging flag.
     private boolean mVerboseLoggingEnabled = false;
@@ -151,8 +155,9 @@ public class ScanRequestProxy {
             if (mVerboseLoggingEnabled) {
                 Log.d(TAG, "Received " + scanResults.length + " scan results");
             }
-            // Only process full band scan results.
-            if (WifiScanner.isFullBandScan(scanData.getScannedBandsInternal(), false)) {
+            // Only process full band scan results if single band scan is not enabled.
+            if (isSingleBandScanEnabled()
+                    || WifiScanner.isFullBandScan(scanData.getScannedBandsInternal(), false)) {
                 // Store the last scan results & send out the scan completion broadcast.
                 mLastScanResultsMap.clear();
                 Arrays.stream(scanResults).forEach(s -> {
@@ -228,6 +233,8 @@ public class ScanRequestProxy {
         mClock = clock;
         mSettingsConfigStore = settingsConfigStore;
         mRegisteredScanResultsCallbacks = new RemoteCallbackList<>();
+        mEnableScanSingleBand = SystemProperties.getBoolean(
+                ALLOW_SINGLE_BAND_SCAN_PROPERTY, false);
     }
 
     /**
@@ -480,6 +487,13 @@ public class ScanRequestProxy {
         }
         mWifiMetrics.incrementExternalAppOneshotScanRequestsCount();
         return isThrottled;
+    }
+
+    /**
+     * Checks if scan could be performed on specific band rather than full bands.
+     */
+    public boolean isSingleBandScanEnabled() {
+        return mEnableScanSingleBand;
     }
 
     /**

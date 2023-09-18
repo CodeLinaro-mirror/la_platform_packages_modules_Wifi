@@ -73,6 +73,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -758,6 +759,38 @@ public class SoftApManager implements ActiveModeManager {
         } else {
             mContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
         }
+    }
+
+    private void sendBroadcastApConnectionsChanged() {
+        final Intent intent = new Intent(WifiManager.WIFI_AP_CLIENTS_CHANGED_ACTION);
+        intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
+        intent.putExtra(WifiManager.EXTRA_WIFI_AP_MODE, mSpecifiedModeConfiguration.getTargetMode());
+
+        Log.d(getTag(), "sendBroadcastApConnectionsChanged, Mode:"
+                + mSpecifiedModeConfiguration.getTargetMode());
+        mContext.sendStickyBroadcastAsUser(intent, UserHandle.ALL);
+    }
+
+    // Get the bands that have connection with clients.
+    public int getBandsInUse() {
+        int bands = 0;
+        // A SoftApManager instance may have multiple interfaces.
+        for (String instance : mConnectedClientWithApInfoMap.keySet()) {
+            if (mConnectedClientWithApInfoMap.getOrDefault(
+                    instance, Collections.emptyList()).size() != 0) {
+                // This interface has connections.
+                SoftApInfo sapInfo = mCurrentSoftApInfoMap.get(instance);
+                if (sapInfo != null) {
+                    int band = ApConfigUtil.convertFrequencyToBand(sapInfo.getFrequency());
+                    if (band == SoftApConfiguration.BAND_2GHZ) {
+                        bands |= WifiScanner.WIFI_BAND_24_GHZ;
+                    } else if (band == SoftApConfiguration.BAND_5GHZ) {
+                        bands |= WifiScanner.WIFI_BAND_5_GHZ_WITH_DFS;
+                    }
+                }
+            }
+        }
+        return bands;
     }
 
     private int setMacAddress() {
@@ -1707,6 +1740,7 @@ public class SoftApManager implements ActiveModeManager {
                         + clientList.size() + ": " + clientList + " on the AP which info is "
                         + currentInfoWithClientsChanged);
 
+                sendBroadcastApConnectionsChanged();
                 if (mSoftApCallback != null) {
                     mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                             mConnectedClientWithApInfoMap, isBridgeRequired());
@@ -1733,6 +1767,7 @@ public class SoftApManager implements ActiveModeManager {
                     // Clean up
                     mCurrentSoftApInfoMap.clear();
                     mConnectedClientWithApInfoMap.clear();
+                    sendBroadcastApConnectionsChanged();
                     mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                             mConnectedClientWithApInfoMap, isBridgeRequired());
                     return;
@@ -1745,6 +1780,7 @@ public class SoftApManager implements ActiveModeManager {
                         mCurrentSoftApInfoMap.remove(changedInstance);
                         mSoftApTimeoutMessageMap.remove(changedInstance);
                         mConnectedClientWithApInfoMap.remove(changedInstance);
+                        sendBroadcastApConnectionsChanged();
                         mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                                 mConnectedClientWithApInfoMap, isBridgeRequired());
                         if (isClientConnected) {
@@ -1772,6 +1808,7 @@ public class SoftApManager implements ActiveModeManager {
                 }
 
                 mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfo));
+                sendBroadcastApConnectionsChanged();
                 mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                         mConnectedClientWithApInfoMap, isBridgeRequired());
 
@@ -1825,6 +1862,7 @@ public class SoftApManager implements ActiveModeManager {
                     mWifiMetrics.incrementSoftApStartResult(true, 0);
                     mCurrentSoftApInfoMap.clear();
                     mConnectedClientWithApInfoMap.clear();
+                    sendBroadcastApConnectionsChanged();
                     if (mSoftApCallback != null) {
                         mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                                 mConnectedClientWithApInfoMap, isBridgeRequired());
@@ -1893,6 +1931,7 @@ public class SoftApManager implements ActiveModeManager {
                         }
                     }
                     mConnectedClientWithApInfoMap.clear();
+                    sendBroadcastApConnectionsChanged();
                     if (mSoftApCallback != null) {
                         mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                                 mConnectedClientWithApInfoMap, isBridgeRequired());

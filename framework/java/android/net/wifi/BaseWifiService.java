@@ -247,6 +247,11 @@ public class BaseWifiService extends IWifiManager.Stub {
     }
 
     @Override
+    public int getBandsWithCriticalConnections(String packageName, int apMode) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
     public List<ScanResult> getScanResults(String callingPackage, String callingFeatureId) {
         throw new UnsupportedOperationException();
     }

@@ -39,6 +39,8 @@ import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
+import android.net.wifi.WifiScanner;
+import android.net.wifi.ScanResult;
 import android.os.BatteryStatsManager;
 import android.os.Build;
 import android.os.Handler;
@@ -609,6 +611,30 @@ public class ActiveModeWarden {
         mWifiController.sendMessage(WifiController.CMD_UPDATE_AP_CONFIG, config);
     }
 
+    /** get the bands that has at least one critical connections */
+    public int getBandsWithCriticalConnections(int apMode) {
+        if (apMode != WifiManager.IFACE_IP_MODE_LOCAL_ONLY &&
+                apMode != WifiManager.IFACE_IP_MODE_TETHERED) {
+            return -1;
+        }
+
+        int bands = 0;
+        // Always treat primary connection critical
+        ClientModeManager primaryCmm = getPrimaryClientModeManager();
+        if (primaryCmm.isConnected()) {
+            bands = primaryCmm.is2GHzBand() ?
+                    WifiScanner.WIFI_BAND_24_GHZ : WifiScanner.WIFI_BAND_5_GHZ_WITH_DFS;
+        }
+
+        // User decide if LOHS connection or Tethering connection is critical
+        for (SoftApManager softApManager : mSoftApManagers) {
+            if (getRoleForSoftApIpMode(apMode) == softApManager.getRole()) {
+                return bands | softApManager.getBandsInUse();
+            }
+        }
+        return bands;
+    }
+
     /** Emergency Callback Mode has changed. */
     public void emergencyCallbackModeChanged(boolean isInEmergencyCallbackMode) {
         mWifiController.sendMessage(
@@ -639,6 +665,53 @@ public class ActiveModeWarden {
                 inProgress ? 1 : 0, 0,
                 // Emergency scans should have the highest priority, so use settings worksource.
                 mFacade.getSettingsWorkSource(mContext));
+    }
+
+    public boolean shouldEnableConnectionPolicyForDualSta() {
+        if (mContext.getResources().getBoolean(
+                R.bool.config_wifiAllowConnectPolicyForDualStation)) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * Disconnect secondary STA if a, primary STA is going to connect with AP that is
+     * on same band with secondary STA or b, both stations are already on same band.
+     */
+    public void disconnectSecondaryClientIfNecessary(WifiConfiguration targetNetwork) {
+        if (!shouldEnableConnectionPolicyForDualSta()) {
+            return;
+        }
+        ClientModeManager secondaryCmm =
+                getClientModeManagerInRole(ROLE_CLIENT_SECONDARY_LONG_LIVED);
+        if (secondaryCmm != null && secondaryCmm.isConnected()) {
+            boolean needDisconnect = false;
+            ClientModeManager primaryCmm = getPrimaryClientModeManager();
+            if (targetNetwork != null) {
+                // Primary STA is going to connect with targetNetwork.
+                ScanResult scanResult =
+                        targetNetwork.getNetworkSelectionStatus().getCandidate();
+                if (scanResult != null && ((scanResult.is24GHz() && secondaryCmm.is2GHzBand())
+                        || (!scanResult.is24GHz() && !secondaryCmm.is2GHzBand()))) {
+                    needDisconnect = true;
+                    Log.d(TAG, "targetnet_2g = " + scanResult.is24GHz());
+                }
+            } else if (primaryCmm.isConnected()) {
+                // Primary STA has just established a new network.
+                if ((primaryCmm.is2GHzBand() && secondaryCmm.is2GHzBand())
+                        || (!primaryCmm.is2GHzBand() && !secondaryCmm.is2GHzBand())) {
+                    needDisconnect = true;
+                    Log.d(TAG, "primary_2g = " + primaryCmm.is2GHzBand());
+                }
+            }
+            if (needDisconnect) {
+                Log.d(TAG, "disconnect secondary STA, secondary_2g = " +
+                        secondaryCmm.is2GHzBand());
+                secondaryCmm.disconnect();
+            }
+        }
     }
 
     /**

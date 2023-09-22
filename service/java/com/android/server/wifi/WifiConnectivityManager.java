@@ -337,6 +337,33 @@ public class WifiConnectivityManager {
     }
 
     /**
+     * Filter candidates for secondary STA accorrding to connction status of primary STA.
+     */
+    private List<WifiCandidates.Candidate> getSecondaryCandidatesFiltered(
+           @NonNull List<WifiCandidates.Candidate> secondaryCmmCandidates) {
+        if (!mActiveModeWarden.shouldEnableConnectionPolicyForDualSta()) {
+            return secondaryCmmCandidates;
+        }
+        if (!getPrimaryClientModeManager().isConnected()) {
+            Log.w(TAG, "Primary STA is disconnected");
+            return secondaryCmmCandidates;
+        }
+        boolean isPrimary2G = getPrimaryClientModeManager().is2GHzBand();
+        List<WifiCandidates.Candidate> filtered = new ArrayList<WifiCandidates.Candidate>();
+        Log.d(TAG, "isPrimary2G = " + isPrimary2G);
+        for (WifiCandidates.Candidate entry : secondaryCmmCandidates) {
+            Log.d(TAG, "Candidate freq is " + entry.getFrequency());
+            if ((isPrimary2G && ScanResult.is5GHz(entry.getFrequency()))
+                    || (!isPrimary2G && ScanResult.is24GHz(entry.getFrequency()))) {
+                filtered.add(entry);
+            }
+        }
+        Log.d(TAG, "filtering out " + (secondaryCmmCandidates.size() - filtered.size())
+                + " candidate");
+        return filtered;
+    }
+
+    /**
      * Handles 'onResult' callbacks for the Periodic, Single & Pno ScanListener.
      * Executes selection of potential network candidates, initiation of connection attempt to that
      * network.
@@ -430,10 +457,12 @@ public class WifiConnectivityManager {
                     candidatesPartitioned.getOrDefault(false, Collections.emptyList());
             List<WifiCandidates.Candidate> secondaryCmmCandidates =
                     candidatesPartitioned.getOrDefault(true, Collections.emptyList());
+            List<WifiCandidates.Candidate> secondaryCmmCandidates_filtered =
+                    getSecondaryCandidatesFiltered(secondaryCmmCandidates);
             // Some oem paid/private suggestions found, use secondary cmm flow.
             if (!secondaryCmmCandidates.isEmpty()) {
                 handleCandidatesFromScanResultsUsingSecondaryCmmIfAvailable(
-                        listenerName, primaryCmmCandidates, secondaryCmmCandidates,
+                        listenerName, primaryCmmCandidates, secondaryCmmCandidates_filtered,
                         handleScanResultsListener);
                 return;
             }
@@ -1343,6 +1372,12 @@ public class WifiConnectivityManager {
                     + " does not match the config specified BSSID " + targetNetwork.BSSID
                     + ". Drop it!");
             return;
+        }
+
+        // Disconnect secondary STA if primary STA is going to to connect with AP that
+        // is on same band with secondary STA.
+        if (clientModeManager.getRole() == ClientModeManager.ROLE_CLIENT_PRIMARY) {
+           mActiveModeWarden.disconnectSecondaryClientIfNecessary(targetNetwork);
         }
 
         WifiConfiguration currentNetwork = coalesce(
@@ -2261,6 +2296,8 @@ public class WifiConnectivityManager {
                 setSingleScanningSchedule(mConnectedSingleScanScheduleSec);
             }
             startConnectivityScan(SCAN_ON_SCHEDULE);
+            // Primary STA is just connected, check if need to disconnect secondary STA
+            mActiveModeWarden.disconnectSecondaryClientIfNecessary(null);
         } else {
             // Intermediate state, no applicable single scanning schedule
             setSingleScanningSchedule(null);

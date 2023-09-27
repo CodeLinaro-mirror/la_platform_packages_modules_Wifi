@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 package android.net.wifi;
 
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
@@ -4258,7 +4264,6 @@ public class WifiManager {
     *
     * @hide
     */
-    @SystemApi
     @RequiresPermission(android.Manifest.permission.CHANGE_WIFI_STATE)
     public boolean stopAllLocalOnlyHotspotRequests() {
         synchronized (mLock) {
@@ -4367,7 +4372,6 @@ public class WifiManager {
      *
      * @hide
      */
-    @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public int getWifiLocalOnlyHotspotState() {
         try {
@@ -4384,7 +4388,6 @@ public class WifiManager {
      *
      * @hide
      */
-    @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public boolean isWifiLocalOnlyHotspotEnabled() {
         return getWifiLocalOnlyHotspotState() == WIFI_AP_STATE_ENABLED;

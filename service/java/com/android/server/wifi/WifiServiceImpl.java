@@ -2281,19 +2281,19 @@ public class WifiServiceImpl extends BaseWifiService {
         private void startForFirstRequestLocked(LocalOnlyHotspotRequestInfo request) {
             final SoftApCapability lohsCapability = mLohsSoftApTracker.getSoftApCapability();
             int lohsType = findLohsTypeByCustomConfig(request.getCustomConfig());
-            SoftApConfiguration softApConfig = mWifiApConfigStore.generateLocalOnlyHotspotConfig(
+	    SoftApConfiguration softApConfig = mWifiApConfigStore.generateLocalOnlyHotspotConfig(
                     mContext, request.getCustomConfig(), lohsCapability);
 
             mActiveConfig = new SoftApModeConfiguration(
                     WifiManager.IFACE_IP_MODE_LOCAL_ONLY,
                     softApConfig, mLohsSoftApTracker.getSoftApCapability(), lohsType);
-            mIsExclusive = (request.getCustomConfig() != null);
+             mIsExclusive = (request.getCustomConfig() != null);
 
             //lohsType already pass to mActivConfig,so remove it in mLohsConfigMap in case
             //of failure while starting LOHS
             mLohsConfigMap.remove(lohsType);
 
-            // Report the error if we got failure in startSoftApInternal
+	    // Report the error if we got failure in startSoftApInternal
             if (!startSoftApInternal(mActiveConfig, request.getWorkSource())) {
                 onStateChanged(WIFI_AP_STATE_FAILED, ERROR_GENERIC);
             }

@@ -2654,6 +2654,40 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (mVerboseLoggingEnabled) log("mSuspendOptNeedsDisabled " + mSuspendOptNeedsDisabled);
     }
 
+    private void updateMloLinkFromPollResults(MloLink link, WifiSignalPollResults pollResults) {
+        if (link == null) return;
+        int linkId = link.getLinkId();
+        link.setRssi(pollResults.getRssi(linkId));
+        link.setTxLinkSpeedMbps(pollResults.getTxLinkSpeed(linkId));
+        link.setRxLinkSpeedMbps(pollResults.getRxLinkSpeed(linkId));
+        link.setChannel(ScanResult.convertFrequencyMhzToChannelIfSupported(
+                pollResults.getFrequency(linkId)));
+        link.setBand(ScanResult.toBand(pollResults.getFrequency(linkId)));
+        if (mVerboseLoggingEnabled) {
+            logd("updateMloLinkFromPollResults: linkId=" + linkId + " rssi=" + link.getRssi()
+                    + " channel=" + link.getChannel()
+                    + " band=" + link.getBand()
+                    + " TxLinkspeed=" + link.getTxLinkSpeedMbps()
+                    + " RxLinkSpeed=" + link.getRxLinkSpeedMbps());
+
+        }
+    }
+
+    private void updateMloLinkFromScanResult(MloLink link) {
+        if (link == null || link.getApMacAddress() == null) return;
+        ScanDetailCache scanDetailCache = mWifiConfigManager.getScanDetailCacheForNetwork(
+                mWifiInfo.getNetworkId());
+        if (scanDetailCache == null) return;
+        ScanResult matchingScanResult = scanDetailCache.getScanResult(
+                link.getApMacAddress().toString());
+        if (matchingScanResult == null) return;
+        link.setRssi(matchingScanResult.level);
+        if (mVerboseLoggingEnabled) {
+            logd("updateMloLinkFromScanResult: linkId=" + link.getLinkId() + " rssi="
+                    + link.getRssi());
+        }
+    }
+
     /*
      * Fetch link layer stats, RSSI, linkspeed, and frequency on current connection
      * and update Network capabilities
@@ -2678,21 +2712,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     + " RxLinkSpeed=" + newRxLinkSpeed);
         }
 
-        /* Set link specific signal poll results */
         for (MloLink link : mWifiInfo.getAffiliatedMloLinks()) {
-            int linkId = link.getLinkId();
-            link.setRssi(pollResults.getRssi(linkId));
-            link.setTxLinkSpeedMbps(pollResults.getTxLinkSpeed(linkId));
-            link.setRxLinkSpeedMbps(pollResults.getRxLinkSpeed(linkId));
-            link.setChannel(ScanResult.convertFrequencyMhzToChannelIfSupported(
-                    pollResults.getFrequency(linkId)));
-            link.setBand(ScanResult.toBand(pollResults.getFrequency(linkId)));
-            if (mVerboseLoggingEnabled) {
-                logd("linkId=" + linkId + " rssi=" + link.getRssi()
-                        + " channel=" + link.getChannel()
-                        + " band=" + link.getBand()
-                        + " TxLinkspeed=" + link.getTxLinkSpeedMbps()
-                        + " RxLinkSpeed=" + link.getRxLinkSpeedMbps());
+            if (link.getState() == MloLink.MLO_LINK_STATE_IDLE
+                    || link.getState() == MloLink.MLO_LINK_STATE_ACTIVE) {
+                updateMloLinkFromPollResults(link, pollResults);
+            } else {
+                updateMloLinkFromScanResult(link);
             }
         }
 

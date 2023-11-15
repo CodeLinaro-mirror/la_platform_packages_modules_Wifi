@@ -168,6 +168,7 @@ import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.WorkSource;
 import android.os.connectivity.WifiActivityEnergyInfo;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.telephony.CarrierConfigManager;
 import android.telephony.PhoneStateListener;
@@ -865,6 +866,24 @@ public class WifiServiceImpl extends BaseWifiService {
     public void handleUserStop(int userId) {
         Log.d(TAG, "Handle user stop " + userId);
         mWifiThreadRunner.post(() -> mWifiConfigManager.handleUserStop(userId));
+    }
+
+    /**
+     * See {@link android.net.wifi.WifiManager#getBandsWithCriticalConnections}
+     *
+     * @param packageName Package name of the app that make this request.
+     * @param apMode Interface mode of softap
+     */
+    @Override
+    public int getBandsWithCriticalConnections(String packageName, int apMode) {
+        enforceAccessPermission();
+
+        int uid = Binder.getCallingUid();
+        if (mVerboseLoggingEnabled) {
+            mLog.info("getBandsWithCriticalConnections uid=%").c(uid).flush();
+        }
+        return mWifiThreadRunner.call(() ->
+                mActiveModeWarden.getBandsWithCriticalConnections(apMode), -1);
     }
 
     /**
@@ -4781,7 +4800,8 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     private boolean is6GhzBandSupportedInternal() {
-        if (mContext.getResources().getBoolean(R.bool.config_wifi6ghzSupport)) {
+        if (mContext.getResources().getBoolean(R.bool.config_wifi6ghzSupport)
+            && SystemProperties.getBoolean("ro.vendor.wlan.6ghz", false)) {
             return true;
         }
         return mActiveModeWarden.isBandSupportedForSta(WifiScanner.WIFI_BAND_6_GHZ);

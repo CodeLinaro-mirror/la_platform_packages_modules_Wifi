@@ -40,6 +40,7 @@ import android.net.wifi.SoftApConfiguration.BandType;
 import android.net.wifi.SoftApInfo;
 import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiManager;
+import android.net.wifi.MloLink;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.IBinder.DeathRecipient;
@@ -397,16 +398,38 @@ public class HostapdHalAidlImp implements IHostapdHal {
                     + info.apIfaceInstance);
             try {
                 SoftApHalCallback callback = mSoftApHalCallbacks.get(info.ifaceName);
-                if (callback != null) {
-                    List<OuiKeyedData> vendorData = isServiceVersionAtLeast(2)
-                            ? HalAidlUtil.halToFrameworkOuiKeyedDataList(info.vendorData)
-                            : Collections.emptyList();
-                    callback.onInfoChanged(info.apIfaceInstance, info.freqMhz,
-                            mapHalChannelBandwidthToSoftApInfo(info.channelBandwidth),
-                            mapHalGenerationToWifiStandard(info.generation),
-                            MacAddress.fromBytes(info.apIfaceInstanceMacAddress), vendorData);
+                if (info.apIfaceInstanceMacAddress.length == 12) {
+                    byte[] linkMacAddress = new byte[6];
+                    byte[] mldMacAddress = new byte[6];
+                    System.arraycopy(info.apIfaceInstanceMacAddress, 0, linkMacAddress, 0, 6);
+                    System.arraycopy(info.apIfaceInstanceMacAddress, 6, mldMacAddress, 0, 6);
+
+                    String[] linkInfo = info.apIfaceInstance.split("_");
+                    MloLink mloLink = new MloLink();
+                    mloLink.setLinkId(Integer.parseInt(linkInfo[1]));
+                    mloLink.setBand(mapHalChannelBandwidthToSoftApInfo(info.channelBandwidth));
+                    mloLink.setChannel(ScanResult.convertFrequencyMhzToChannelIfSupported(info.freqMhz));
+                    mloLink.setApMacAddress(MacAddress.fromBytes(linkMacAddress));
+
+                    if (callback != null) {
+                        callback.onLinkInfoChanged(info.ifaceName,
+                                mapHalGenerationToWifiStandard(info.generation),
+                                MacAddress.fromBytes(mldMacAddress),
+                                mloLink);
+                    }
+                    mActiveInstances.add(info.apIfaceInstance);
+                } else {
+                    if (callback != null) {
+                        List<OuiKeyedData> vendorData = isServiceVersionAtLeast(2)
+                                ? HalAidlUtil.halToFrameworkOuiKeyedDataList(info.vendorData)
+                                : Collections.emptyList();
+                        callback.onInfoChanged(info.apIfaceInstance, info.freqMhz,
+                                mapHalChannelBandwidthToSoftApInfo(info.channelBandwidth),
+                                mapHalGenerationToWifiStandard(info.generation),
+                                MacAddress.fromBytes(info.apIfaceInstanceMacAddress), vendorData);
+                    }
+                    mActiveInstances.add(info.apIfaceInstance);
                 }
-                mActiveInstances.add(info.apIfaceInstance);
             } catch (IllegalArgumentException iae) {
                 Log.e(TAG, " Invalid apIfaceInstanceMacAddress, " + iae);
             }

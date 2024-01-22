@@ -1852,8 +1852,18 @@ public class SoftApManager implements ActiveModeManager {
                             + " changed when client connected, it should NOT happen!!");
                 }
 
-                mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfo));
-                sendBroadcastApConnectionsChanged();
+                if (mCurrentSoftApInfoMap.get(changedInstance) != null) {
+                    SoftApInfo apInfoInMap = mCurrentSoftApInfoMap.get(changedInstance);
+                    if (apInfoInMap.getBssid().equals(apInfo.getBssid())) {
+                        Map<Integer, MloLink> linkInfos = apInfo.getMloLinks();
+                        for (MloLink linkInfo : linkInfos.values()) {
+                            apInfoInMap.setMloLink(linkInfo);
+                        }
+                    }
+                    mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfoInMap));
+                } else {
+                    mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfo));
+                }
                 mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                         mConnectedClientWithApInfoMap, isBridgeRequired());
 

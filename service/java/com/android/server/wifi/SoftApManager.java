@@ -40,6 +40,7 @@ import android.net.wifi.WifiManager;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
 import android.net.wifi.nl80211.DeviceWiphyCapabilities;
+import android.net.wifi.MloLink;
 import android.os.BatteryManager;
 import android.os.Handler;
 import android.os.Looper;
@@ -346,6 +347,21 @@ public class SoftApManager implements ActiveModeManager {
             } else {
                 Log.e(getTag(), "onConnectedClientsChanged: Invalid type returned");
             }
+        }
+
+        @Override
+        public void onLinkInfoChanged(String apIfaceInstance, int generation, MacAddress mldMacAddress,
+                MloLink mloLink) {
+            SoftApInfo apInfo = new SoftApInfo();
+            apInfo.setWifiStandard(generation);
+            if (mldMacAddress != null) {
+                apInfo.setBssid(mldMacAddress);
+            }
+            apInfo.setApInstanceIdentifier(apIfaceInstance != null
+                    ? apIfaceInstance : mApInterfaceName);
+            apInfo.setMloLink(mloLink);
+            mStateMachine.sendMessage(
+                    SoftApStateMachine.CMD_AP_INFO_CHANGED, 0, 0, apInfo);
         }
     };
 

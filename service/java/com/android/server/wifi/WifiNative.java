@@ -51,6 +51,7 @@ import android.net.wifi.WifiManager.RoamingMode;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiScanner.ScanData;
 import android.net.wifi.WifiSsid;
+import android.net.wifi.MloLink;
 import android.net.wifi.nl80211.DeviceWiphyCapabilities;
 import android.net.wifi.nl80211.NativeScanResult;
 import android.net.wifi.nl80211.NativeWifiClient;
@@ -357,6 +358,17 @@ public class WifiNative {
          */
         void onConnectedClientsChanged(String apIfaceInstance, MacAddress clientAddress,
                 boolean isConnected);
+        /**
+          * Invoked when a channel switch event happed on any link of MLO SoftAP -i.e. the channel of
+          * the link changed to a different channel. Also called on initial registration.
+          *
+          * @param apIfaceInstance The identity of the ap instance.
+          * @param generation The generation of the SoftAp.
+          * @param mldMacAddress The MLD MAC Address of SoftAp.
+          * @param mloLink The link information.
+          */
+        void onLinkInfoChanged(String apIfaceInstance, int generation, MacAddress mldMacAddress,
+                MloLink mloLink);
     }
 
     /********************************************************

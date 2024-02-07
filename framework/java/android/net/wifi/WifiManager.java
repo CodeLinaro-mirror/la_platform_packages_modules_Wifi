@@ -6150,7 +6150,6 @@ public class WifiManager {
     *
     * @hide
     */
-    @SystemApi
     @RequiresPermission(android.Manifest.permission.CHANGE_WIFI_STATE)
     public boolean stopAllLocalOnlyHotspotRequests() {
         synchronized (mLock) {
@@ -6356,7 +6355,6 @@ public class WifiManager {
      *
      * @hide
      */
-    @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public int getWifiLocalOnlyHotspotState() {
         try {
@@ -6373,7 +6371,6 @@ public class WifiManager {
      *
      * @hide
      */
-    @SystemApi
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public boolean isWifiLocalOnlyHotspotEnabled() {
         return getWifiLocalOnlyHotspotState() == WIFI_AP_STATE_ENABLED;

@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/*
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 package com.android.server.wifi;
 
 import static android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET;
@@ -487,6 +493,15 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         pw.println("Soft AP stopped successfully");
                     } else {
                         pw.println("Soft AP failed to stop");
+                    }
+                    return 0;
+                }
+                case "stop-lohs": {
+                    boolean stopped = mWifiService.stopAllLocalOnlyHotspotRequests(SHELL_PACKAGE_NAME);
+                    if (stopped ) {
+                        pw.println("Local-only hotspot is stopped");
+                    } else {
+                        pw.println("Failed to stop Local-only hotspot");
                     }
                     return 0;
                 }
@@ -1621,6 +1636,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 + "force-softap-channel command");
         pw.println("  stop-softap");
         pw.println("    Stop softap (hotspot)");
+        pw.println("  stop-lohs");
+        pw.println("    Stop local only softap (hotspot)");
         pw.println("  pmksa-flush <networkId>");
         pw.println("        - Flush the local PMKSA cache associated with the network id."
                 + " Use list-networks to retrieve <networkId> for the network");

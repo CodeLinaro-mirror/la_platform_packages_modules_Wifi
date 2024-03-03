@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+/**
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 package android.net.wifi;
 
 import android.net.wifi.hotspot2.OsuProvider;
@@ -213,6 +218,12 @@ interface IWifiManager
 
     void unregisterLocalOnlyHotspotSoftApCallback(in ISoftApCallback callback, in Bundle extras);
 
+    void stopLocalOnlyHotspotWithType(in int mLohsType);
+
+    int getWifiLocalOnlyHotspotEnabledState();
+
+    boolean stopAllLocalOnlyHotspotRequests(String packageName);
+
     void startWatchLocalOnlyHotspot(in ILocalOnlyHotspotCallback callback);
 
     void stopWatchLocalOnlyHotspot();
@@ -228,6 +239,8 @@ interface IWifiManager
     boolean setWifiApConfiguration(in WifiConfiguration wifiConfig, String packageName);
 
     boolean setSoftApConfiguration(in SoftApConfiguration softApConfig, String packageName);
+
+    boolean setLohsConfiguration(in int lohsType, in SoftApConfiguration softApConfig, String packageName);
 
     void notifyUserOfApBandConversion(String packageName);
 

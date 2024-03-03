@@ -87,7 +87,7 @@ public class HostapdHalAidlImp implements IHostapdHal {
     // Hostapd HAL interface objects
     private IHostapd mIHostapd;
     private HashMap<String, Runnable> mSoftApFailureListeners = new HashMap<>();
-    private WifiNative.SoftApHalCallback mSoftApEventCallback;
+    private HashMap<String, WifiNative.SoftApHalCallback> mSoftApEventCallbacks = new HashMap<>();
     private Set<String> mActiveInstances = new HashSet<>();
     private HostapdDeathEventHandler mDeathEventHandler;
     private boolean mServiceDeclared = false;
@@ -206,7 +206,7 @@ public class HostapdHalAidlImp implements IHostapdHal {
                 Log.e(TAG, "registerApCallback called with a null callback");
                 return false;
             }
-            mSoftApEventCallback = callback;
+            mSoftApEventCallbacks.put(ifaceName, callback);
             Log.i(TAG, "registerApCallback Successful in " + ifaceName);
             return true;
         }
@@ -266,7 +266,7 @@ public class HostapdHalAidlImp implements IHostapdHal {
             }
             try {
                 mSoftApFailureListeners.remove(ifaceName);
-                mSoftApEventCallback = null;
+                mSoftApEventCallbacks.remove(ifaceName);
                 mIHostapd.removeAccessPoint(ifaceName);
                 return true;
             } catch (RemoteException e) {
@@ -374,12 +374,13 @@ public class HostapdHalAidlImp implements IHostapdHal {
         public void onFailure(String ifaceName, String instanceName) {
             Log.w(TAG, "Failure on iface " + ifaceName + ", instance: " + instanceName);
             Runnable onFailureListener = mSoftApFailureListeners.get(ifaceName);
+            WifiNative.SoftApHalCallback ifaceCallback = mSoftApEventCallbacks.get(ifaceName);
             if (onFailureListener != null) {
                 mActiveInstances.remove(instanceName);
                 if (mActiveInstances.size() == 0) {
                     onFailureListener.run();
-                } else if (mSoftApEventCallback != null) {
-                    mSoftApEventCallback.onInstanceFailure(instanceName);
+                } else if (ifaceCallback != null) {
+                    ifaceCallback.onInstanceFailure(instanceName);
                 }
             }
         }
@@ -389,8 +390,9 @@ public class HostapdHalAidlImp implements IHostapdHal {
             Log.v(TAG, "onApInstanceInfoChanged on " + info.ifaceName + " / "
                     + info.apIfaceInstance);
             try {
-                if (mSoftApEventCallback != null) {
-                    mSoftApEventCallback.onInfoChanged(info.apIfaceInstance, info.freqMhz,
+                WifiNative.SoftApHalCallback ifaceCallback = mSoftApEventCallbacks.get(info.ifaceName);
+                if (ifaceCallback != null) {
+                    ifaceCallback.onInfoChanged(info.apIfaceInstance, info.freqMhz,
                             mapHalChannelBandwidthToSoftApInfo(info.channelBandwidth),
                             mapHalGenerationToWifiStandard(info.generation),
                             MacAddress.fromBytes(info.apIfaceInstanceMacAddress));
@@ -408,8 +410,9 @@ public class HostapdHalAidlImp implements IHostapdHal {
                         + " / " + info.apIfaceInstance
                         + " and Mac is " + MacAddress.fromBytes(info.clientAddress).toString()
                         + " isConnected: " + info.isConnected);
-                if (mSoftApEventCallback != null) {
-                    mSoftApEventCallback.onConnectedClientsChanged(info.apIfaceInstance,
+                WifiNative.SoftApHalCallback ifaceCallback = mSoftApEventCallbacks.get(info.ifaceName);
+                if (ifaceCallback != null) {
+                    ifaceCallback.onConnectedClientsChanged(info.apIfaceInstance,
                             MacAddress.fromBytes(info.clientAddress), info.isConnected);
                 }
             } catch (IllegalArgumentException iae) {

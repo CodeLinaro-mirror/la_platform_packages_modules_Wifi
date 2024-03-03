@@ -17,6 +17,8 @@
 package com.android.server.wifi;
 
 import static android.net.wifi.WifiManager.SAP_CLIENT_DISCONNECT_REASON_CODE_UNSPECIFIED;
+import static android.net.wifi.WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY;
+import static android.net.wifi.WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY;
 
 import static com.android.server.wifi.util.ApConfigUtil.ERROR_GENERIC;
 import static com.android.server.wifi.util.ApConfigUtil.ERROR_NO_CHANNEL;
@@ -48,6 +50,7 @@ import android.os.Message;
 import android.os.SystemClock;
 import android.os.UserHandle;
 import android.os.WorkSource;
+import android.sysprop.WifiProperties;
 import android.text.TextUtils;
 import android.util.Log;
 
@@ -379,7 +382,8 @@ public class SoftApManager implements ActiveModeManager {
         }
         // Store mode configuration before update the configuration.
         mOriginalModeConfiguration = new SoftApModeConfiguration(apConfig.getTargetMode(),
-                mCurrentSoftApConfiguration, mCurrentSoftApCapability);
+                mCurrentSoftApConfiguration, mCurrentSoftApCapability,
+                apConfig.getLohsType());
         if (mCurrentSoftApConfiguration != null) {
             mIsUnsetBssid = mCurrentSoftApConfiguration.getBssid() == null;
             if (mCurrentSoftApCapability.areFeaturesSupported(
@@ -535,7 +539,8 @@ public class SoftApManager implements ActiveModeManager {
      */
     public SoftApModeConfiguration getSoftApModeConfiguration() {
         return new SoftApModeConfiguration(mOriginalModeConfiguration.getTargetMode(),
-                mCurrentSoftApConfiguration, mCurrentSoftApCapability);
+                mCurrentSoftApConfiguration, mCurrentSoftApCapability,
+                mOriginalModeConfiguration.getLohsType());
     }
 
     /**
@@ -547,6 +552,33 @@ public class SoftApManager implements ActiveModeManager {
             return null;
         }
         return getHighestFrequencyInstance(mCurrentSoftApInfoMap.keySet());
+    }
+
+    /**
+     * set property 'wifi.softap.iface.on.dual.wlan' to below value by Lohs type :
+     * below value bring two kinds of information: pre-defined AP interface name and
+     * information about AP created on primary or secondary wlan chip
+     *
+     * a)"1stIfaceOnSecondary" means AP created on secondary wlan chip, it has
+     * specified interface name stored in property 'ro.vendor.wlan.secondary.sap.1stiface'
+     *
+     * b)"2ndIfaceOnSecondary" means AP created on secondary wlan chip, it has
+     * specified interface name stored in property 'ro.vendor.wlan.secondary.sap.2ndiface'
+     *
+     * c)"ApOnPrimary" means AP created on primary wlan chip,it has specifed interface name
+     * stored in property 'ro.vendor.wlan.secondary.sap.1stiface' and
+     * 'ro.vendor.wlan.secondary.sap.2ndiface'for bridged AP
+     *
+     * Note: the first installed wlan driver module is for primary wlan chip, the later one
+     * is for secondary wlan chip.
+     */
+    private void setSoftApIfaceOnSecondWlan() {
+        if (mOriginalModeConfiguration.getLohsType() == LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY)
+            WifiProperties.softap_iface_on_dual_wlan("1stIfaceOnSecondary");
+        else if (mOriginalModeConfiguration.getLohsType() == LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY)
+            WifiProperties.softap_iface_on_dual_wlan("2ndIfaceOnSecondary");
+        else
+            WifiProperties.softap_iface_on_dual_wlan("ApOnPrimary");
     }
 
     /**
@@ -622,6 +654,7 @@ public class SoftApManager implements ActiveModeManager {
      */
     private void updateApState(int newState, int currentState, int reason) {
         mSoftApCallback.onStateChanged(newState, reason);
+        mSoftApCallback.onStateChangedWithIface(newState, reason, mApInterfaceName);
 
         //send the AP state change broadcast
         final Intent intent = new Intent(WifiManager.WIFI_AP_STATE_CHANGED_ACTION);
@@ -635,6 +668,7 @@ public class SoftApManager implements ActiveModeManager {
 
         intent.putExtra(WifiManager.EXTRA_WIFI_AP_INTERFACE_NAME, mApInterfaceName);
         intent.putExtra(WifiManager.EXTRA_WIFI_AP_MODE, mOriginalModeConfiguration.getTargetMode());
+        intent.putExtra(WifiManager.EXTRA_WIFI_LOHS_TYPE, mOriginalModeConfiguration.getLohsType());
         mContext.sendBroadcastAsUser(intent, UserHandle.ALL,
                 android.Manifest.permission.ACCESS_WIFI_STATE);
     }
@@ -1027,6 +1061,8 @@ public class SoftApManager implements ActiveModeManager {
                                 ApConfigUtil.remove6gBandForUnsupportedSecurity(
                                     mCurrentSoftApConfiguration);
 
+                        setSoftApIfaceOnSecondWlan();
+                        Log.d(getTag(), "wifi.softap.iface.on.dual.wlan set to " + WifiProperties.softap_iface_on_dual_wlan());
                         mApInterfaceName = mWifiNative.setupInterfaceForSoftApMode(
                                 mWifiNativeInterfaceCallback, mRequestorWs,
                                 mCurrentSoftApConfiguration.getBand(), isBridgeRequired(),

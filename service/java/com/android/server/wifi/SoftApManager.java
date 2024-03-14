@@ -1104,6 +1104,9 @@ public class SoftApManager implements ActiveModeManager {
                         quitNow();
                         break;
                     case CMD_START:
+                        int result;
+                        boolean isCountryCodeChanged = false;
+                        boolean shouldwaitForDriverCountryCodeIfNoCountryToSet = false;
                         mRequestorWs = (WorkSource) message.obj;
                         WifiSsid wifiSsid = mCurrentSoftApConfiguration != null
                                 ? mCurrentSoftApConfiguration.getWifiSsid() : null;
@@ -1116,6 +1119,21 @@ public class SoftApManager implements ActiveModeManager {
                                     false, WifiManager.SAP_START_FAILURE_GENERAL);
                             mModeListener.onStartFailure(SoftApManager.this);
                             break;
+                        }
+                        if (TextUtils.isEmpty(mCountryCode) && mContext.getResources().getBoolean(
+                                R.bool.config_wifiDriverSupportedNl80211RegChangedEvent)) {
+                            Log.i(getTag(), "No country code set in the framework."
+                                    + " Should Wait for driver country code update to start AP");
+                            shouldwaitForDriverCountryCodeIfNoCountryToSet = true;
+                        }
+                        if (!TextUtils.isEmpty(mCountryCode)
+                                && !TextUtils.equals(
+                                mCountryCode, mCurrentSoftApCapability.getCountryCode())) {
+                            isCountryCodeChanged = true;
+                            Log.i(getTag(), "CountryCode changed - "
+                                    + " mCountryCode = " + mCountryCode
+                                    + ", base country in SoftApCapability = "
+                                    + mCurrentSoftApCapability.getCountryCode());
                         }
                         boolean isFallbackToSingleAp = false;
                         if (isMultiLinkOperationMode()) {
@@ -1288,16 +1306,17 @@ public class SoftApManager implements ActiveModeManager {
                         mSoftApNotifier.dismissSoftApShutdownTimeoutExpiredNotification();
                         updateApState(WifiManager.WIFI_AP_STATE_ENABLING,
                                 WifiManager.WIFI_AP_STATE_DISABLED, 0);
-                        int result = setCountryCode();
-                        if (result != SUCCESS) {
-                            handleStartSoftApFailure(result);
-                            break;
+                        if (!shouldwaitForDriverCountryCodeIfNoCountryToSet) {
+                            result = setCountryCode();
+                            if (result != SUCCESS) {
+                                Log.e(getTag(), "Fail to set country code");
+                                handleStartSoftApFailure(result);
+                                break;
+                            }
                         }
-                        if (mContext.getResources().getBoolean(
-                                R.bool.config_wifiDriverSupportedNl80211RegChangedEvent)
-                                && !TextUtils.isEmpty(mCountryCode)
-                                && !TextUtils.equals(
-                                        mCountryCode, mCurrentSoftApCapability.getCountryCode())) {
+                        // Wait for driver country code if driver supports regulatory change event.
+                        if (isCountryCodeChanged
+                                || shouldwaitForDriverCountryCodeIfNoCountryToSet) {
                             Log.i(getTag(), "Need to wait for driver country code update before"
                                     + " starting");
                             transitionTo(mWaitingForDriverCountryCodeChangedState);
@@ -1362,12 +1381,14 @@ public class SoftApManager implements ActiveModeManager {
             @Override
             boolean processMessageImpl(Message message) {
                 if (message.what == CMD_DRIVER_COUNTRY_CODE_CHANGED) {
-                    if (!TextUtils.equals(mCountryCode, (String) message.obj)) {
+                    if (!TextUtils.isEmpty(mCountryCode)
+                            && !TextUtils.equals(mCountryCode, (String) message.obj)) {
                         Log.i(getTag(), "Ignore country code changed: " + message.obj);
                         return HANDLED;
                     }
                     Log.i(getTag(), "Driver country code change to " + message.obj
                             + ", continue starting.");
+                    mCountryCode = (String) message.obj;
                     mCurrentSoftApCapability.setCountryCode(mCountryCode);
                     mCurrentSoftApCapability =
                             ApConfigUtil.updateSoftApCapabilityWithAvailableChannelList(

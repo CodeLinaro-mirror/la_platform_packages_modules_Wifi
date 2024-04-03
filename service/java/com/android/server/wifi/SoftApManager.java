@@ -447,13 +447,19 @@ public class SoftApManager implements ActiveModeManager {
                         == SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION);
     }
 
+    private boolean isMultiLinkOperationMode() {
+        return (SdkLevel.isAtLeastT() && mCurrentSoftApConfiguration != null
+                && (mCurrentSoftApConfiguration.getBands().length > 1)
+                && (mCurrentSoftApConfiguration.isMultiLinkOperationEnabled()));
+    }
+
     private boolean isBridgedMode() {
         return (SdkLevel.isAtLeastS() && mCurrentSoftApConfiguration != null
                 && (mCurrentSoftApConfiguration.getBands().length > 1));
     }
 
     private boolean isBridgeRequired() {
-        return isBridgedMode() || isOweTransition();
+        return (isBridgedMode() || isOweTransition()) && !mCurrentSoftApConfiguration.isMultiLinkOperationEnabled();
     }
 
     private long getShutdownTimeoutMillis() {
@@ -1094,8 +1100,32 @@ public class SoftApManager implements ActiveModeManager {
                             mModeListener.onStartFailure(SoftApManager.this);
                             break;
                         }
-                        if (isBridgedMode()) {
-                            boolean isFallbackToSingleAp = false;
+                        boolean isFallbackToSingleAp = false;
+                        if (isMultiLinkOperationMode()) {
+                            if (mWifiNative.isSoftApInstanceDiedHandlerSupported()
+                                    && !TextUtils.equals(mCountryCode,
+                                      mCurrentSoftApCapability.getCountryCode())) {
+                                Log.i(getTag(), "CountryCode changed, bypass the supported band"
+                                        + "capability check, mCountryCode = " + mCountryCode
+                                        + ", base country in SoftApCapability = "
+                                        + mCurrentSoftApCapability.getCountryCode());
+                            } else {
+                                SoftApConfiguration tempConfig =
+                                        ApConfigUtil.removeUnavailableBandsFromConfig(
+                                                mCurrentSoftApConfiguration,
+                                                mCurrentSoftApCapability, mCoexManager, mContext);
+                                if (tempConfig == null) {
+                                    handleStartSoftApFailure(ERROR_UNSUPPORTED_CONFIGURATION);
+                                    break;
+                                }
+                                mCurrentSoftApConfiguration = tempConfig;
+                                if (mCurrentSoftApConfiguration.getBands().length == 1) {
+                                    isFallbackToSingleAp = true;
+                                    Log.i(getTag(), "Removed unavailable bands"
+                                            + " - fallback to single AP");
+                                }
+                            }
+                        } else if (isBridgedMode()) {
                             final List<ClientModeManager> cmms =
                                     mActiveModeWarden.getClientModeManagers();
                             // Checking STA status only when device supports STA + AP concurrency

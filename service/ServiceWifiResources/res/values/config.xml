@@ -321,6 +321,9 @@
     <!-- Wifi driver supports IEEE80211BE for softap -->
     <bool translatable="false" name="config_wifiSoftapIeee80211beSupported">false</bool>
 
+    <!-- Wifi driver supports Multi Link Operation for softap -->
+    <bool translatable="false" name="config_wifiSoftapMultiLinkOperationSupported">false</bool>
+
     <!-- Wifi driver supports IEEE80211AX single user beamformer for softap -->
     <bool translatable="false" name="config_wifiSoftapHeSuBeamformerSupported">false</bool>
 

@@ -28,6 +28,7 @@ import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_MAC_ADDRESS_CUSTO
 import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_WPA3_OWE;
 import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_WPA3_OWE_TRANSITION;
 import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_WPA3_SAE;
+import static android.net.wifi.SoftApCapability.SOFTAP_FEATURE_MULTI_LINK_OPERATION;
 
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_AP_BRIDGE;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_STA;
@@ -1051,6 +1052,11 @@ public class ApConfigUtil {
             features |= SOFTAP_FEATURE_WPA3_OWE;
         }
 
+        if (isMultiLinkOperationSupported(context)) {
+            Log.d(TAG, "Update Softap capability, add MLO support");
+            features |= SOFTAP_FEATURE_MULTI_LINK_OPERATION;
+        }
+
         SoftApCapability capability = new SoftApCapability(features);
         int hardwareSupportedMaxClient = context.getResources().getInteger(
                 R.integer.config_wifiHardwareSoftapMaxClientCount);
@@ -1115,6 +1121,19 @@ public class ApConfigUtil {
             WifiSettingsConfigStore configStore) {
         return configStore.get(
                     WifiSettingsConfigStore.WIFI_WIPHY_11BE_SUPPORTED);
+    }
+
+   /**
+     * Helper function toget device support Multi Link Operation on Soft AP or not
+     *
+     * @param context the caller context used to get value from resource file.
+     * @return true if supported, false otherwise.
+     */
+    public static boolean isMultiLinkOperationSupported(@NonNull Context context) {
+        return context.getResources().getBoolean(
+                    R.bool.config_wifiSoftapIeee80211beSupported) &&
+               context.getResources().getBoolean(
+                    R.bool.config_wifiSoftapMultiLinkOperationSupported);
     }
 
     /**

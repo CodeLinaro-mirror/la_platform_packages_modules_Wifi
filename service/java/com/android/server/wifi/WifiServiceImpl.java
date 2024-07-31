@@ -913,6 +913,24 @@ public class WifiServiceImpl extends BaseWifiService {
     }
 
     /**
+     * See {@link android.net.wifi.WifiManager#getBandsWithCriticalConnections}
+     *
+     * @param packageName Package name of the app that make this request.
+     * @param apMode Interface mode of softap
+     */
+    @Override
+    public int getBandsWithCriticalConnections(String packageName, int apMode) {
+        enforceAccessPermission();
+
+        int uid = Binder.getCallingUid();
+        if (mVerboseLoggingEnabled) {
+            mLog.info("getBandsWithCriticalConnections uid=%").c(uid).flush();
+        }
+        return mWifiThreadRunner.call(() ->
+                mActiveModeWarden.getBandsWithCriticalConnections(apMode), -1);
+    }
+
+    /**
      * See {@link android.net.wifi.WifiManager#startScan}
      *
      * @param packageName Package name of the app that requests wifi scan.

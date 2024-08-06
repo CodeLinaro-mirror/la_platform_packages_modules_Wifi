@@ -68,6 +68,7 @@ import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.wifi.IBooleanListener;
 import android.net.wifi.OuiKeyedData;
+import android.net.wifi.ScanResult;
 import android.net.wifi.WifiAvailableChannel;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiScanner;
@@ -275,6 +276,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         mDut.start(mMockContext, mMockLooper.getLooper(), mAwareMetricsMock,
                 mWifiPermissionsUtil, mPermissionsWrapperMock, new Clock(),
                 mock(NetdWrapper.class), mInterfaceConflictManager);
+        verify(mMockContext, never()).registerReceiver(any(), any(IntentFilter.class), isNull(),
+                any(Handler.class));
         mDut.startLate();
         mDut.enableVerboseLogging(true, true, true);
         mMockLooper.dispatchAll();
@@ -1131,8 +1134,10 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         when(mWifiNative.getUsableChannels(WifiScanner.WIFI_BAND_5_GHZ, OP_MODE_WIFI_AWARE,
                 WifiAvailableChannel.FILTER_NAN_INSTANT_MODE))
                 .thenReturn(List.of(new WifiAvailableChannel(5220,
-                                WifiAvailableChannel.OP_MODE_WIFI_AWARE),
-                        new WifiAvailableChannel(5745, WifiAvailableChannel.OP_MODE_WIFI_AWARE)));
+                                WifiAvailableChannel.OP_MODE_WIFI_AWARE,
+                                ScanResult.CHANNEL_WIDTH_80MHZ),
+                        new WifiAvailableChannel(5745, WifiAvailableChannel.OP_MODE_WIFI_AWARE,
+                                ScanResult.CHANNEL_WIDTH_80MHZ)));
         mActiveCountryCodeChangedCallback.onActiveCountryCodeChanged("US");
         mMockLooper.dispatchAll();
         inOrder.verify(mMockNative).enableAndConfigure(transactionId.capture(),
@@ -1218,7 +1223,7 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         when(mWifiNative.getUsableChannels(WifiScanner.WIFI_BAND_5_GHZ, OP_MODE_WIFI_AWARE,
                 WifiAvailableChannel.FILTER_NAN_INSTANT_MODE))
                 .thenReturn(List.of(new WifiAvailableChannel(5220,
-                        WifiAvailableChannel.OP_MODE_WIFI_AWARE)));
+                        WifiAvailableChannel.OP_MODE_WIFI_AWARE, ScanResult.CHANNEL_WIDTH_80MHZ)));
         mActiveCountryCodeChangedCallback.onActiveCountryCodeChanged("US");
         mMockLooper.dispatchAll();
         inOrder.verify(mMockNative).enableAndConfigure(transactionId.capture(),

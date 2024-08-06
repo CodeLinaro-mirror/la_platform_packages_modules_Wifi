@@ -4080,7 +4080,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         mContextConfigStoreMockOrder.verify(mWifiConfigStore).write();
         verify(mWifiMetrics).wifiConfigStored(anyInt());
         // Verify shut down handling
-        mWifiConfigManager.handleShutDown();
+        mWifiConfigManager.writeDataToStorage();
         mContextConfigStoreMockOrder.verify(mWifiConfigStore).write();
     }
 
@@ -8243,7 +8243,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(eapPeapNetId);
         assertFalse(config.enterpriseConfig.isTrustOnFirstUseEnabled());
         assertFalse(config.enterpriseConfig.isUserApproveNoCaCert());
-        assertEquals("mockServerCert", config.enterpriseConfig.getDomainSuffixMatch());
+        assertEquals("", config.enterpriseConfig.getDomainSuffixMatch());
         assertEquals("DNS:wifi.android;EMAIL:test@wifi.com;DNS:network.android;"
                 + "URI:http://test.android.com",
                 config.enterpriseConfig.getAltSubjectMatch());

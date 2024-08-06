@@ -882,6 +882,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             if (staticIpConfig != null) {
                                 config = new ProvisioningConfiguration.Builder()
                                         .withoutIpReachabilityMonitor()
+                                        .withRandomMacAddress()
                                         .withStaticConfiguration(staticIpConfig).build();
                             }
                         }
@@ -889,6 +890,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             // start DHCP provisioning
                             config = new ProvisioningConfiguration.Builder()
                                     .withoutIpReachabilityMonitor()
+                                    .withRandomMacAddress()
                                     .withPreDhcpAction(30 * 1000)
                                     .withProvisioningTimeoutMs(36 * 1000)
                                     .build();
@@ -1517,7 +1519,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
                         if (wifistate == WifiManager.WIFI_STATE_ENABLED
                                 || wifistate == WifiManager.WIFI_STATE_DISABLING) {
-                            checkAndSendP2pStateChangedBroadcast();
+                            getHandler().post(() -> checkAndSendP2pStateChangedBroadcast());
                         }
                     }
                 }, new IntentFilter(WifiManager.WIFI_STATE_CHANGED_ACTION));
@@ -2393,6 +2395,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         mGroup = (WifiP2pGroup) message.obj;
                         loge("Unexpected group creation, remove " + mGroup);
                         mWifiNative.p2pGroupRemove(mGroup.getInterface());
+                        mGroup = null;
                         break;
                     case WifiP2pMonitor.P2P_GROUP_FORMATION_FAILURE_EVENT:
                         // A group formation failure is always followed by
@@ -3877,6 +3880,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         } else {
                             loge("Unexpected group creation, remove " + mGroup);
                             mWifiNative.p2pGroupRemove(mGroup.getInterface());
+                            mGroup = null;
                         }
                         break;
                     case WifiP2pManager.START_LISTEN:
@@ -4646,6 +4650,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
 
                         mWifiNative.setP2pGroupIdle(mGroup.getInterface(), GROUP_IDLE_TIME_S);
+                        Log.d(TAG, "start Ip client with provisioning mode: "
+                                + mSavedPeerConfig.getGroupClientIpProvisioningMode());
                         startIpClient(mGroup.getInterface(), getHandler(),
                                 mSavedPeerConfig.getGroupClientIpProvisioningMode(),
                                 mGroup.p2pClientEapolIpInfo);
@@ -5653,12 +5659,9 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
         public boolean isWifiP2pAvailable() {
             if (mIsP2pDisallowedByAdmin) return false;
-            if (mFeatureFlags.d2dWhenInfraStaOff()) {
-                return mIsWifiEnabled
-                        || (mSettingsConfigStore.get(D2D_ALLOWED_WHEN_INFRA_STA_DISABLED)
-                                && mWifiGlobals.isD2dSupportedWhenInfraStaDisabled());
-            }
-            return mIsWifiEnabled;
+            return mIsWifiEnabled
+                    || (mSettingsConfigStore.get(D2D_ALLOWED_WHEN_INFRA_STA_DISABLED)
+                            && mWifiGlobals.isD2dSupportedWhenInfraStaDisabled());
         }
 
         public void checkAndSendP2pStateChangedBroadcast() {

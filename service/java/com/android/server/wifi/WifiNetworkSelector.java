@@ -813,8 +813,10 @@ public class WifiNetworkSelector {
                 if (seenNetworks.contains(tempConfig.getProfileKey())) {
                     Log.wtf(TAG, "user connected network is a loop, use candidate:"
                             + candidate);
-                    mWifiConfigManager.setLegacyUserConnectChoice(candidate,
-                            candidate.getNetworkSelectionStatus().getCandidate().level);
+                    if (candidate.getNetworkSelectionStatus().getCandidate() != null) {
+                        mWifiConfigManager.setLegacyUserConnectChoice(candidate,
+                                candidate.getNetworkSelectionStatus().getCandidate().level);
+                    }
                     break;
                 }
                 seenNetworks.add(tempConfig.getProfileKey());
@@ -1104,6 +1106,11 @@ public class WifiNetworkSelector {
                 || isNetworkSelectionNeeded(cmmStates);
         final String userConnectChoiceKey;
         if (!networkSelectionNeeded) {
+            if (!isAssociatedNetworkSelectionEnabled()) {
+                // Skip network selection based on connect choice because associated network
+                // selection is disabled.
+                return null;
+            }
             userConnectChoiceKey = getConnectChoiceKey(cmmStates);
             if (userConnectChoiceKey == null) {
                 return null;
@@ -1437,6 +1444,7 @@ public class WifiNetworkSelector {
                 .getConfiguredNetworkWithPassword(config.networkId);
         if (configWithPassword.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)
                 && configWithPassword.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)
+                && configWithPassword.preSharedKey != null
                 && !configWithPassword.preSharedKey.startsWith("\"")
                 && configWithPassword.preSharedKey.length() == 64
                 && configWithPassword.preSharedKey.matches("[0-9A-Fa-f]{64}")) {
@@ -1453,9 +1461,11 @@ public class WifiNetworkSelector {
     private void updateSecurityParamsForTransitionModeIfNecessary(
             ScanResult scanResult, SecurityParams params) {
         if (params.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE)
+                && params.isAddedByAutoUpgrade()
                 && ScanResultUtil.isScanResultForPskSaeTransitionNetwork(scanResult)) {
             params.setRequirePmf(false);
         } else if (params.isSecurityType(WifiConfiguration.SECURITY_TYPE_EAP_WPA3_ENTERPRISE)
+                && params.isAddedByAutoUpgrade()
                 && ScanResultUtil.isScanResultForWpa3EnterpriseTransitionNetwork(scanResult)) {
             params.setRequirePmf(false);
         }

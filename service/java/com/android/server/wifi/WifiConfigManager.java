@@ -4428,11 +4428,12 @@ public class WifiConfigManager {
                 Log.d(TAG, "Set altSubjectMatch to " + altSubjectNames);
             }
             newConfig.enterpriseConfig.setAltSubjectMatch(altSubjectNames);
+        } else {
+            if (mVerboseLoggingEnabled) {
+                Log.d(TAG, "Set domainSuffixMatch to " + serverCertInfo.commonName);
+            }
+            newConfig.enterpriseConfig.setDomainSuffixMatch(serverCertInfo.commonName);
         }
-        if (mVerboseLoggingEnabled) {
-            Log.d(TAG, "Set domainSuffixMatch to " + serverCertInfo.commonName);
-        }
-        newConfig.enterpriseConfig.setDomainSuffixMatch(serverCertInfo.commonName);
         newConfig.enterpriseConfig.setUserApproveNoCaCert(false);
         // Trigger an update to install CA certificate and the corresponding configuration.
         NetworkUpdateResult result = addOrUpdateNetwork(newConfig, internalConfig.creatorUid);
@@ -4565,9 +4566,9 @@ public class WifiConfigManager {
     }
 
     /**
-     * Handle the device shutdown, should write all cached data to the storage
+     * Write all cached data to the storage
      */
-    public void handleShutDown() {
+    public void writeDataToStorage() {
         if (mPendingStoreRead) {
             Log.e(TAG, "Cannot save to store before store is read!");
             return;

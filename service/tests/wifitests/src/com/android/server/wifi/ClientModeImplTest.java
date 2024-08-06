@@ -560,7 +560,6 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Mock RestrictedWifiNetworkFactory mRestrictedWifiNetworkFactory;
     @Mock MultiInternetManager mMultiInternetManager;
     @Mock WifiNetworkSuggestionsManager mWifiNetworkSuggestionsManager;
-    @Mock LinkProbeManager mLinkProbeManager;
     @Mock PackageManager mPackageManager;
     @Mock WifiLockManager mWifiLockManager;
     @Mock AsyncChannel mNullAsyncChannel;
@@ -743,7 +742,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mWifiHandlerThread.getLooper()).thenReturn(mLooper.getLooper());
         when(mWifiNative.getDeviceWiphyCapabilities(any())).thenReturn(mDeviceWiphyCapabilities);
         if (Flags.getDeviceCrossAkmRoamingSupport() && SdkLevel.isAtLeastV()) {
-            when(mDeviceWiphyCapabilities.getMaxNumberAkms()).thenReturn(2);
+            when(mDeviceWiphyCapabilities.getMaxNumberAkms()).thenReturn(3);
         }
         when(mWifiGlobals.isOweUpgradeEnabled()).thenReturn(true);
         when(mWifiGlobals.getClientModeImplNumLogRecs()).thenReturn(100);
@@ -830,7 +829,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 mUntrustedWifiNetworkFactory, mOemWifiNetworkFactory, mRestrictedWifiNetworkFactory,
                 mMultiInternetManager, mWifiLastResortWatchdog, mWakeupController,
                 mWifiLockManager, mFrameworkFacade, mLooper.getLooper(),
-                mWifiNative, mWrongPasswordNotifier, mWifiTrafficPoller, mLinkProbeManager,
+                mWifiNative, mWrongPasswordNotifier, mWifiTrafficPoller,
                 1, mBatteryStatsManager, mSupplicantStateTracker, mMboOceController,
                 mWifiCarrierInfoManager, mWifiPseudonymManager, mEapFailureNotifier,
                 mSimRequiredNotifier, mWifiScoreReport, mWifiP2pConnection, mWifiGlobals,
@@ -6165,29 +6164,6 @@ public class ClientModeImplTest extends WifiBaseTest {
     }
 
     /**
-     * Verify that LinkProbeManager is updated during RSSI poll
-     */
-    @Test
-    public void verifyRssiPollCallsLinkProbeManager() throws Exception {
-        mCmi.enableRssiPolling(true);
-
-        connect();
-        // reset() should be called when RSSI polling is enabled and entering L2L3ConnectedState
-        verify(mLinkProbeManager).resetOnNewConnection(); // called first time here
-        verify(mLinkProbeManager, never()).resetOnScreenTurnedOn(); // not called
-        verify(mLinkProbeManager).updateConnectionStats(any(), any());
-
-        mCmi.enableRssiPolling(false);
-        mLooper.dispatchAll();
-        // reset() should be called when in L2L3ConnectedState (or child states) and RSSI polling
-        // becomes enabled
-        mCmi.enableRssiPolling(true);
-        mLooper.dispatchAll();
-        verify(mLinkProbeManager, times(1)).resetOnNewConnection(); // verify not called again
-        verify(mLinkProbeManager).resetOnScreenTurnedOn(); // verify called here
-    }
-
-    /**
      * Verify that when ordered to setLowLatencyMode(true),
      * WifiNative is called with the right lowLatency mode.
      */
@@ -7888,6 +7864,39 @@ public class ClientModeImplTest extends WifiBaseTest {
         verify(mWifiNetworkAgent).unregister();
 
         verifyNoMoreInteractions(mWifiNetworkAgent);
+    }
+
+    /**
+     * Verify that roaming mode is enabled on disconnect for primary.
+     */
+    @Test
+    public void testRoamingModeOnDisconnectPrimary() throws Exception {
+        when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_PRIMARY);
+        connect();
+        mCmi.disconnect();
+        mLooper.dispatchAll();
+        mCmi.sendMessage(WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0,
+                new StateChangeResult(0, WifiSsid.fromUtf8Text(mConnectedNetwork.SSID),
+                        TEST_BSSID_STR, sFreq, SupplicantState.DISCONNECTED));
+        mLooper.dispatchAll();
+        verify(mWifiNative).enableFirmwareRoaming(anyString(),
+                eq(WifiNative.ENABLE_FIRMWARE_ROAMING));
+    }
+
+    /**
+     * Verify that roaming mode doesn't change on disconnect for secondary.
+     */
+    @Test
+    public void testRoamingModeOnDisconnectSecondary() throws Exception {
+        when(mClientModeManager.getRole()).thenReturn(ROLE_CLIENT_SECONDARY_TRANSIENT);
+        connect();
+        mCmi.disconnect();
+        mLooper.dispatchAll();
+        mCmi.sendMessage(WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0,
+                new StateChangeResult(0, WifiSsid.fromUtf8Text(mConnectedNetwork.SSID),
+                        TEST_BSSID_STR, sFreq, SupplicantState.DISCONNECTED));
+        mLooper.dispatchAll();
+        verify(mWifiNative, never()).enableFirmwareRoaming(anyString(), anyInt());
     }
 
     @Test

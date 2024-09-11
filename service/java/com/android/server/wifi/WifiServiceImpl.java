@@ -1064,6 +1064,7 @@ public class WifiServiceImpl extends BaseWifiService {
         mWifiScoreCard.resetAllConnectionStates();
         mMemoryStoreImpl.stop();
         mWifiConfigManager.writeDataToStorage();
+        mWifiNetworkSuggestionsManager.handleShutDown();
     }
 
     private boolean checkNetworkSettingsPermission(int pid, int uid) {

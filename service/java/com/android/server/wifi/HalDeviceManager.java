@@ -1390,7 +1390,6 @@ public class HalDeviceManager {
             WifiChipInfo chipInfo = chipInfos[i];
             staticChipInfos[i] = new StaticChipInfo(
                     chipInfo.chipId,
-                    chipInfo.chipCapabilities,
                     chipInfo.availableModes);
         }
         return staticChipInfos;

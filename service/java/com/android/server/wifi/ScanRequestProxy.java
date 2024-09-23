@@ -471,8 +471,8 @@ public class ScanRequestProxy {
      * Safely retrieve package importance.
      */
     private int getPackageImportance(int callingUid, String packageName) {
-        mAppOps.checkPackage(callingUid, packageName);
         try {
+            mAppOps.checkPackage(callingUid, packageName);
             return mActivityManager.getPackageImportance(packageName);
         } catch (SecurityException e) {
             Log.e(TAG, "Failed to check the app state", e);

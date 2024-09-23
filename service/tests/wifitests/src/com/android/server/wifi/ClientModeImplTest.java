@@ -2607,6 +2607,17 @@ public class ClientModeImplTest extends WifiBaseTest {
         verify(mActiveModeWarden).setCurrentNetwork(null);
     }
 
+    @Test
+    public void testWifiInfoNetworkIdSetInScanningState() throws Exception {
+        triggerConnect();
+        assertEquals(WifiConfiguration.INVALID_NETWORK_ID, mWifiInfo.getNetworkId());
+        mCmi.sendMessage(WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT, 0, 0,
+                new StateChangeResult(0, TEST_WIFI_SSID, TEST_BSSID_STR, sFreq,
+                        SupplicantState.SCANNING));
+        mLooper.dispatchAll();
+        assertEquals(0, mWifiInfo.getNetworkId());
+    }
+
     /**
      * If caller tries to connect to a new network while still provisioning the current one,
      * the connection attempt should succeed.
@@ -7800,12 +7811,14 @@ public class ClientModeImplTest extends WifiBaseTest {
         final IpClientCallbacks callback = mIpClientCallback;
         final ReachabilityLossInfoParcelable lossInfo =
                 new ReachabilityLossInfoParcelable("", lossReason);
+        assertNull(mCmi.getConnectingWifiConfiguration());
         callback.onReachabilityFailure(lossInfo);
         callback.onProvisioningFailure(new LinkProperties());
         mLooper.dispatchAll();
         verify(mWifiNetworkAgent).unregisterAfterReplacement(anyInt());
         verify(mWifiNative, never()).disconnect(WIFI_IFACE_NAME);
         assertEquals("L3ProvisioningState", getCurrentState().getName());
+        assertEquals(FRAMEWORK_NETWORK_ID, mCmi.getConnectingWifiConfiguration().networkId);
 
         // Verify that onProvisioningFailure from the current IpClientCallbacks instance
         // triggers wifi disconnection.

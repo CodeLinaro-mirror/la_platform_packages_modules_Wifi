@@ -100,6 +100,24 @@ public class WifiSettingsConfigStore {
     public static final Key<String> WIFI_DEFAULT_COUNTRY_CODE =
             new Key<>("wifi_default_country_code", WifiCountryCode.getOemDefaultCountryCode());
 
+    /**
+     * Store the persistent lohs channel for Auto platform.
+     */
+    public static final Key<Integer> WIFI_LOHS_CHANNEL =
+            new Key<>("wifi_persist_lohs_band", 0);
+
+    /**
+     * Store the persistent lohs band for Auto platform.
+     */
+    public static final Key<Integer> WIFI_LOHS_BAND =
+            new Key<>("wifi_persist_lohs_channel", 0);
+
+    /**
+     * Store the persistent lohs country code for Auto platform.
+     */
+    public static final Key<String> WIFI_LOHS_CC =
+            new Key<>("wifi_persist_lohs_cc", null);
+
     /******** Wifi shared pref keys ***************/
 
     private final Context mContext;

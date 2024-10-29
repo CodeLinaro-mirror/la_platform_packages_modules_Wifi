@@ -1307,7 +1307,7 @@ public final class SoftApConfiguration implements Parcelable {
             mIeee80211axEnabled = true;
             mIeee80211beEnabled = true;
             mIsUserConfiguration = true;
-            mMultiLinkOperationEnabled = true;
+            mMultiLinkOperationEnabled = false;
             mBridgedModeOpportunisticShutdownTimeoutMillis = DEFAULT_TIMEOUT;
             mVendorElements = new ArrayList<>();
             mPersistentRandomizedMacAddress = null;

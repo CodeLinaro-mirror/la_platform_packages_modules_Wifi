@@ -94,6 +94,7 @@ import com.android.modules.utils.StringParceledListSlice;
 interface IWifiManager
 {
     long getSupportedFeatures();
+    boolean isFeatureSupported(int feature);
 
     oneway void getWifiActivityEnergyInfoAsync(in IOnWifiActivityEnergyInfoListener listener);
 
@@ -230,7 +231,7 @@ interface IWifiManager
 
     void acquireMulticastLock(IBinder binder, String tag);
 
-    void releaseMulticastLock(String tag);
+    void releaseMulticastLock(IBinder binder, String tag);
 
     void updateInterfaceIpState(String ifaceName, int mode);
 
@@ -530,4 +531,8 @@ interface IWifiManager
     void restoreWifiBackupData(in byte[] data);
 
     boolean isPnoSupported();
+
+    void setAutojoinDisallowedSecurityTypes(int restrictions, in Bundle extras);
+
+    void getAutojoinDisallowedSecurityTypes(in IIntegerListener listener, in Bundle extras);
 }

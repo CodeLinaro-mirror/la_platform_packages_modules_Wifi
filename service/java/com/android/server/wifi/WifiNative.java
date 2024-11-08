@@ -1405,7 +1405,8 @@ public class WifiNative {
                 return null;
             }
             String ifaceInstanceName = iface.name;
-            if (isBridged) {
+            if (isBridged || mContext.getResources().getBoolean(
+                        R.bool.config_wifiChipOnRemoteTarget)) {
                 List<String> instances = getBridgedApInstances(iface.name);
                 if (instances == null || instances.size() == 0) {
                     errorMsg = "Failed to get bridged AP instances" + iface.name;
@@ -4555,7 +4556,15 @@ public class WifiNative {
                 return null;
             }
             if (iface.phyCapabilities == null) {
-                iface.phyCapabilities = mWifiCondManager.getDeviceWiphyCapabilities(ifaceName);
+                if (mContext.getResources().getBoolean(R.bool.config_wifiChipOnRemoteTarget)) {
+                    //remote wlan always create bridge interface in AP mode,
+                    //but it will not create bridge and instance interface in STA mode
+                    String bridgedInstance = mWifiCondIfacesForBridgedAp.get(ifaceName);
+                    iface.phyCapabilities = mWifiCondManager.getDeviceWiphyCapabilities(
+                                            (bridgedInstance != null) ? bridgedInstance : ifaceName);
+                } else {
+                    iface.phyCapabilities = mWifiCondManager.getDeviceWiphyCapabilities(ifaceName);
+                }
             }
             return iface.phyCapabilities;
         }

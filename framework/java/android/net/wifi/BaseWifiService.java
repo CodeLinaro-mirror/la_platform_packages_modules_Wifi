@@ -16,7 +16,7 @@
 
 /**
  * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -542,6 +542,11 @@ public class BaseWifiService extends IWifiManager.Stub {
 
     @Override
     public boolean setSoftApConfiguration(SoftApConfiguration softApConfig, String packageName) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean sendObtainedIpInfoToClient(String ipInfo, boolean isPrimarySta) {
         throw new UnsupportedOperationException();
     }
 

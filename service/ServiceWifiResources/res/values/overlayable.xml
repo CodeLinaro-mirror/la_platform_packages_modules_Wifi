@@ -83,6 +83,7 @@
           <item type="bool" name="config_wifiSoftapResetAutoShutdownTimerConfig" />
           <item type="bool" name="config_wifiSoftapResetMaxClientSettingConfig" />
           <item type="bool" name="config_wifiSoftapAutoUpgradeToBridgedConfigWhenSupported" />
+          <item type="bool" name="config_wifiSoftapUpgradeTetheredTo2g5gBridgedIfBandsAreSubset" />
           <item type="string"  name="config_wifiSoftap2gChannelList" />
           <item type="string"  name="config_wifiSoftap5gChannelList" />
           <item type="string"  name="config_wifiSoftap6gChannelList" />
@@ -112,6 +113,7 @@
           <item type="bool" name="config_wifi_softap_ieee80211ac_supported" />
           <item type="bool" name="config_wifiSoftapIeee80211axSupported" />
           <item type="bool" name="config_wifiSoftapIeee80211beSupported" />
+          <item type="bool" name="config_wifiSoftapMultiLinkOperationSupported" />
           <item type="bool" name="config_wifiSoftap24ghzSupported" />
           <item type="bool" name="config_wifiSoftap5ghzSupported" />
           <item type="bool" name="config_wifiSoftap6ghzSupported" />
@@ -306,6 +308,7 @@
           <item type="array" name="config_wifiExcludedFromUserApprovalForD2dInterfacePriority" />
           <item type="bool" name="config_wifiUserApprovalNotRequireForDisconnectedP2p" />
           <item type="integer" name="config_disconnectedP2pIfaceLowPriorityTimeoutMs" />
+          <item type="array" name="config_wifiP2pAwareConcurrencyAllowlist" />
           <item type="bool" name="config_wifiNetworkCentricQosPolicyFeatureEnabled" />
           <item type="bool" name="config_wifiApplicationCentricQosPolicyFeatureEnabled" />
           <item type="string" name="config_wifiDriverWorldModeCountryCode" />
@@ -345,7 +348,11 @@
           <item type="array" name="config_wifiTwtBlockedOuiList" />
           <item type="bool" name="config_wifiSoftApSingleLinkMloInBridgedModeSupported" />
           <item type="bool" name="config_wifiTwtSupported" />
+          <item type="bool" name="config_wifiNetworkSelectionSetTargetBssid" />
           <item type="bool" name="config_wifiWepAllowedControlSupported" />
+          <item type="array" name="config_wifiDelayedSelectionCarrierIds" />
+          <item type="integer" name="config_wifiDelayedCarrierSelectionTimeMs" />
+          <item type="bool" name="config_wifiRsnOverridingEnabled" />
 
           <!-- Params from config.xml that can be overlayed -->
 

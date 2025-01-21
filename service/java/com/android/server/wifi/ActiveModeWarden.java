@@ -52,10 +52,12 @@ import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.SoftApState;
 import android.net.wifi.WifiConfiguration;
+import android.net.wifi.WifiContext;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiManager.DeviceMobilityState;
 import android.net.wifi.WifiScanner;
+import android.net.wifi.util.WifiResourceCache;
 import android.os.BatteryStatsManager;
 import android.os.Build;
 import android.os.Handler;
@@ -128,7 +130,7 @@ public class ActiveModeWarden {
     private final WifiInjector mWifiInjector;
     private final Looper mLooper;
     private final Handler mHandler;
-    private final Context mContext;
+    private final WifiContext mContext;
     private final WifiDiagnostics mWifiDiagnostics;
     private final WifiSettingsStore mSettingsStore;
     private final FrameworkFacade mFacade;
@@ -192,6 +194,7 @@ public class ActiveModeWarden {
     private final AtomicInteger mWifiState = new AtomicInteger(WIFI_STATE_DISABLED);
 
     private ContentObserver mSatelliteModeContentObserver;
+    private final WifiResourceCache mResourceCache;
 
     /**
      * Method that allows the active ClientModeManager to set the wifi state that is
@@ -381,7 +384,7 @@ public class ActiveModeWarden {
             DefaultClientModeManager defaultClientModeManager,
             BatteryStatsManager batteryStatsManager,
             WifiDiagnostics wifiDiagnostics,
-            Context context,
+            WifiContext context,
             WifiSettingsStore settingsStore,
             FrameworkFacade facade,
             WifiPermissionsUtil wifiPermissionsUtil,
@@ -393,6 +396,7 @@ public class ActiveModeWarden {
         mLooper = looper;
         mHandler = new Handler(looper);
         mContext = context;
+        mResourceCache = mContext.getResourceCache();
         mWifiDiagnostics = wifiDiagnostics;
         mSettingsStore = settingsStore;
         mFacade = facade;
@@ -602,7 +606,7 @@ public class ActiveModeWarden {
             return false;
         }
         if (clientRole == ROLE_CLIENT_LOCAL_ONLY) {
-            if (!mContext.getResources().getBoolean(
+            if (!mResourceCache.getBoolean(
                     R.bool.config_wifiMultiStaLocalOnlyConcurrencyEnabled)) {
                 return false;
             }
@@ -615,13 +619,13 @@ public class ActiveModeWarden {
                             packageName, Build.VERSION_CODES.S, uid);
         }
         if (clientRole == ROLE_CLIENT_SECONDARY_TRANSIENT) {
-            return mContext.getResources().getBoolean(
+            return mResourceCache.getBoolean(
                     R.bool.config_wifiMultiStaNetworkSwitchingMakeBeforeBreakEnabled);
         }
         if (clientRole == ROLE_CLIENT_SECONDARY_LONG_LIVED) {
-            return mContext.getResources().getBoolean(
+            return mResourceCache.getBoolean(
                     R.bool.config_wifiMultiStaRestrictedConcurrencyEnabled)
-                    || mContext.getResources().getBoolean(
+                    || mResourceCache.getBoolean(
                     R.bool.config_wifiMultiStaMultiInternetConcurrencyEnabled);
         }
         Log.e(TAG, "Unrecognized role=" + clientRole);
@@ -641,7 +645,7 @@ public class ActiveModeWarden {
      */
     public boolean isStaStaConcurrencySupportedForLocalOnlyConnections() {
         return mWifiNative.isStaStaConcurrencySupported()
-                && mContext.getResources().getBoolean(
+                && mResourceCache.getBoolean(
                         R.bool.config_wifiMultiStaLocalOnlyConcurrencyEnabled);
     }
 
@@ -651,7 +655,7 @@ public class ActiveModeWarden {
      */
     public boolean isStaStaConcurrencySupportedForMbb() {
         return mWifiNative.isStaStaConcurrencySupported()
-                && mContext.getResources().getBoolean(
+                && mResourceCache.getBoolean(
                         R.bool.config_wifiMultiStaNetworkSwitchingMakeBeforeBreakEnabled);
     }
 
@@ -661,7 +665,7 @@ public class ActiveModeWarden {
      */
     public boolean isStaStaConcurrencySupportedForRestrictedConnections() {
         return mWifiNative.isStaStaConcurrencySupported()
-                && mContext.getResources().getBoolean(
+                && mResourceCache.getBoolean(
                         R.bool.config_wifiMultiStaRestrictedConcurrencyEnabled);
     }
 
@@ -671,7 +675,7 @@ public class ActiveModeWarden {
      */
     public boolean isStaStaConcurrencySupportedForMultiInternet() {
         return mWifiNative.isStaStaConcurrencySupported()
-                && mContext.getResources().getBoolean(
+                && mResourceCache.getBoolean(
                         R.bool.config_wifiMultiStaMultiInternetConcurrencyEnabled);
     }
 
@@ -707,7 +711,7 @@ public class ActiveModeWarden {
                 emergencyCallbackModeChanged(emergencyMode);
             }
         }, new IntentFilter(TelephonyManager.ACTION_EMERGENCY_CALLBACK_MODE_CHANGED));
-        boolean trackEmergencyCallState = mContext.getResources().getBoolean(
+        boolean trackEmergencyCallState = mResourceCache.getBoolean(
                 R.bool.config_wifi_turn_off_during_emergency_call);
         if (trackEmergencyCallState) {
             mContext.registerReceiver(new BroadcastReceiver() {
@@ -1516,16 +1520,16 @@ public class ActiveModeWarden {
         pw.println("STA + STA Concurrency Supported: " + isStaStaConcurrencySupported);
         if (isStaStaConcurrencySupported) {
             pw.println("   MBB use-case enabled: "
-                    + mContext.getResources().getBoolean(
+                    + mResourceCache.getBoolean(
                             R.bool.config_wifiMultiStaNetworkSwitchingMakeBeforeBreakEnabled));
             pw.println("   Local only use-case enabled: "
-                    + mContext.getResources().getBoolean(
+                    + mResourceCache.getBoolean(
                             R.bool.config_wifiMultiStaLocalOnlyConcurrencyEnabled));
             pw.println("   Restricted use-case enabled: "
-                    + mContext.getResources().getBoolean(
+                    + mResourceCache.getBoolean(
                             R.bool.config_wifiMultiStaRestrictedConcurrencyEnabled));
             pw.println("   Multi internet use-case enabled: "
-                    + mContext.getResources().getBoolean(
+                    + mResourceCache.getBoolean(
                             R.bool.config_wifiMultiStaMultiInternetConcurrencyEnabled));
         }
         pw.println("STA + AP Concurrency Supported: " + mWifiNative.isStaApConcurrencySupported());
@@ -1769,7 +1773,8 @@ public class ActiveModeWarden {
         boolean scanEnabled = hasAnyClientModeManager();
         boolean scanningForHiddenNetworksEnabled;
 
-        if (mContext.getResources().getBoolean(R.bool.config_wifiScanHiddenNetworksScanOnlyMode)) {
+        if (mResourceCache
+                .getBoolean(R.bool.config_wifiScanHiddenNetworksScanOnlyMode)) {
             scanningForHiddenNetworksEnabled = hasAnyClientModeManager();
         } else {
             scanningForHiddenNetworksEnabled = hasAnyClientModeManagerInConnectivityRole();
@@ -1871,7 +1876,7 @@ public class ActiveModeWarden {
 
         WifiController() {
             super(TAG, mLooper);
-            final int threshold = mContext.getResources().getInteger(
+            final int threshold = mResourceCache.getInteger(
                     R.integer.config_wifiConfigurationWifiRunnerThresholdInMs);
             DefaultState defaultState = new DefaultState(threshold);
             mEnabledState = new EnabledState(threshold);
@@ -1993,7 +1998,7 @@ public class ActiveModeWarden {
         }
 
         private int readWifiRecoveryDelay() {
-            int recoveryDelayMillis = mContext.getResources().getInteger(
+            int recoveryDelayMillis = mResourceCache.getInteger(
                     R.integer.config_wifi_framework_recovery_timeout_delay);
             if (recoveryDelayMillis > MAX_RECOVERY_TIMEOUT_DELAY_MS) {
                 recoveryDelayMillis = MAX_RECOVERY_TIMEOUT_DELAY_MS;
@@ -2767,19 +2772,19 @@ public class ActiveModeWarden {
             concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_AP_STA;
         }
         if (isStaStaConcurrencySupported) {
-            if (mContext.getResources().getBoolean(
+            if (mResourceCache.getBoolean(
                     R.bool.config_wifiMultiStaLocalOnlyConcurrencyEnabled)) {
                 concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_LOCAL_ONLY;
             }
-            if (mContext.getResources().getBoolean(
+            if (mResourceCache.getBoolean(
                     R.bool.config_wifiMultiStaNetworkSwitchingMakeBeforeBreakEnabled)) {
                 concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_MBB;
             }
-            if (mContext.getResources().getBoolean(
+            if (mResourceCache.getBoolean(
                     R.bool.config_wifiMultiStaRestrictedConcurrencyEnabled)) {
                 concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_RESTRICTED;
             }
-            if (mContext.getResources().getBoolean(
+            if (mResourceCache.getBoolean(
                     R.bool.config_wifiMultiStaMultiInternetConcurrencyEnabled)) {
                 concurrencyFeatureSet |= WifiManager.WIFI_FEATURE_ADDITIONAL_STA_MULTI_INTERNET;
             }
@@ -2793,13 +2798,13 @@ public class ActiveModeWarden {
                     (WifiManager.WIFI_FEATURE_D2D_RTT | WifiManager.WIFI_FEATURE_D2AP_RTT);
         }
 
-        if (!mContext.getResources().getBoolean(
+        if (!mResourceCache.getBoolean(
                 R.bool.config_wifi_p2p_mac_randomization_supported)) {
             // flags filled in by vendor HAL, remove if overlay disables it.
             excludedFeatureSet |= WifiManager.WIFI_FEATURE_P2P_RAND_MAC;
         }
 
-        if (mContext.getResources().getBoolean(
+        if (mResourceCache.getBoolean(
                 R.bool.config_wifi_connected_mac_randomization_supported)) {
             // no corresponding flags in vendor HAL, set if overlay enables it.
             additionalFeatureSet |= WifiManager.WIFI_FEATURE_CONNECTED_RAND_MAC;

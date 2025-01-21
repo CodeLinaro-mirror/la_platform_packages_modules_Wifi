@@ -35,6 +35,9 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
 
 /**
  * A class representing information about a specific SoftAP instance. A SoftAP instance may be a
@@ -165,6 +168,12 @@ public final class SoftApInfo implements Parcelable {
 
     /** List of {@link OuiKeyedData} containing vendor-specific configuration data. */
     private List<OuiKeyedData> mVendorData = Collections.emptyList();
+
+    /**
+     * The map used to store mlo link infomation for multi link Soft Ap.
+     */
+    @NonNull
+    private Map<Integer, MloLink> mMloLinks = new HashMap<>();
 
     /**
      * Get the frequency which AP resides on.
@@ -357,6 +366,34 @@ public final class SoftApInfo implements Parcelable {
     /**
      * @hide
      */
+    public void setMloLink(@Nullable MloLink mloLink) {
+        mMloLinks.put(mloLink.getLinkId(), mloLink);
+    }
+
+    /**
+     * @hide
+     */
+    public @Nullable MloLink getMloLink(int linkId) {
+        return mMloLinks.get(linkId);
+    }
+
+    /**
+     * @hide
+     */
+    public @NonNull Map<Integer, MloLink> getMloLinks() {
+        return mMloLinks;
+    }
+
+    /**
+     * @hide
+     */
+    public void setMloLinks(@Nullable Map<Integer, MloLink> mloLinks) {
+        mMloLinks = mloLinks;
+    }
+
+    /**
+     * @hide
+     */
     public SoftApInfo(@Nullable SoftApInfo source) {
         if (source != null) {
             mFrequency = source.mFrequency;
@@ -366,6 +403,10 @@ public final class SoftApInfo implements Parcelable {
             mApInstanceIdentifier = source.mApInstanceIdentifier;
             mIdleShutdownTimeoutMillis = source.mIdleShutdownTimeoutMillis;
             mVendorData = new ArrayList<>(source.mVendorData);
+            Map<Integer, MloLink> orignalMloLinks = source.getMloLinks();
+            for (Map.Entry<Integer, MloLink> entry : orignalMloLinks.entrySet()) {
+                mMloLinks.put(entry.getKey(), entry.getValue());
+            }
         }
     }
 
@@ -390,6 +431,7 @@ public final class SoftApInfo implements Parcelable {
         dest.writeInt(mWifiStandard);
         dest.writeString(mApInstanceIdentifier);
         dest.writeLong(mIdleShutdownTimeoutMillis);
+        dest.writeMap(mMloLinks);
         dest.writeList(mVendorData);
     }
 
@@ -404,6 +446,7 @@ public final class SoftApInfo implements Parcelable {
             info.mWifiStandard = in.readInt();
             info.mApInstanceIdentifier = in.readString();
             info.mIdleShutdownTimeoutMillis = in.readLong();
+            in.readMap(info.mMloLinks, MloLink.class.getClassLoader());
             info.mVendorData = ParcelUtil.readOuiKeyedDataList(in);
             return info;
         }
@@ -424,6 +467,7 @@ public final class SoftApInfo implements Parcelable {
         sbuf.append(", wifiStandard= ").append(mWifiStandard);
         sbuf.append(", mApInstanceIdentifier= ").append(mApInstanceIdentifier);
         sbuf.append(", mIdleShutdownTimeoutMillis= ").append(mIdleShutdownTimeoutMillis);
+        sbuf.append(", mMloLinks= ").append(mMloLinks);
         sbuf.append(", mVendorData= ").append(mVendorData);
         sbuf.append("}");
         return sbuf.toString();
@@ -440,12 +484,13 @@ public final class SoftApInfo implements Parcelable {
                 && mWifiStandard == softApInfo.mWifiStandard
                 && Objects.equals(mApInstanceIdentifier, softApInfo.mApInstanceIdentifier)
                 && mIdleShutdownTimeoutMillis == softApInfo.mIdleShutdownTimeoutMillis
+                && mMloLinks.equals(softApInfo.getMloLinks())
                 && Objects.equals(mVendorData, softApInfo.mVendorData);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(mFrequency, mBandwidth, mBssid, mWifiStandard, mApInstanceIdentifier,
-                mIdleShutdownTimeoutMillis, mVendorData);
+                mIdleShutdownTimeoutMillis, mMloLinks, mVendorData);
     }
 }

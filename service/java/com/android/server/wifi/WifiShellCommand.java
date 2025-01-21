@@ -2460,15 +2460,20 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                             // fall through
                         case "bridged_2_5":
                             configBuilder.setBands(new int[] {
-                                    SoftApConfiguration.BAND_2GHZ, SoftApConfiguration.BAND_5GHZ});
+                                    SoftApConfiguration.BAND_2GHZ,
+                                    SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ});
                             break;
                         case "bridged_2_6":
                             configBuilder.setBands(new int[] {
-                                    SoftApConfiguration.BAND_2GHZ, SoftApConfiguration.BAND_6GHZ});
+                                    SoftApConfiguration.BAND_2GHZ,
+                                    SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ
+                                    | SoftApConfiguration.BAND_6GHZ});
                             break;
                         case "bridged_5_6":
                             configBuilder.setBands(new int[] {
-                                    SoftApConfiguration.BAND_5GHZ, SoftApConfiguration.BAND_6GHZ});
+                                    SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ,
+                                    SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ
+                                    | SoftApConfiguration.BAND_6GHZ});
                             break;
                         default:
                             throw new IllegalArgumentException("Invalid bridged band option "

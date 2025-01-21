@@ -134,6 +134,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.lang.reflect.Method;
 
 /**
  * Interprets and executes 'adb shell cmd wifi [args]'.
@@ -2460,15 +2461,20 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                             // fall through
                         case "bridged_2_5":
                             configBuilder.setBands(new int[] {
-                                    SoftApConfiguration.BAND_2GHZ, SoftApConfiguration.BAND_5GHZ});
+                                    SoftApConfiguration.BAND_2GHZ,
+                                    SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ});
                             break;
                         case "bridged_2_6":
                             configBuilder.setBands(new int[] {
-                                    SoftApConfiguration.BAND_2GHZ, SoftApConfiguration.BAND_6GHZ});
+                                    SoftApConfiguration.BAND_2GHZ,
+                                    SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ
+                                    | SoftApConfiguration.BAND_6GHZ});
                             break;
                         case "bridged_5_6":
                             configBuilder.setBands(new int[] {
-                                    SoftApConfiguration.BAND_5GHZ, SoftApConfiguration.BAND_6GHZ});
+                                    SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ,
+                                    SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ
+                                    | SoftApConfiguration.BAND_6GHZ});
                             break;
                         default:
                             throw new IllegalArgumentException("Invalid bridged band option "
@@ -2519,6 +2525,18 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     configBuilder.setMaxChannelBandwidth(SoftApInfo.CHANNEL_WIDTH_320MHZ);
                 } else {
                     throw new IllegalArgumentException("Invalid bandwidth option " + bandwidth);
+                }
+            } else if (option.equals("-m")) {
+                String enableMlo = getNextArgRequired();
+                if (enableMlo.equals("enabled")) {
+                    try {
+                        Class<?> configBuilderClass = configBuilder.getClass();
+                        Method setMultiLinkOperationEnabledMethod =
+                                configBuilderClass.getMethod("setMultiLinkOperationEnabled", boolean.class);
+                        setMultiLinkOperationEnabledMethod.invoke(configBuilder, true);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
             } else {
                 pw.println("Ignoring unknown option " + option);
@@ -3164,7 +3182,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println(
                 "  start-softap <ssid> (open|wpa2|wpa3|wpa3_transition|owe|owe_transition)"
                         + " <passphrase> [-b 2|5|6|any|bridged|bridged_2_5|bridged_2_6|bridged_5_6]"
-                        + " [-x] [-w 20|40|80|160|320] [-f <int> [<int>]]");
+                        + " [-x] [-w 20|40|80|160|320] [-f <int> [<int>]] [-m enabled]");
         pw.println("    Start softap with provided params");
         pw.println("    Note that the shell command doesn't activate internet tethering. In some "
                 + "devices, internet sharing is possible when Wi-Fi STA is also enabled and is"
@@ -3198,6 +3216,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("          Use '-f 2412 5745' to enable bridged dual Soft Ap on 2412 and 5745");
         pw.println("    -x - Specifies the SSID as hex digits instead of plain text (T and above)");
         pw.println("    -w 20|40|80|160|320 - select the maximum channel bandwidth (MHz)");
+        pw.println("    -m enabled enable MLO base on the dual band choosed");
         pw.println("  stop-softap");
         pw.println("    Stop softap (hotspot)");
         pw.println("  force-softap-band enabled <int> | disabled");

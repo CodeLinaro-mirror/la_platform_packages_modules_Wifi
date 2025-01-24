@@ -1312,9 +1312,9 @@ public class SupplicantP2pIfaceHalHidlImplTest extends WifiBaseTest {
         when(mISupplicantP2pIfaceMock.addGroup(eq(true), eq(3)))
                 .thenReturn(mStatusSuccess);
         // Default value when service is not initialized.
-        assertFalse(mDut.groupAdd(3, true));
+        assertFalse(mDut.groupAdd(3, true, false));
         executeAndValidateInitializationSequence(false, false, false);
-        assertTrue(mDut.groupAdd(3, true));
+        assertTrue(mDut.groupAdd(3, true, false));
     }
 
     /**
@@ -1325,7 +1325,7 @@ public class SupplicantP2pIfaceHalHidlImplTest extends WifiBaseTest {
         executeAndValidateInitializationSequence(false, false, false);
         when(mISupplicantP2pIfaceMock.addGroup(anyBoolean(), anyInt()))
                 .thenReturn(mStatusFailure);
-        assertFalse(mDut.groupAdd(0, true));
+        assertFalse(mDut.groupAdd(0, true, false));
         // Check that service is still alive.
         assertTrue(mDut.isInitializationComplete());
     }
@@ -1338,7 +1338,7 @@ public class SupplicantP2pIfaceHalHidlImplTest extends WifiBaseTest {
         executeAndValidateInitializationSequence(false, false, false);
         when(mISupplicantP2pIfaceMock.addGroup(anyBoolean(), anyInt()))
                 .thenThrow(mRemoteException);
-        assertFalse(mDut.groupAdd(0, true));
+        assertFalse(mDut.groupAdd(0, true, false));
         // Check service is dead.
         assertFalse(mDut.isInitializationComplete());
     }
@@ -1358,7 +1358,8 @@ public class SupplicantP2pIfaceHalHidlImplTest extends WifiBaseTest {
                 anyBoolean()))
                 .thenReturn(mStatusSuccess);
         // Default value when service is not initialized.
-        assertFalse(mDut.groupAdd(mNetworkName, mPassphrase, mIsPersistent,
+        assertFalse(mDut.groupAdd(mNetworkName, mPassphrase,
+                WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_LEGACY_ONLY, mIsPersistent,
                 mGroupOwnerBand, mPeerMacAddress, true));
         verify(mISupplicantP2pIfaceMockV12, never()).addGroup_1_2(
                 any(ArrayList.class), anyString(),
@@ -1366,7 +1367,8 @@ public class SupplicantP2pIfaceHalHidlImplTest extends WifiBaseTest {
                 any(byte[].class), anyBoolean());
 
         executeAndValidateInitializationSequence(false, false, false);
-        assertTrue(mDut.groupAdd(mNetworkName, mPassphrase, mIsPersistent,
+        assertTrue(mDut.groupAdd(mNetworkName, mPassphrase,
+                WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_LEGACY_ONLY, mIsPersistent,
                 mGroupOwnerBand, mPeerMacAddress, true));
         verify(mISupplicantP2pIfaceMockV12).addGroup_1_2(
                 eq(NativeUtil.decodeSsid("\"" + mNetworkName + "\"")),
@@ -1388,7 +1390,8 @@ public class SupplicantP2pIfaceHalHidlImplTest extends WifiBaseTest {
                 anyBoolean(), anyInt(),
                 any(byte[].class), anyBoolean()))
                 .thenReturn(mStatusFailure);
-        assertFalse(mDut.groupAdd(mNetworkName, mPassphrase, mIsPersistent,
+        assertFalse(mDut.groupAdd(mNetworkName, mPassphrase,
+                WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_LEGACY_ONLY, mIsPersistent,
                 mGroupOwnerBand, mPeerMacAddress, true));
         verify(mISupplicantP2pIfaceMockV12).addGroup_1_2(
                 eq(NativeUtil.decodeSsid("\"" + mNetworkName + "\"")),
@@ -1415,7 +1418,8 @@ public class SupplicantP2pIfaceHalHidlImplTest extends WifiBaseTest {
         // disable 1.2 interface to simulator since older revision cannot be casted to v1.2
         mISupplicantV12Enabled = false;
 
-        assertFalse(mDut.groupAdd(mNetworkName, mPassphrase, mIsPersistent,
+        assertFalse(mDut.groupAdd(mNetworkName, mPassphrase,
+                WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_LEGACY_ONLY, mIsPersistent,
                 mGroupOwnerBand, mPeerMacAddress, true));
         verify(mISupplicantP2pIfaceMockV12, never()).addGroup_1_2(
                 any(ArrayList.class), anyString(),
@@ -1437,7 +1441,8 @@ public class SupplicantP2pIfaceHalHidlImplTest extends WifiBaseTest {
                 anyBoolean(), anyInt(),
                 any(byte[].class), anyBoolean()))
                 .thenThrow(mRemoteException);
-        assertFalse(mDut.groupAdd(mNetworkName, mPassphrase, mIsPersistent,
+        assertFalse(mDut.groupAdd(mNetworkName, mPassphrase,
+                WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_LEGACY_ONLY, mIsPersistent,
                 mGroupOwnerBand, mPeerMacAddress, true));
         verify(mISupplicantP2pIfaceMockV12).addGroup_1_2(
                 eq(NativeUtil.decodeSsid("\"" + mNetworkName + "\"")),

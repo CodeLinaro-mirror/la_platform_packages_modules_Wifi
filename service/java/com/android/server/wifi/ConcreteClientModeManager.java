@@ -16,6 +16,7 @@
 
 package com.android.server.wifi;
 
+import static android.net.wifi.WifiManager.WIFI_STATE_DISABLING;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLED;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLING;
 
@@ -30,6 +31,7 @@ import android.net.MacAddress;
 import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.NetworkRequest;
+import android.net.wifi.BlockingOption;
 import android.net.wifi.IWifiConnectedNetworkScorer;
 import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiConfiguration;
@@ -58,6 +60,8 @@ import android.telephony.ims.feature.MmTelFeature;
 import android.telephony.ims.stub.ImsRegistrationImplBase;
 import android.text.TextUtils;
 import android.util.Log;
+
+import androidx.annotation.Keep;
 
 import com.android.internal.util.IState;
 import com.android.internal.util.State;
@@ -198,6 +202,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
      * Sets whether this ClientModeManager is for secondary STA with internet.
      * @param secondaryInternet whether the ClientModeManager is for secondary internet.
      */
+    @Keep
     public void setSecondaryInternet(boolean secondaryInternet) {
         // TODO: b/197670907 : Add client role ROLE_CLIENT_SECONDARY_INTERNET
         if (mRole == ROLE_CLIENT_SECONDARY_LONG_LIVED) {
@@ -209,6 +214,7 @@ public class ConcreteClientModeManager implements ClientModeManager {
      * Sets whether this ClientModeManager is for DBS AP multi internet.
      * @param isDbs whether the ClientModeManager is connecting to to the same SSID as primary.
      */
+    @Keep
     public void setSecondaryInternetDbsAp(boolean isDbs) {
         // TODO: b/197670907 : Add client role ROLE_CLIENT_SECONDARY_INTERNET
         if (mRole == ROLE_CLIENT_SECONDARY_LONG_LIVED) {
@@ -586,6 +592,9 @@ public class ConcreteClientModeManager implements ClientModeManager {
         mTargetRoleChangeInfo = new RoleChangeInfo(role, requestorWs, modeListener);
         if (role == ROLE_CLIENT_SCAN_ONLY) {
             // Switch client mode manager to scan only mode.
+            if (mRole == ROLE_CLIENT_PRIMARY) {
+                mWifiInjector.getActiveModeWarden().setWifiStateForApiCalls(WIFI_STATE_DISABLING);
+            }
             mStateMachine.sendMessage(
                     ClientModeStateMachine.CMD_SWITCH_TO_SCAN_ONLY_MODE);
         } else {
@@ -1480,8 +1489,8 @@ public class ConcreteClientModeManager implements ClientModeManager {
     }
 
     @Override
-    public @NonNull BitSet getSupportedFeatures() {
-        return getClientMode().getSupportedFeatures();
+    public @NonNull BitSet getSupportedFeaturesBitSet() {
+        return getClientMode().getSupportedFeaturesBitSet();
     }
 
     @Override
@@ -1724,5 +1733,10 @@ public class ConcreteClientModeManager implements ClientModeManager {
     @Override
     public void onIdleModeChanged(boolean isIdle) {
         getClientMode().onIdleModeChanged(isIdle);
+    }
+
+    @Override
+    public void blockNetwork(BlockingOption option) {
+        getClientMode().blockNetwork(option);
     }
 }

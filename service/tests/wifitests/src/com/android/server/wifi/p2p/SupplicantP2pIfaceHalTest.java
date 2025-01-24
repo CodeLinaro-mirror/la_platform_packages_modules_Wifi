@@ -71,6 +71,7 @@ public class SupplicantP2pIfaceHalTest extends WifiBaseTest {
     private static final String RESPONSE = "blahblahblah";
     private static final String PIN = "5678";
     private static final boolean ENABLE = true;
+    private static final boolean DISABLE = false;
     private static final int NETWORK_ID = 2;
     private static final int CHANNEL = 3;
 
@@ -423,9 +424,9 @@ public class SupplicantP2pIfaceHalTest extends WifiBaseTest {
     @Test
     public void testGroupAdd() {
         initializeWithAidlImpl(true);
-        when(mP2pIfaceHalAidlMock.groupAdd(anyInt(), anyBoolean())).thenReturn(true);
-        assertTrue(mDut.groupAdd(NETWORK_ID, ENABLE));
-        verify(mP2pIfaceHalAidlMock).groupAdd(eq(NETWORK_ID), eq(ENABLE));
+        when(mP2pIfaceHalAidlMock.groupAdd(anyInt(), anyBoolean(), anyBoolean())).thenReturn(true);
+        assertTrue(mDut.groupAdd(NETWORK_ID, ENABLE, DISABLE));
+        verify(mP2pIfaceHalAidlMock).groupAdd(eq(NETWORK_ID), eq(ENABLE), eq(DISABLE));
     }
 
     /**
@@ -434,9 +435,9 @@ public class SupplicantP2pIfaceHalTest extends WifiBaseTest {
     @Test
     public void testGroupAddWrapper() {
         initializeWithAidlImpl(true);
-        when(mP2pIfaceHalAidlMock.groupAdd(anyInt(), anyBoolean())).thenReturn(true);
-        assertTrue(mDut.groupAdd(ENABLE));
-        verify(mP2pIfaceHalAidlMock).groupAdd(eq(-1) /* set by wrapper */, eq(ENABLE));
+        when(mP2pIfaceHalAidlMock.groupAdd(anyInt(), anyBoolean(), anyBoolean())).thenReturn(true);
+        assertTrue(mDut.groupAdd(ENABLE, DISABLE));
+        verify(mP2pIfaceHalAidlMock).groupAdd(eq(-1) /* set by wrapper */, eq(ENABLE), eq(DISABLE));
     }
 
     /**
@@ -447,13 +448,17 @@ public class SupplicantP2pIfaceHalTest extends WifiBaseTest {
         initializeWithAidlImpl(true);
         String networkName = "someName";
         String passphrase = "somePassword";
+        @WifiP2pConfig.PccModeConnectionType int connectionType =
+                WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_LEGACY_ONLY;
         boolean persistent = true;
         boolean join = true;
         int freq = 10;
-        when(mP2pIfaceHalAidlMock.groupAdd(anyString(), anyString(),
+        when(mP2pIfaceHalAidlMock.groupAdd(anyString(), anyString(), anyInt(),
                 anyBoolean(), anyInt(), anyString(), anyBoolean())).thenReturn(true);
-        assertTrue(mDut.groupAdd(networkName, passphrase, persistent, freq, BSSID, join));
-        verify(mP2pIfaceHalAidlMock).groupAdd(eq(networkName), eq(passphrase), eq(persistent),
+        assertTrue(mDut.groupAdd(networkName, passphrase, connectionType, persistent,
+                freq, BSSID, join));
+        verify(mP2pIfaceHalAidlMock).groupAdd(eq(networkName), eq(passphrase),
+                eq(connectionType), eq(persistent),
                 eq(freq), eq(BSSID), eq(join));
     }
 

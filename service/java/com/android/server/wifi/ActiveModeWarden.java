@@ -47,6 +47,7 @@ import android.net.Network;
 import android.net.wifi.ISubsystemRestartCallback;
 import android.net.wifi.IWifiConnectedNetworkScorer;
 import android.net.wifi.IWifiNetworkStateChangedListener;
+import android.net.wifi.IWifiStateChangedListener;
 import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.SoftApState;
@@ -76,6 +77,8 @@ import android.util.ArraySet;
 import android.util.LocalLog;
 import android.util.Log;
 import android.util.Pair;
+
+import androidx.annotation.Keep;
 
 import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
@@ -153,6 +156,8 @@ public class ActiveModeWarden {
             new RemoteCallbackList<>();
     private final RemoteCallbackList<IWifiNetworkStateChangedListener>
             mWifiNetworkStateChangedListeners = new RemoteCallbackList<>();
+    private final RemoteCallbackList<IWifiStateChangedListener> mWifiStateChangedListeners =
+            new RemoteCallbackList<>();
 
     private boolean mIsMultiplePrimaryBugreportTaken = false;
     private boolean mIsShuttingdown = false;
@@ -212,7 +217,10 @@ public class ActiveModeWarden {
                 if (mVerboseLoggingEnabled) {
                     Log.d(TAG, "setting wifi state to: " + newState);
                 }
-                mWifiState.set(newState);
+                if (mWifiState.get() != newState) {
+                    mWifiState.set(newState);
+                    notifyRemoteWifiStateChangedListeners();
+                }
                 break;
             default:
                 Log.d(TAG, "attempted to set an invalid state: " + newState);
@@ -266,6 +274,32 @@ public class ActiveModeWarden {
         for (ClientModeManager cmm : mClientModeManagers) {
             cmm.onIdleModeChanged(isIdle);
         }
+    }
+
+    /**
+     * See {@link WifiManager#addWifiStateChangedListener(Executor, WifiStateChangedListener)}
+     */
+    public void addWifiStateChangedListener(@NonNull IWifiStateChangedListener listener) {
+        mWifiStateChangedListeners.register(listener);
+    }
+
+    /**
+     * See {@link WifiManager#removeWifiStateChangedListener(WifiStateChangedListener)}
+     */
+    public void removeWifiStateChangedListener(@NonNull IWifiStateChangedListener listener) {
+        mWifiStateChangedListeners.unregister(listener);
+    }
+
+    private void notifyRemoteWifiStateChangedListeners() {
+        final int itemCount = mWifiStateChangedListeners.beginBroadcast();
+        for (int i = 0; i < itemCount; i++) {
+            try {
+                mWifiStateChangedListeners.getBroadcastItem(i).onWifiStateChanged();
+            } catch (RemoteException e) {
+                Log.e(TAG, "onWifiStateChanged: remote exception -- " + e);
+            }
+        }
+        mWifiStateChangedListeners.finishBroadcast();
     }
 
     /**
@@ -817,6 +851,7 @@ public class ActiveModeWarden {
     }
 
     /** Wifi has been toggled. */
+    @Keep
     public void wifiToggled(WorkSource requestorWs) {
         mWifiController.sendMessage(WifiController.CMD_WIFI_TOGGLED, requestorWs);
     }
@@ -1041,6 +1076,7 @@ public class ActiveModeWarden {
      * calls.
      * @return Instance of {@link ConcreteClientModeManager} or null.
      */
+    @Keep
     @Nullable
     public ConcreteClientModeManager getPrimaryClientModeManagerNullable() {
         return getClientModeManagerInRole(ROLE_CLIENT_PRIMARY);
@@ -1053,6 +1089,7 @@ public class ActiveModeWarden {
      * calls.
      * @return Instance of {@link ClientModeManager}.
      */
+    @Keep
     @NonNull
     public ClientModeManager getPrimaryClientModeManager() {
         ClientModeManager cm = getPrimaryClientModeManagerNullable();
@@ -1088,6 +1125,7 @@ public class ActiveModeWarden {
     }
 
     @NonNull
+    @Keep
     public List<ClientModeManager> getClientModeManagers() {
         return new ArrayList<>(mClientModeManagers);
     }
@@ -1153,6 +1191,7 @@ public class ActiveModeWarden {
     }
 
     /** Get any client mode manager in the given role, or null if none was found. */
+    @Keep
     @Nullable
     public ConcreteClientModeManager getClientModeManagerInRole(ClientRole role) {
         for (ConcreteClientModeManager manager : mClientModeManagers) {
@@ -1341,6 +1380,9 @@ public class ActiveModeWarden {
     private void stopAllClientModeManagers() {
         Log.d(TAG, "Shutting down all client mode managers");
         for (ConcreteClientModeManager clientModeManager : getClientModeManagersPrimaryLast()) {
+            if (clientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+                setWifiStateForApiCalls(WIFI_STATE_DISABLING);
+            }
             clientModeManager.stop();
         }
     }
@@ -1372,7 +1414,9 @@ public class ActiveModeWarden {
         Log.d(TAG, "Switching all client mode managers");
         for (ConcreteClientModeManager clientModeManager : mClientModeManagers) {
             if (clientModeManager.getRole() != ROLE_CLIENT_PRIMARY
-                    && clientModeManager.getRole() != ROLE_CLIENT_SCAN_ONLY) {
+                    && clientModeManager.getRole() != ROLE_CLIENT_SCAN_ONLY
+                    && clientModeManager.getTargetRole() != ROLE_CLIENT_PRIMARY
+                    && clientModeManager.getTargetRole() != ROLE_CLIENT_SCAN_ONLY) {
                 continue;
             }
             if (!switchPrimaryOrScanOnlyClientModeManagerRole(clientModeManager)) {
@@ -1471,6 +1515,9 @@ public class ActiveModeWarden {
     private void shutdownWifi() {
         Log.d(TAG, "Shutting down all mode managers");
         for (ActiveModeManager manager : getActiveModeManagers()) {
+            if (manager.getRole() == ROLE_CLIENT_PRIMARY) {
+                setWifiStateForApiCalls(WIFI_STATE_DISABLING);
+            }
             manager.stop();
         }
     }
@@ -1966,6 +2013,13 @@ public class ActiveModeWarden {
                 setInitialState(mDisabledState);
             }
             mWifiMetrics.noteWifiEnabledDuringBoot(mSettingsStore.isWifiToggleEnabled());
+            if (mSettingsStore.isWifiToggleEnabled()) {
+                boolean isWifiWakeOn = mWifiInjector.getWakeupController().isUsable();
+                mWifiMetrics.reportWifiStateChanged(true, isWifiWakeOn, false);
+                if (mVerboseLoggingEnabled) {
+                    Log.d(TAG, "logging wifi is on after boot. wifi wake state=" + isWifiWakeOn);
+                }
+            }
 
             // Initialize the lower layers before we start.
             mWifiNative.initialize();
@@ -2951,19 +3005,24 @@ public class ActiveModeWarden {
     }
 
     /**
-     * Returns the number of 11be SoftApManagers which are being operated.
+     * Returns the number of multiple link devices (MLD) which are being operated.
      */
-    public int getNumberOf11beSoftApManager() {
+    public int getCurrentMLDAp() {
         if (!SdkLevel.isAtLeastT()) {
             return 0;
         }
-        int numberOf11beSoftApManager = 0;
+        int numberMLD = 0;
         for (SoftApManager manager : mSoftApManagers) {
             if (manager.isStarted() && manager.getSoftApModeConfiguration()
                     .getSoftApConfiguration().isIeee80211beEnabled()) {
-                numberOf11beSoftApManager++;
+                if (manager.isBridgedMode() && !manager.isUsingMlo()) {
+                    // Non MLO bridged mode, it occupies two MLD APs.
+                    numberMLD += 2;
+                } else {
+                    numberMLD++;
+                }
             }
         }
-        return numberOf11beSoftApManager;
+        return numberMLD;
     }
 }

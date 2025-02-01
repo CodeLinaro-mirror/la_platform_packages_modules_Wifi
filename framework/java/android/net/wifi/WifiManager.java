@@ -4062,6 +4062,12 @@ public class WifiManager {
     public static final int WIFI_FEATURE_SOFTAP_MLO = 63;
 
     /**
+     * Supports multiple Wi-Fi 7 multi-link devices (MLD) on SoftAp.
+     * @hide
+     */
+    public static final int WIFI_FEATURE_MULTIPLE_MLD_ON_SAP = 64;
+
+    /**
      * NOTE: When adding a new WIFI_FEATURE_ value, also be sure to update
      * {@link com.android.server.wifi.util.FeatureBitsetUtils}
      */
@@ -13212,12 +13218,13 @@ public class WifiManager {
     @FlaggedApi(android.security.Flags.FLAG_AAPM_API)
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     @NonNull
+    @SuppressLint("NewApi")
     public List<AdvancedProtectionFeature> getAvailableAdvancedProtectionFeatures() {
         if (!Environment.isSdkAtLeastB()) {
             throw new UnsupportedOperationException();
         }
         List<AdvancedProtectionFeature> features = new ArrayList<>();
-        if (Flags.wepDisabledInApm()) {
+        if (Flags.wepDisabledInApm() && android.security.Flags.aapmApi()) {
             features.add(new AdvancedProtectionFeature(
                     AdvancedProtectionManager.FEATURE_ID_DISALLOW_WEP));
         }

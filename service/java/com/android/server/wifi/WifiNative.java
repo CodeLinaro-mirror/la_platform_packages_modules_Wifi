@@ -39,6 +39,7 @@ import android.net.MacAddress;
 import android.net.TrafficStats;
 import android.net.apf.ApfCapabilities;
 import android.net.wifi.CoexUnsafeChannel;
+import android.net.wifi.DeauthenticationReasonCode;
 import android.net.wifi.MscsParams;
 import android.net.wifi.OuiKeyedData;
 import android.net.wifi.QosPolicyParams;
@@ -61,6 +62,8 @@ import android.net.wifi.nl80211.RadioChainInfo;
 import android.net.wifi.nl80211.WifiNl80211Manager;
 import android.net.wifi.twt.TwtRequest;
 import android.net.wifi.twt.TwtSessionCallback;
+import android.net.wifi.usd.PublishConfig;
+import android.net.wifi.usd.SubscribeConfig;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -72,6 +75,8 @@ import android.util.ArraySet;
 import android.util.Log;
 import android.util.SparseArray;
 import android.util.SparseIntArray;
+
+import androidx.annotation.Keep;
 
 import com.android.internal.annotations.Immutable;
 import com.android.internal.annotations.VisibleForTesting;
@@ -85,11 +90,13 @@ import com.android.server.wifi.hal.WifiNanIface;
 import com.android.server.wifi.hotspot2.NetworkDetail;
 import com.android.server.wifi.mockwifi.MockWifiServiceUtil;
 import com.android.server.wifi.proto.WifiStatsLog;
+import com.android.server.wifi.usd.UsdRequestManager;
 import com.android.server.wifi.util.FrameParser;
 import com.android.server.wifi.util.InformationElementUtil;
 import com.android.server.wifi.util.NativeUtil;
 import com.android.server.wifi.util.NetdWrapper;
 import com.android.server.wifi.util.NetdWrapper.NetdEventObserver;
+import com.android.wifi.flags.Flags;
 import com.android.wifi.resources.R;
 
 import java.io.PrintWriter;
@@ -160,6 +167,7 @@ public class WifiNative {
      * (ScanResult.KEY_MGMT_XX)
      */
     @VisibleForTesting @Nullable SparseIntArray mUnknownAkmMap;
+    private SupplicantStaIfaceHal.UsdCapabilitiesInternal mCachedUsdCapabilities = null;
 
     public WifiNative(WifiVendorHal vendorHal,
                       SupplicantStaIfaceHal staIfaceHal, HostapdHal hostapdHal,
@@ -266,6 +274,80 @@ public class WifiNative {
     }
 
     /**
+     * Whether USD subscriber is supported in USD capability or not.
+     */
+    public boolean isUsdSubscriberSupported() {
+        return mCachedUsdCapabilities != null && mCachedUsdCapabilities.isUsdSubscriberSupported;
+    }
+
+    /**
+     * Whether USD publisher is supported in USD capability or not.
+     */
+    public boolean isUsdPublisherSupported() {
+        return mCachedUsdCapabilities != null && mCachedUsdCapabilities.isUsdPublisherSupported;
+    }
+
+    /**
+     * Gets USD capabilities.
+     */
+    public SupplicantStaIfaceHal.UsdCapabilitiesInternal getUsdCapabilities() {
+        return mCachedUsdCapabilities;
+    }
+
+    /**
+     * Start USD publish.
+     */
+    public boolean startUsdPublish(String interfaceName, int cmdId, PublishConfig publishConfig) {
+        return mSupplicantStaIfaceHal.startUsdPublish(interfaceName, cmdId, publishConfig);
+    }
+
+    /**
+     * Register a framework callback to receive USD events from HAL.
+     */
+    public void registerUsdEventsCallback(
+            UsdRequestManager.UsdNativeEventsCallback usdNativeEventsCallback) {
+        mSupplicantStaIfaceHal.registerUsdEventsCallback(usdNativeEventsCallback);
+    }
+
+    /**
+     * Start USD subscribe.
+     */
+    public boolean startUsdSubscribe(String interfaceName, int cmdId,
+            SubscribeConfig subscribeConfig) {
+        return mSupplicantStaIfaceHal.startUsdSubscribe(interfaceName, cmdId, subscribeConfig);
+    }
+
+    /**
+     * Update USD publish.
+     */
+    public void updateUsdPublish(String interfaceName, int publishId, byte[] ssi) {
+        mSupplicantStaIfaceHal.updateUsdPublish(interfaceName, publishId, ssi);
+    }
+
+    /**
+     * Cancel USD publish.
+     */
+    public void cancelUsdPublish(String interfaceName, int publishId) {
+        mSupplicantStaIfaceHal.cancelUsdPublish(interfaceName, publishId);
+    }
+
+    /**
+     * Cancel USD subscribe.
+     */
+    public void cancelUsdSubscribe(String interfaceName, int subscribeId) {
+        mSupplicantStaIfaceHal.cancelUsdSubscribe(interfaceName, subscribeId);
+    }
+
+    /**
+     * Send USD message to the peer identified by the peerId and the peerMacAddress.
+     */
+    public boolean sendUsdMessage(String interfaceName, int ownId, int peerId,
+            MacAddress peerMacAddress, byte[] message) {
+        return mSupplicantStaIfaceHal.sendUsdMessage(interfaceName, ownId, peerId, peerMacAddress,
+                message);
+    }
+
+    /**
      * Callbacks for SoftAp interface.
      */
     public class SoftApHalCallbackFromWificond implements WifiNl80211Manager.SoftApCallback {
@@ -288,13 +370,14 @@ public class WifiNative {
         @Override
         public void onSoftApChannelSwitched(int frequency, int bandwidth) {
             mSoftApHalCallback.onInfoChanged(mIfaceName, frequency, bandwidth,
-                    ScanResult.WIFI_STANDARD_UNKNOWN, null, Collections.emptyList());
+                    ScanResult.WIFI_STANDARD_UNKNOWN, null, null, Collections.emptyList());
         }
 
         @Override
         public void onConnectedClientsChanged(NativeWifiClient client, boolean isConnected) {
             mSoftApHalCallback.onConnectedClientsChanged(mIfaceName,
-                    client.getMacAddress(), isConnected);
+                    client.getMacAddress(), isConnected,
+                    DeauthenticationReasonCode.REASON_UNKNOWN);
         }
     }
 
@@ -346,11 +429,15 @@ public class WifiNative {
          *                     indication that the SoftAp is not enabled.
          * @param bandwidth The new bandwidth of the SoftAp.
          * @param generation The new generation of the SoftAp.
+         * @param apIfaceInstanceMacAddress MAC Address of the apIfaceInstance.
+         * @param mldMacAddress MAC Address of the multiple link device (MLD) which apIfaceInstance
+         *                      is associated with.
          * @param vendorData List of {@link OuiKeyedData} containing vendor-specific configuration
          *                   data, or empty list if not provided.
          */
         void onInfoChanged(String apIfaceInstance, int frequency, int bandwidth,
-                int generation, MacAddress apIfaceInstanceMacAddress,
+                int generation, @Nullable MacAddress apIfaceInstanceMacAddress,
+                @Nullable MacAddress mldMacAddress,
                 @NonNull List<OuiKeyedData> vendorData);
         /**
          * Invoked when there is a change in the associated station (STA).
@@ -359,9 +446,11 @@ public class WifiNative {
          * @param clientAddress Macaddress of the client.
          * @param isConnected Indication as to whether the client is connected (true), or
          *                    disconnected (false).
+         * @param disconnectReason The reason for disconnection, if applicable. This
+         *                         parameter is only meaningful when {@code isConnected} is false.
          */
         void onConnectedClientsChanged(String apIfaceInstance, MacAddress clientAddress,
-                boolean isConnected);
+                boolean isConnected, @WifiAnnotations.SoftApDisconnectReason int disconnectReason);
     }
 
     /********************************************************
@@ -1412,11 +1501,16 @@ public class WifiNative {
      *
      * @param ifaceName Name of the iface.
      * @param apIfaceInstance The identity of the ap instance.
+     * @param isMloAp true when current access point is using multiple link operation.
      * @return true if the operation succeeded, false if there is an error in Hal.
      */
     public boolean removeIfaceInstanceFromBridgedApIface(@NonNull String ifaceName,
-            @NonNull String apIfaceInstance) {
+            @NonNull String apIfaceInstance, boolean isMloAp) {
         synchronized (mLock) {
+            if (isMloAp && mHostapdHal != null && Flags.mloSap()) {
+                mHostapdHal.removeLinkFromMultipleLinkBridgedApIface(ifaceName,
+                        apIfaceInstance);
+            }
             if (mWifiVendorHal.isVendorHalSupported()) {
                 return mWifiVendorHal.removeIfaceInstanceFromBridgedApIface(ifaceName,
                         apIfaceInstance);
@@ -1582,6 +1676,18 @@ public class WifiNative {
     }
 
     /**
+     * Return true when the device supports Wi-Fi 7 MLD AP and multiple links operation (MLO).
+     */
+    public boolean isMLDApSupportMLO() {
+        if (!Flags.mloSap()) {
+            return false;
+        }
+        BitSet cachedFeatureSet = getCompleteFeatureSetFromConfigStore();
+        return mWifiInjector.getWifiGlobals().isMLDApSupported()
+                && cachedFeatureSet.get(WifiManager.WIFI_FEATURE_SOFTAP_MLO);
+    }
+
+    /**
      * Setup an interface for Soft AP mode operations.
      *
      * This method configures an interface in AP mode in all the native daemons
@@ -1598,7 +1704,8 @@ public class WifiNative {
     public String setupInterfaceForSoftApMode(
             @NonNull InterfaceCallback interfaceCallback, @NonNull WorkSource requestorWs,
             @SoftApConfiguration.BandType int band, boolean isBridged,
-            @NonNull SoftApManager softApManager, @NonNull List<OuiKeyedData> vendorData) {
+            @NonNull SoftApManager softApManager, @NonNull List<OuiKeyedData> vendorData,
+            boolean isUsingMlo) {
         synchronized (mLock) {
             String bugTitle = "Wi-Fi BugReport (softAp interface failure)";
             String errorMsg = "";
@@ -1636,7 +1743,7 @@ public class WifiNative {
                 return null;
             }
             String ifaceInstanceName = iface.name;
-            if (isBridged) {
+            if (isBridged && !isUsingMlo) {
                 List<String> instances = getBridgedApInstances(iface.name);
                 if (instances == null || instances.size() == 0) {
                     errorMsg = "Failed to get bridged AP instances" + iface.name;
@@ -1923,6 +2030,7 @@ public class WifiNative {
      * @return frequencies vector of valid frequencies (MHz), or null for error.
      * @throws IllegalArgumentException if band is not recognized.
      */
+    @Keep
     public int [] getChannelsForBand(@WifiAnnotations.WifiBandBasic int band) {
         if (!SdkLevel.isAtLeastS() && band == WifiScanner.WIFI_BAND_60_GHZ) {
             // 60 GHz band is new in Android S, return empty array on older SDK versions
@@ -2382,7 +2490,7 @@ public class WifiNative {
      */
     public @SoftApManager.StartResult int startSoftAp(
             @NonNull String ifaceName, SoftApConfiguration config, boolean isMetered,
-            SoftApHalCallback callback) {
+            SoftApHalCallback callback, boolean isUsingMlo) {
         if (mHostapdHal.isApInfoCallbackSupported()) {
             if (!mHostapdHal.registerApCallback(ifaceName, callback)) {
                 Log.e(TAG, "Failed to register ap hal event callback");
@@ -2397,8 +2505,10 @@ public class WifiNative {
                 return SoftApManager.START_RESULT_FAILURE_REGISTER_AP_CALLBACK_WIFICOND;
             }
         }
-
-        if (!mHostapdHal.addAccessPoint(ifaceName, config, isMetered, callback::onFailure)) {
+        if (!mHostapdHal.addAccessPoint(ifaceName, config, isMetered,
+                isUsingMlo,
+                getBridgedApInstances(ifaceName),
+                callback::onFailure)) {
             String errorMsg = "Failed to add softAp";
             Log.e(TAG, errorMsg);
             mWifiMetrics.incrementNumSetupSoftApInterfaceFailureDueToHostapd();
@@ -2418,6 +2528,7 @@ public class WifiNative {
      * @param reasonCode One of disconnect reason code which defined in {@link ApConfigUtil}.
      * @return true on success, false otherwise.
      */
+    @Keep
     public boolean forceClientDisconnect(@NonNull String ifaceName,
             @NonNull MacAddress client, int reasonCode) {
         return mHostapdHal.forceClientDisconnect(ifaceName, client, reasonCode);
@@ -3745,12 +3856,13 @@ public class WifiNative {
     @Nullable
     ScanData getCachedScanResults(String ifaceName) {
         ScanData scanData = mWifiVendorHal.getCachedScanData(ifaceName);
-        if (scanData == null || scanData.getResults() == null) {
+        ScanResult[] scanResults = scanData != null ? scanData.getResults() : null;
+        if (scanResults == null) {
             return null;
         }
-        ScanResult[] results = getCachedScanResultsFilteredByLocationModeEnabled(
-                scanData.getResults());
-        return new ScanData(0, 0, 0, scanData.getScannedBands(), results);
+        ScanResult[] filteredResults = getCachedScanResultsFilteredByLocationModeEnabled(
+                scanResults);
+        return new ScanData(0, 0, 0, scanData.getScannedBands(), filteredResults);
     }
 
     /**
@@ -3774,29 +3886,30 @@ public class WifiNative {
      * Gets the latest link layer stats
      * @param ifaceName Name of the interface.
      */
+    @Keep
     public WifiLinkLayerStats getWifiLinkLayerStats(@NonNull String ifaceName) {
         WifiLinkLayerStats stats = mWifiVendorHal.getWifiLinkLayerStats(ifaceName);
         if (stats != null) {
             stats.aggregateLinkLayerStats();
             stats.wifiMloMode = getMloMode();
             ScanData scanData = getCachedScanResults(ifaceName);
-            if (scanData != null && scanData.getResults() != null
-                    && scanData.getResults().length >  0) {
+            ScanResult[] scanResults = scanData != null ? scanData.getResults() : null;
+            if (scanResults != null && scanResults.length > 0) {
                 for (int linkIndex = 0; linkIndex < stats.links.length; ++linkIndex) {
                     List<ScanResultWithSameFreq> ScanResultsSameFreq = new ArrayList<>();
-                    for (int scanResultsIndex = 0; scanResultsIndex < scanData.getResults().length;
+                    for (int scanResultsIndex = 0; scanResultsIndex < scanResults.length;
                             ++scanResultsIndex) {
-                        if (scanData.getResults()[scanResultsIndex].frequency
+                        if (scanResults[scanResultsIndex].frequency
                                 != stats.links[linkIndex].frequencyMhz) {
                             continue;
                         }
                         ScanResultWithSameFreq ScanResultSameFreq = new ScanResultWithSameFreq();
                         ScanResultSameFreq.scan_result_timestamp_micros =
-                            scanData.getResults()[scanResultsIndex].timestamp;
-                        ScanResultSameFreq.rssi = scanData.getResults()[scanResultsIndex].level;
+                            scanResults[scanResultsIndex].timestamp;
+                        ScanResultSameFreq.rssi = scanResults[scanResultsIndex].level;
                         ScanResultSameFreq.frequencyMhz =
-                            scanData.getResults()[scanResultsIndex].frequency;
-                        ScanResultSameFreq.bssid = scanData.getResults()[scanResultsIndex].BSSID;
+                            scanResults[scanResultsIndex].frequency;
+                        ScanResultSameFreq.bssid = scanResults[scanResultsIndex].BSSID;
                         ScanResultsSameFreq.add(ScanResultSameFreq);
                     }
                     stats.links[linkIndex].scan_results_same_freq = ScanResultsSameFreq;
@@ -4036,6 +4149,7 @@ public class WifiNative {
         }
         Bundle twtCapabilities = mWifiVendorHal.getTwtCapabilities(ifaceName);
         if (twtCapabilities != null) mCachedTwtCapabilities.put(ifaceName, twtCapabilities);
+        mCachedUsdCapabilities = mSupplicantStaIfaceHal.getUsdCapabilities(ifaceName);
         return featureSet;
     }
 
@@ -4050,7 +4164,8 @@ public class WifiNative {
             if (getChannelsForBand(WifiScanner.WIFI_BAND_24_GHZ).length > 0) {
                 bands |= WifiScanner.WIFI_BAND_24_GHZ;
             }
-            if (getChannelsForBand(WifiScanner.WIFI_BAND_5_GHZ).length > 0) {
+            if ((getChannelsForBand(WifiScanner.WIFI_BAND_5_GHZ).length > 0)
+                    || (getChannelsForBand(WifiScanner.WIFI_BAND_5_GHZ_DFS_ONLY).length > 0)) {
                 bands |= WifiScanner.WIFI_BAND_5_GHZ;
             }
             if (getChannelsForBand(WifiScanner.WIFI_BAND_6_GHZ).length > 0) {
@@ -4119,6 +4234,7 @@ public class WifiNative {
      * Returns an array of SignalPollResult objects.
      * Returns null on failure.
      */
+    @Keep
     @Nullable
     public WifiSignalPollResults signalPoll(@NonNull String ifaceName) {
         if (mMockWifiModem != null
@@ -4950,6 +5066,7 @@ public class WifiNative {
      * @param ifaceName name of the interface
      * @return the device capabilities for this interface
      */
+    @Keep
     public DeviceWiphyCapabilities getDeviceWiphyCapabilities(@NonNull String ifaceName) {
         return getDeviceWiphyCapabilities(ifaceName, false);
     }
@@ -5001,6 +5118,7 @@ public class WifiNative {
      * @param ifaceName name of the interface
      * @param capabilities the wiphy capabilities to set for this interface
      */
+    @Keep
     public void setDeviceWiphyCapabilities(@NonNull String ifaceName,
             DeviceWiphyCapabilities capabilities) {
         synchronized (mLock) {

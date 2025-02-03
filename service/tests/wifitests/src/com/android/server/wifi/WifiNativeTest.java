@@ -870,7 +870,7 @@ public class WifiNativeTest extends WifiBaseTest {
         when(mWifiVendorHal.getBridgedApInstances(WIFI_IFACE_NAME))
                 .thenReturn(Arrays.asList(instance1, instance2));
         mWifiNative.setupInterfaceForSoftApMode(null, TEST_WORKSOURCE, SoftApConfiguration.BAND_2GHZ
-                | SoftApConfiguration.BAND_5GHZ, true, mSoftApManager, new ArrayList<>());
+                | SoftApConfiguration.BAND_5GHZ, true, mSoftApManager, new ArrayList<>(), false);
         ArgumentCaptor<HalDeviceManager.InterfaceDestroyedListener> ifaceDestroyedListenerCaptor =
                 ArgumentCaptor.forClass(HalDeviceManager.InterfaceDestroyedListener.class);
         verify(mWifiVendorHal).createApIface(ifaceDestroyedListenerCaptor.capture(), any(),
@@ -959,7 +959,7 @@ public class WifiNativeTest extends WifiBaseTest {
 
         mWifiNative.teardownAllInterfaces();
         mWifiNative.setupInterfaceForSoftApMode(null, TEST_WORKSOURCE, WIFI_BAND_24_GHZ, false,
-                mSoftApManager, new ArrayList<>());
+                mSoftApManager, new ArrayList<>(), false);
         verify(mWifiVendorHal, times(4)).setCoexUnsafeChannels(unsafeChannels, restrictions);
     }
 
@@ -1177,8 +1177,29 @@ public class WifiNativeTest extends WifiBaseTest {
     @Test
     public void testRemoveIfaceInstanceFromBridgedApIface() throws Exception {
         mWifiNative.removeIfaceInstanceFromBridgedApIface(
-                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME);
+                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME, false);
+        verify(mHostapdHal, never()).removeLinkFromMultipleLinkBridgedApIface(anyString(),
+                anyString());
         verify(mWifiVendorHal).removeIfaceInstanceFromBridgedApIface(
+                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME);
+
+        // verify removeLinkFromMultipleLinkBridgedApIface never call when flags is not enabled.
+        when(Flags.mloSap()).thenReturn(false);
+        mWifiNative.removeIfaceInstanceFromBridgedApIface(
+                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME, true);
+        verify(mHostapdHal, never()).removeLinkFromMultipleLinkBridgedApIface(anyString(),
+                anyString());
+        verify(mWifiVendorHal, times(2)).removeIfaceInstanceFromBridgedApIface(
+                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME);
+
+        // verify removeLinkFromMultipleLinkBridgedApIface will be called when feature flag
+        // is enabled.
+        when(Flags.mloSap()).thenReturn(true);
+        mWifiNative.removeIfaceInstanceFromBridgedApIface(
+                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME, true);
+        verify(mHostapdHal).removeLinkFromMultipleLinkBridgedApIface("br_" + WIFI_IFACE_NAME,
+                WIFI_IFACE_NAME);
+        verify(mWifiVendorHal, times(3)).removeIfaceInstanceFromBridgedApIface(
                 "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME);
     }
 
@@ -1724,6 +1745,35 @@ public class WifiNativeTest extends WifiBaseTest {
     }
 
     /**
+     * Verifies that getSupportedBandsForStaFromWifiCond() calls underlying wificond
+     * when all 5G available channels are DFS channels.
+     */
+    @Test
+    public void testGetSupportedBandsWhenOnly5DhsExist() throws Exception {
+        when(mWificondControl.getChannelsMhzForBand(WifiScanner.WIFI_BAND_24_GHZ)).thenReturn(
+                new int[]{2412});
+        when(mWificondControl.getChannelsMhzForBand(WifiScanner.WIFI_BAND_5_GHZ)).thenReturn(
+                new int[0]);
+        when(mWificondControl.getChannelsMhzForBand(WifiScanner.WIFI_BAND_5_GHZ_DFS_ONLY))
+                .thenReturn(new int[]{5500});
+        when(mWificondControl.getChannelsMhzForBand(WifiScanner.WIFI_BAND_6_GHZ)).thenReturn(
+                new int[0]);
+        when(mWificondControl.getChannelsMhzForBand(WifiScanner.WIFI_BAND_60_GHZ)).thenReturn(
+                new int[0]);
+        when(mWifiVendorHal.getUsableChannels(WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_60_GHZ,
+                WifiAvailableChannel.OP_MODE_STA,
+                WifiAvailableChannel.FILTER_REGULATORY)).thenReturn(null);
+        mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE,
+                mConcreteClientModeManager);
+        mWifiNative.switchClientInterfaceToConnectivityMode(WIFI_IFACE_NAME, TEST_WORKSOURCE);
+        verify(mWificondControl, times(2)).getChannelsMhzForBand(WifiScanner.WIFI_BAND_24_GHZ);
+        verify(mWificondControl, times(2)).getChannelsMhzForBand(WifiScanner.WIFI_BAND_5_GHZ);
+        verify(mWificondControl, times(2))
+                .getChannelsMhzForBand(WifiScanner.WIFI_BAND_5_GHZ_DFS_ONLY);
+        assertEquals(3, mWifiNative.getSupportedBandsForSta(WIFI_IFACE_NAME));
+    }
+
+    /**
      * Verifies that isSoftApInstanceDiedHandlerSupported() calls underlying HostapdHal.
      */
     @Test
@@ -1949,5 +1999,27 @@ public class WifiNativeTest extends WifiBaseTest {
         mWifiNative.switchClientInterfaceToConnectivityMode(WIFI_IFACE_NAME, TEST_WORKSOURCE);
         assertFalse(mWifiNative.mIsRsnOverridingSupported);
         mWifiNative.teardownAllInterfaces();
+    }
+
+    @Test
+    public void testIsMLDApSupportMLO() throws Exception {
+        when(Flags.mloSap()).thenReturn(true);
+        BitSet mloFeature =
+                createCapabilityBitset(WifiManager.WIFI_FEATURE_SOFTAP_MLO);
+        when(mWifiGlobals.isMLDApSupported()).thenReturn(true);
+        assertFalse(mWifiNative.isMLDApSupportMLO());
+
+        when(mSettingsConfigStore.get(eq(WIFI_NATIVE_EXTENDED_SUPPORTED_FEATURES)))
+                .thenReturn(mloFeature.toLongArray());
+        mWifiNative = new WifiNative(
+                mWifiVendorHal, mStaIfaceHal, mHostapdHal, mWificondControl,
+                mWifiMonitor, mPropertyService, mWifiMetrics,
+                mHandler, mRandom, mBuildProperties, mWifiInjector);
+        assertTrue(mWifiNative.isMLDApSupportMLO());
+        when(Flags.mloSap()).thenReturn(false);
+        assertFalse(mWifiNative.isMLDApSupportMLO());
+        when(Flags.mloSap()).thenReturn(true);
+        when(mWifiGlobals.isMLDApSupported()).thenReturn(false);
+        assertFalse(mWifiNative.isMLDApSupportMLO());
     }
 }

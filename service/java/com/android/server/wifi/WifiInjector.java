@@ -51,6 +51,8 @@ import android.telephony.TelephonyManager;
 import android.util.LocalLog;
 import android.util.Log;
 
+import androidx.annotation.Keep;
+
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.BackgroundThread;
 import com.android.modules.utils.build.SdkLevel;
@@ -272,6 +274,7 @@ public class WifiInjector {
     private final boolean mHasActiveModem;
     private final RunnerHandler mWifiHandler;
     private boolean mVerboseLoggingEnabled;
+    @Nullable private final WepNetworkUsageController mWepNetworkUsageController;
 
     public WifiInjector(WifiContext context) {
         if (context == null) {
@@ -303,7 +306,8 @@ public class WifiInjector {
         mWifiHandler = new RunnerHandler(wifiLooper, context.getResources().getInteger(
                 R.integer.config_wifiConfigurationWifiRunnerThresholdInMs),
                 mWifiHandlerLocalLog);
-        mWifiDeviceStateChangeManager = new WifiDeviceStateChangeManager(context, mWifiHandler);
+        mWifiDeviceStateChangeManager = new WifiDeviceStateChangeManager(context, mWifiHandler,
+                this);
         mWifiGlobals = new WifiGlobals(mContext);
         mWifiMetrics = new WifiMetrics(mContext, mFrameworkFacade, mClock, wifiLooper,
                 awareMetrics, rttMetrics, new WifiPowerMetrics(mBatteryStats), mWifiP2pMetrics,
@@ -634,6 +638,13 @@ public class WifiInjector {
             mWifiVoipDetector = null;
         }
         mHasActiveModem = makeTelephonyManager().getActiveModemCount() > 0;
+        if (mFeatureFlags.wepDisabledInApm()) {
+            mWepNetworkUsageController = new WepNetworkUsageController(mWifiHandlerThread,
+                    mWifiDeviceStateChangeManager, mSettingsConfigStore, mWifiGlobals,
+                    mActiveModeWarden, mFeatureFlags);
+        } else {
+            mWepNetworkUsageController = null;
+        }
     }
 
     /**
@@ -642,6 +653,7 @@ public class WifiInjector {
      * This is the generic method to get an instance of the class. The first instance should be
      * retrieved using the getInstanceWithContext method.
      */
+    @Keep
     public static WifiInjector getInstance() {
         if (sWifiInjector == null) {
             throw new IllegalStateException(
@@ -752,7 +764,7 @@ public class WifiInjector {
     public SarManager getSarManager() {
         return mSarManager;
     }
-
+    @Keep
     public ActiveModeWarden getActiveModeWarden() {
         return mActiveModeWarden;
     }
@@ -784,7 +796,7 @@ public class WifiInjector {
     public WifiMulticastLockManager getWifiMulticastLockManager() {
         return mWifiMulticastLockManager;
     }
-
+    @Keep
     public WifiConfigManager getWifiConfigManager() {
         return mWifiConfigManager;
     }
@@ -816,6 +828,7 @@ public class WifiInjector {
         return mContext.getSystemService(BatteryManager.class);
     }
 
+    @Keep
     public WifiCarrierInfoManager getWifiCarrierInfoManager() {
         return mWifiCarrierInfoManager;
     }
@@ -1018,14 +1031,17 @@ public class WifiInjector {
         return mHalDeviceManager;
     }
 
+    @Keep
     public WifiNative getWifiNative() {
         return mWifiNative;
     }
 
+    @Keep
     public WifiMonitor getWifiMonitor() {
         return mWifiMonitor;
     }
 
+    @Keep
     public WifiP2pNative getWifiP2pNative() {
         return mWifiP2pNative;
     }
@@ -1046,6 +1062,7 @@ public class WifiInjector {
         return mSelfRecovery;
     }
 
+    @Keep
     public ScanRequestProxy getScanRequestProxy() {
         return mScanRequestProxy;
     }
@@ -1081,6 +1098,7 @@ public class WifiInjector {
         return mHostapdHal;
     }
 
+    @Keep
     public WifiThreadRunner getWifiThreadRunner() {
         return mWifiThreadRunner;
     }
@@ -1126,6 +1144,7 @@ public class WifiInjector {
         return mConnectHelper;
     }
 
+    @Keep
     public WifiNetworkFactory getWifiNetworkFactory() {
         return mWifiNetworkFactory;
     }
@@ -1154,6 +1173,7 @@ public class WifiInjector {
         return mWifiP2pConnection;
     }
 
+    @Keep
     public WifiGlobals getWifiGlobals() {
         return mWifiGlobals;
     }
@@ -1315,5 +1335,10 @@ public class WifiInjector {
      */
     public boolean isVerboseLoggingEnabled() {
         return mVerboseLoggingEnabled;
+    }
+
+    @Nullable
+    public WepNetworkUsageController getWepNetworkUsageController() {
+        return mWepNetworkUsageController;
     }
 }

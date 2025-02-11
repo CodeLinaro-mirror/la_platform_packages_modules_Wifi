@@ -124,6 +124,7 @@ import android.util.ArraySet;
 import android.util.Log;
 import android.util.Pair;
 import android.util.Range;
+import android.os.SystemProperties;
 
 import androidx.annotation.RequiresApi;
 
@@ -212,7 +213,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     private boolean mVerboseLoggingEnabled = false;
 
-    private boolean isWifiChipOnRemoteTarget = false;
+    private boolean mIsWifiChipOnRemoteTarget = SystemProperties.getBoolean("ro.vendor.wlan.hal.rpc", false);
     /**
      * Log with error attribute
      *
@@ -845,9 +846,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 mDeviceConfigFacade);
 
         enableVerboseLogging(verboseLoggingEnabled);
-
-        isWifiChipOnRemoteTarget =
-                mContext.getResources().getBoolean(R.bool.config_wifiChipOnRemoteTarget);
 
         mNotificationManager = wifiNotificationManager;
         mInsecureEapNetworkHandlerCallbacksImpl =
@@ -6747,7 +6745,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         @Override
         public void enterImpl() {
-            if (!isWifiChipOnRemoteTarget) {
+            if (!mIsWifiChipOnRemoteTarget) {
                 startL3Provisioning();
             } else {
                 sendMessage(CMD_TRANSITION_TO_WAIT_REMOTE_L3PROVIONING_STATE);
@@ -8012,7 +8010,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             return false;
         }
 
-        if (isRemoteControl && isWifiChipOnRemoteTarget) {
+        if (isRemoteControl && mIsWifiChipOnRemoteTarget) {
             //inform remote side to start obtain IP processing
             log("remote control mode: send OBTAINING_IPADDR");
             sendNetworkChangeBroadcast(DetailedState.OBTAINING_IPADDR);
@@ -8035,7 +8033,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     + " static=" + isUsingStaticIp
                     + " randomMac=" + isUsingMacRandomization
                     + " isFilsConnection=" + isFilsConnection
-                    + " isWifiChipOnRemoteTarget" + isWifiChipOnRemoteTarget
+                    + " isWifiChipOnRemoteTarget" + mIsWifiChipOnRemoteTarget
                     + " isForceStaticIpForRemote=" + isForceStaticIpForRemote);
         }
 
@@ -8073,7 +8071,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             prov.withDhcpOptions(convertToInternalDhcpOptions(options));
             mIpClient.startProvisioning(prov.build());
         } else {
-            if (!isWifiChipOnRemoteTarget) {
+            if (!mIsWifiChipOnRemoteTarget) {
                 sendNetworkChangeBroadcast(DetailedState.OBTAINING_IPADDR);
             }
             // We must clear the config BSSID, as the wifi chipset may decide to roam

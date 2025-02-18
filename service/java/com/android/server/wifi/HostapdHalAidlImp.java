@@ -15,6 +15,11 @@
  */
 package com.android.server.wifi;
 
+import static android.net.wifi.WifiScanner.WIFI_BAND_24_GHZ;
+import static android.net.wifi.WifiScanner.WIFI_BAND_5_GHZ;
+import static android.net.wifi.WifiScanner.WIFI_BAND_6_GHZ;
+import static android.net.wifi.WifiScanner.WIFI_BAND_UNSPECIFIED;
+
 import android.annotation.NonNull;
 import android.content.Context;
 import android.hardware.wifi.hostapd.ApInfo;
@@ -401,7 +406,7 @@ public class HostapdHalAidlImp implements IHostapdHal {
                     String[] linkInfo = info.apIfaceInstance.split("_");
                     MloLink mloLink = new MloLink();
                     mloLink.setLinkId(Integer.parseInt(linkInfo[1]));
-                    mloLink.setBand(mapHalChannelBandwidthToSoftApInfo(info.channelBandwidth));
+                    mloLink.setBand(mapHalFreqToWifiBand(info.freqMhz));
                     mloLink.setChannel(ScanResult.convertFrequencyMhzToChannelIfSupported(info.freqMhz));
                     mloLink.setApMacAddress(MacAddress.fromBytes(linkMacAddress));
 
@@ -988,6 +993,21 @@ public class HostapdHalAidlImp implements IHostapdHal {
             ServiceSpecificException exception, String methodStr) {
         synchronized (mLock) {
             Log.e(TAG, "IHostapd." + methodStr + " failed: " + exception.toString());
+        }
+    }
+
+    /**
+     * convert AP frequency into wifi band defined @WifiAnnotations.WifiBandBasic
+     */
+    private int mapHalFreqToWifiBand(int freqMhz) {
+        if (ScanResult.is24GHz(freqMhz)) {
+            return WIFI_BAND_24_GHZ;
+        } else if (ScanResult.is5GHz(freqMhz)) {
+            return WIFI_BAND_5_GHZ;
+        } else if(ScanResult.is6GHz(freqMhz)) {
+            return WIFI_BAND_6_GHZ;
+        } else {
+            return WIFI_BAND_UNSPECIFIED;
         }
     }
 

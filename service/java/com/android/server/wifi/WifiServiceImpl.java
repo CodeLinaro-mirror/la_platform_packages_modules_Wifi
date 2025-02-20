@@ -1916,6 +1916,14 @@ public class WifiServiceImpl extends BaseWifiService {
                 mLohsState = state;
             }
         }
+
+        @Override
+        public void onConnectedClientsOrInfoChanged(Map<String, SoftApInfo> infos,
+                                                    Map<String, List<WifiClient>> clients,
+                                                    boolean isBridged) {
+            mTetheredSoftApTracker.onConnectedClientsOrInfoChanged(infos,
+                    clients, isBridged);
+        }
     }
 
     /**

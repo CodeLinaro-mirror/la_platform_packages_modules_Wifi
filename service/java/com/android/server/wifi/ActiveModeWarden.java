@@ -283,11 +283,6 @@ public class ActiveModeWarden {
      */
     public void addWifiStateChangedListener(@NonNull IWifiStateChangedListener listener) {
         mWifiStateChangedListeners.register(listener);
-        try {
-            listener.onWifiStateChanged();
-        } catch (RemoteException e) {
-            Log.e(TAG, "onWifiStateChanged: remote exception -- " + e);
-        }
     }
 
     /**

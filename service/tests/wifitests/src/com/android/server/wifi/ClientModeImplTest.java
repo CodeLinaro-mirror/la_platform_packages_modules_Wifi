@@ -2344,16 +2344,10 @@ public class ClientModeImplTest extends WifiBaseTest {
         mCmi.onIdleModeChanged(true);
         verify(mWifiNative, never()).enableFirmwareRoaming(anyString(), anyInt());
 
-        // Enable both, then verify firmware roaming is not yet disabled when idle mode is entered
-        // because screen is still on
+        // Enable both, then verify firmware roaming is disabled when idle mode is entered
         when(mWifiGlobals.isDisableFirmwareRoamingInIdleMode()).thenReturn(true);
         when(mWifiConnectivityHelper.isFirmwareRoamingSupported()).thenReturn(true);
         mCmi.onIdleModeChanged(true);
-        verify(mWifiNative, never()).enableFirmwareRoaming(anyString(), anyInt());
-
-        // Verify firmware roaming is now disabled after screen turns off
-        setScreenState(false);
-        mLooper.dispatchAll();
         verify(mWifiNative).enableFirmwareRoaming(anyString(),
                 eq(WifiNative.DISABLE_FIRMWARE_ROAMING));
 
@@ -2375,8 +2369,6 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mWifiGlobals.isDisableFirmwareRoamingInIdleMode()).thenReturn(true);
         when(mWifiConnectivityHelper.isFirmwareRoamingSupported()).thenReturn(true);
         mCmi.onIdleModeChanged(true);
-        setScreenState(false);
-        mLooper.dispatchAll();
         verify(mWifiNative).enableFirmwareRoaming(anyString(),
                 eq(WifiNative.DISABLE_FIRMWARE_ROAMING));
 

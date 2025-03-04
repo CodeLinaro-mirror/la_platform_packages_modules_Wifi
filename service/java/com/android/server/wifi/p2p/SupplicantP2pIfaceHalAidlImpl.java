@@ -42,7 +42,6 @@ import android.hardware.wifi.supplicant.P2pExtListenInfo;
 import android.hardware.wifi.supplicant.P2pFrameTypeMask;
 import android.hardware.wifi.supplicant.P2pPairingBootstrappingMethodMask;
 import android.hardware.wifi.supplicant.P2pProvisionDiscoveryParams;
-import android.hardware.wifi.supplicant.P2pReinvokePersistentGroupParams;
 import android.hardware.wifi.supplicant.P2pScanType;
 import android.hardware.wifi.supplicant.P2pUsdBasedServiceAdvertisementConfig;
 import android.hardware.wifi.supplicant.P2pUsdBasedServiceDiscoveryConfig;
@@ -1349,41 +1348,21 @@ public class SupplicantP2pIfaceHalAidlImpl implements ISupplicantP2pIfaceHal {
         }
     }
 
-    private boolean reinvokePersistentGroupWithParams(byte[] macAddress, int networkId,
-            int dikId) {
-        String methodStr = "reinvokePersistentGroupWithParams";
-        P2pReinvokePersistentGroupParams params = new P2pReinvokePersistentGroupParams();
-        params.peerMacAddress = macAddress;
-        params.persistentNetworkId = networkId;
-        params.deviceIdentityEntryId = dikId;
-        try {
-            mISupplicantP2pIface.reinvokePersistentGroup(params);
-            return true;
-        } catch (RemoteException e) {
-            handleRemoteException(e, methodStr);
-        } catch (ServiceSpecificException e) {
-            handleServiceSpecificException(e, methodStr);
-        }
-        return false;
-    }
-
     /**
      * Reinvoke a device from a persistent group.
      *
-     * @param networkId Used to specify the persistent group (valid only for P2P V1 group).
+     * @param networkId Used to specify the persistent group.
      * @param peerAddress MAC address of the device to reinvoke.
-     * @param dikId The identifier of device identity key of the device to reinvoke.
-     *              (valid only for P2P V2 group).
      *
      * @return true, if operation was successful.
      */
-    public boolean reinvoke(int networkId, String peerAddress, int dikId) {
+    public boolean reinvoke(int networkId, String peerAddress) {
         synchronized (mLock) {
             String methodStr = "reinvoke";
             if (!checkP2pIfaceAndLogFailure(methodStr)) {
                 return false;
             }
-            if (TextUtils.isEmpty(peerAddress) || (networkId < 0 && dikId < 0)) {
+            if (TextUtils.isEmpty(peerAddress) || networkId < 0) {
                 return false;
             }
             byte[] macAddress = null;
@@ -1392,11 +1371,6 @@ public class SupplicantP2pIfaceHalAidlImpl implements ISupplicantP2pIfaceHal {
             } catch (IllegalArgumentException e) {
                 Log.e(TAG, "Could not parse mac address.", e);
                 return false;
-            }
-
-            /* Call only for P2P V2 group now. TODO extend for V1 group in the future. */
-            if (getCachedServiceVersion() >= 4 && dikId >= 0) {
-                return reinvokePersistentGroupWithParams(macAddress, networkId, dikId);
             }
 
             try {

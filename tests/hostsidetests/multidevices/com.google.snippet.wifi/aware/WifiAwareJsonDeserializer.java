@@ -96,6 +96,7 @@ public class WifiAwareJsonDeserializer {
     private static final String RANGING_REQUEST_PEER_IDS = "peer_ids";
     private static final String RANGING_REQUEST_PEER_MACS = "peer_mac_addresses";
 
+
     private WifiAwareJsonDeserializer() {
     }
 

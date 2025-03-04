@@ -822,15 +822,6 @@ public class WifiNative {
                     Log.e(TAG, "Failed to register supplicant death handler");
                     return false;
                 }
-                if (mMainlineSupplicant.isAvailable()) {
-                    if (mMainlineSupplicant.startService()) {
-                        mMainlineSupplicant.registerFrameworkDeathHandler(
-                                new MainlineSupplicantDeathHandlerInternal());
-                    } else {
-                        // Fail quietly if the mainline supplicant does not start
-                        Log.e(TAG, "Unable to start the mainline supplicant");
-                    }
-                }
             }
             return true;
         }
@@ -852,12 +843,6 @@ public class WifiNative {
                     } else {
                         mWifiInjector.getWifiP2pNative().stopP2pSupplicantIfNecessary();
                     }
-                }
-
-                // Mainline supplicant should be disabled if no STA ifaces are in use
-                if (mMainlineSupplicant.isActive()) {
-                    mMainlineSupplicant.unregisterFrameworkDeathHandler();
-                    mMainlineSupplicant.stopService();
                 }
             }
         }
@@ -1097,19 +1082,6 @@ public class WifiNative {
                 Log.i(TAG, "hostapd died. Cleaning up internal state.");
                 onNativeDaemonDeath();
                 mWifiMetrics.incrementNumHostapdCrashes();
-            });
-        }
-    }
-
-    /**
-     * Death handler for the mainline supplicant.
-     */
-    private class MainlineSupplicantDeathHandlerInternal implements SupplicantDeathEventHandler {
-        public void onDeath() {
-            mHandler.post(() -> {
-                // TODO: Add metrics for mainline supplicant crashes
-                Log.i(TAG, "Mainline supplicant died. Cleaning up internal state.");
-                onNativeDaemonDeath();
             });
         }
     }
@@ -1838,26 +1810,15 @@ public class WifiNative {
     public boolean switchClientInterfaceToScanMode(@NonNull String ifaceName,
             @NonNull WorkSource requestorWs) {
         synchronized (mLock) {
-            Iface iface = null;
-            Iterator<Integer> ifaceIdIter = mIfaceMgr.getIfaceIdIter();
-            while (ifaceIdIter.hasNext()) {
-                Iface nextIface = mIfaceMgr.getIface(ifaceIdIter.next());
-                if (nextIface.name.equals(ifaceName)) {
-                    if (nextIface.type == Iface.IFACE_TYPE_STA_FOR_CONNECTIVITY) {
-                        iface = nextIface;
-                        break;
-                    } else if (nextIface.type == Iface.IFACE_TYPE_STA_FOR_SCAN) {
-                        Log.e(TAG, "Already in scan mode on iface=" + ifaceName);
-                        return true;
-                    }
-                }
-            }
-
+            final Iface iface = mIfaceMgr.getIface(ifaceName);
             if (iface == null) {
                 Log.e(TAG, "Trying to switch to scan mode on an invalid iface=" + ifaceName);
                 return false;
             }
-
+            if (iface.type == Iface.IFACE_TYPE_STA_FOR_SCAN) {
+                Log.e(TAG, "Already in scan mode on iface=" + ifaceName);
+                return true;
+            }
             if (mWifiVendorHal.isVendorHalSupported()
                     && !mWifiVendorHal.replaceStaIfaceRequestorWs(iface.name, requestorWs)) {
                 Log.e(TAG, "Failed to replace requestor ws on " + iface);
@@ -1892,27 +1853,16 @@ public class WifiNative {
     public boolean switchClientInterfaceToConnectivityMode(@NonNull String ifaceName,
             @NonNull WorkSource requestorWs) {
         synchronized (mLock) {
-            Iface iface = null;
-            Iterator<Integer> ifaceIdIter = mIfaceMgr.getIfaceIdIter();
-            while (ifaceIdIter.hasNext()) {
-                Iface nextIface = mIfaceMgr.getIface(ifaceIdIter.next());
-                if (nextIface.name.equals(ifaceName)) {
-                    if (nextIface.type == Iface.IFACE_TYPE_STA_FOR_SCAN) {
-                        iface = nextIface;
-                        break;
-                    } else if (nextIface.type == Iface.IFACE_TYPE_STA_FOR_CONNECTIVITY) {
-                        Log.e(TAG, "Already in connectivity mode on iface=" + ifaceName);
-                        return true;
-                    }
-                }
-            }
-
+            final Iface iface = mIfaceMgr.getIface(ifaceName);
             if (iface == null) {
                 Log.e(TAG, "Trying to switch to connectivity mode on an invalid iface="
                         + ifaceName);
                 return false;
             }
-
+            if (iface.type == Iface.IFACE_TYPE_STA_FOR_CONNECTIVITY) {
+                Log.e(TAG, "Already in connectivity mode on iface=" + ifaceName);
+                return true;
+            }
             if (mWifiVendorHal.isVendorHalSupported()
                     && !mWifiVendorHal.replaceStaIfaceRequestorWs(iface.name, requestorWs)) {
                 Log.e(TAG, "Failed to replace requestor ws on " + iface);

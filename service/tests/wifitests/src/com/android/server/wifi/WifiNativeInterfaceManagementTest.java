@@ -228,6 +228,9 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
         when(mHostapdHal.removeAccessPoint(any())).thenReturn(true);
         when(mHostapdHal.registerApCallback(any(), any())).thenReturn(true);
 
+        when(mMainlineSupplicant.isAvailable()).thenReturn(true);
+        when(mMainlineSupplicant.startService()).thenReturn(true);
+
         when(mWifiGlobals.isWifiInterfaceAddedSelfRecoveryEnabled()).thenReturn(false);
 
         when(mWifiInjector.makeNetdWrapper()).thenReturn(mNetdWrapper);
@@ -2300,6 +2303,10 @@ public class WifiNativeInterfaceManagementTest extends WifiBaseTest {
         validateStartHal(hasStaIface || hasApIface || hasP2pIface || hasNanIface, true);
         assertNotNull(mActiveNanIface);
         assertEquals(mActiveNanIface.iface, mActiveWifiNanIface);
+        // Make sure switch client interface will not work on Aware interfaces
+        assertFalse(mWifiNative.switchClientInterfaceToScanMode(IFACE_NAME_AWARE, TEST_WORKSOURCE));
+        assertFalse(mWifiNative.switchClientInterfaceToConnectivityMode(IFACE_NAME_AWARE,
+                TEST_WORKSOURCE));
     }
 
     private void executeAndValidateTeardownNanInterface(

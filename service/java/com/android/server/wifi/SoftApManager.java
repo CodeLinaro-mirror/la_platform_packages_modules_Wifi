@@ -227,6 +227,9 @@ public class SoftApManager implements ActiveModeManager {
     // Whether this SoftApManager (i.e. this AP interface) is using multiple link operation.
     private boolean mIsUsingMlo = false;
 
+    private int mMaximumNumberOfMLDSupported;
+    private int mCurrentExistingMLD;
+
     /**
      * The specified configuration passed in during initialization or during a configuration update
      * that doesn't require a restart.
@@ -244,6 +247,10 @@ public class SoftApManager implements ActiveModeManager {
      */
     @Nullable
     private SoftApConfiguration mCurrentSoftApConfiguration;
+    /**
+     * Whether the configuration being used is the user's persistent SoftApConfiguration.
+     */
+    private boolean mIsUsingPersistentSoftApConfiguration = false;
 
     @NonNull
     private Map<String, SoftApInfo> mCurrentSoftApInfoMap = new HashMap<>();
@@ -293,6 +300,8 @@ public class SoftApManager implements ActiveModeManager {
     private int mCurrentApState = WifiManager.WIFI_AP_STATE_DISABLED;
 
     private boolean mIsSoftApStartedEventWritten = false;
+
+    private int mMaxConnectedClients = 0;
 
     /**
      * A map stores shutdown timeouts for each Soft Ap instance.
@@ -486,9 +495,11 @@ public class SoftApManager implements ActiveModeManager {
         mWifiApConfigStore = wifiApConfigStore;
         mCurrentSoftApConfiguration = apConfig.getSoftApConfiguration();
         mCurrentSoftApCapability = apConfig.getCapability();
+
         // null is a valid input and means we use the user-configured tethering settings.
         if (mCurrentSoftApConfiguration == null) {
             mCurrentSoftApConfiguration = mWifiApConfigStore.getApConfiguration();
+            mIsUsingPersistentSoftApConfiguration = true;
             // may still be null if we fail to load the default config
         }
         // Store mode configuration before update the configuration.
@@ -528,6 +539,9 @@ public class SoftApManager implements ActiveModeManager {
         mRole = role;
         // chip support it && overlay configuration is set.
         mIsMLDApSupportMLO = mWifiNative.isMLDApSupportMLO();
+        mMaximumNumberOfMLDSupported = ApConfigUtil.getMaximumSupportedMLD(
+                mContext, mWifiNative.isMultipleMLDSupportedOnSap());
+        mCurrentExistingMLD = mActiveModeWarden.getCurrentMLDAp();
         mIsUsingMlo = useMultilinkMloSoftAp();
         enableVerboseLogging(verboseLoggingEnabled);
         mStateMachine.sendMessage(SoftApStateMachine.CMD_START, requestorWs);
@@ -563,12 +577,10 @@ public class SoftApManager implements ActiveModeManager {
                 && mCurrentSoftApConfiguration.isIeee80211beEnabled()
                 && isBridgedMode() && mIsMLDApSupportMLO) {
 
-            int currentExistingMLD =
-                    mActiveModeWarden.getCurrentMLDAp();
             if (ApConfigUtil.is11beAllowedForThisConfiguration(
                     null /* Wiphy capability can be ignored for MLO case*/,
                     mContext, mCurrentSoftApConfiguration, true /* isBridgedMode */,
-                    currentExistingMLD,
+                    mMaximumNumberOfMLDSupported, mCurrentExistingMLD,
                     true /* isMLDApSupportMLO */)) {
                 return true;
             }
@@ -1312,8 +1324,8 @@ public class SoftApManager implements ActiveModeManager {
                                                 .setBand(newSingleApBand)
                                                 .build();
                             }
-                        } else if (!isCountryCodeChanged
-                                && mRole == ROLE_SOFTAP_TETHERED && isBridgedApAvailable()) {
+                        } else if (!isCountryCodeChanged && isBridgedApAvailable()
+                                && mIsUsingPersistentSoftApConfiguration) {
                             // Try upgrading config to 2 + 5 GHz Dual Band if the available config
                             // bands only include 2 or 5 Ghz. This is to handle cases where the
                             // config was previously set to single band in a CC that didn't support
@@ -1377,11 +1389,9 @@ public class SoftApManager implements ActiveModeManager {
                             DeviceWiphyCapabilities capabilities =
                                     mWifiNative.getDeviceWiphyCapabilities(
                                             mApInterfaceName, isBridgeRequired());
-                            int currentExistingMLD =
-                                    mActiveModeWarden.getCurrentMLDAp();
                             if (!ApConfigUtil.is11beAllowedForThisConfiguration(capabilities,
                                     mContext, mCurrentSoftApConfiguration, isBridgedMode(),
-                                    currentExistingMLD,
+                                    mMaximumNumberOfMLDSupported, mCurrentExistingMLD,
                                     mIsMLDApSupportMLO)) {
                                 Log.d(getTag(), "11BE is not allowed,"
                                         + " removing from configuration");
@@ -1545,7 +1555,7 @@ public class SoftApManager implements ActiveModeManager {
                                     mCurrentSoftApCapability, mContext, mWifiNative, null);
                     updateSafeChannelFrequencyList();
                     int[] oldBands = mCurrentSoftApConfiguration.getBands();
-                    if (mRole == ROLE_SOFTAP_TETHERED && isBridgedApAvailable()) {
+                    if (isBridgedApAvailable() && mIsUsingPersistentSoftApConfiguration) {
                         mCurrentSoftApConfiguration =
                                 ApConfigUtil.upgradeTo2g5gBridgedIfAvailableBandsAreSubset(
                                         mCurrentSoftApConfiguration,
@@ -1667,7 +1677,7 @@ public class SoftApManager implements ActiveModeManager {
                             + mCurrentSoftApInfoMap.get(instanceName).getFrequency()
                             + ") from bridged iface " + mApInterfaceName);
                     mWifiNative.removeIfaceInstanceFromBridgedApIface(mApInterfaceName,
-                            instanceName);
+                            instanceName, mIsUsingMlo);
                     // Remove the info and update it.
                     updateSoftApInfo(mCurrentSoftApInfoMap.get(instanceName), true);
                 }
@@ -1802,6 +1812,8 @@ public class SoftApManager implements ActiveModeManager {
                     boolean isAllow = checkSoftApClient(mCurrentSoftApConfiguration, client);
                     if (isAllow) {
                         clientList.add(client);
+                        mMaxConnectedClients = clientList.size() > mMaxConnectedClients
+                                ? clientList.size() : mMaxConnectedClients;
                     } else {
                         return;
                     }
@@ -1823,6 +1835,8 @@ public class SoftApManager implements ActiveModeManager {
                 if (mSoftApCallback != null) {
                     if (Flags.softapDisconnectReason() && !isConnected) {
                         // Client successfully disconnected, should also notify callback
+                        mWifiMetrics.reportOnClientsDisconnected(client.getDisconnectReason(),
+                                mRequestorWs);
                         mSoftApCallback.onClientsDisconnected(
                                 currentInfoWithClientsChanged,
                                 ImmutableList.of(client));
@@ -2463,7 +2477,7 @@ public class SoftApManager implements ActiveModeManager {
                 durationSeconds,
                 securityType,
                 standard,
-                -1,
+                mMaxConnectedClients,
                 mDefaultShutdownIdleInstanceInBridgedModeTimeoutMillis > 0,
                 -1,
                 -1,

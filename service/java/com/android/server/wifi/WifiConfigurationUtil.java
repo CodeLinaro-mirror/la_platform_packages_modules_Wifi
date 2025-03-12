@@ -22,11 +22,13 @@ import static android.net.wifi.hotspot2.PasspointConfiguration.MAX_NUMBER_OF_OI;
 import static android.net.wifi.hotspot2.PasspointConfiguration.MAX_OI_VALUE;
 import static android.net.wifi.hotspot2.PasspointConfiguration.MAX_URL_BYTES;
 
+import static com.android.server.wifi.util.GeneralUtil.longToBitset;
 import static com.android.server.wifi.util.NativeUtil.addEnclosingQuotes;
 
 import android.annotation.SuppressLint;
 import android.net.IpConfiguration;
 import android.net.MacAddress;
+import android.net.ProxyInfo;
 import android.net.StaticIpConfiguration;
 import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiConfiguration;
@@ -40,6 +42,8 @@ import android.os.PatternMatcher;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.Pair;
+
+import androidx.annotation.Keep;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.build.SdkLevel;
@@ -78,6 +82,7 @@ public class WifiConfigurationUtil {
     private static final int WEP104_KEY_BYTES_LEN = 13;
     private static final int WEP40_KEY_BYTES_LEN = 5;
     private static final int MAX_STRING_LENGTH = 512;
+    private static final int MAX_ENTRY_SIZE = 100;
 
     @VisibleForTesting
     public static final String PASSWORD_MASK = "*";
@@ -103,6 +108,7 @@ public class WifiConfigurationUtil {
     /**
      * Helper method to check if the provided |config| corresponds to a PSK network or not.
      */
+    @Keep
     public static boolean isConfigForPskNetwork(WifiConfiguration config) {
         return config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK);
     }
@@ -124,6 +130,7 @@ public class WifiConfigurationUtil {
     /**
      * Helper method to check if the provided |config| corresponds to an SAE network or not.
      */
+    @Keep
     public static boolean isConfigForSaeNetwork(WifiConfiguration config) {
         return config.isSecurityType(WifiConfiguration.SECURITY_TYPE_SAE);
     }
@@ -131,6 +138,7 @@ public class WifiConfigurationUtil {
     /**
      * Helper method to check if the provided |config| corresponds to an OWE network or not.
      */
+    @Keep
     public static boolean isConfigForOweNetwork(WifiConfiguration config) {
         return config.isSecurityType(WifiConfiguration.SECURITY_TYPE_OWE);
     }
@@ -178,6 +186,7 @@ public class WifiConfigurationUtil {
     /**
      * Helper method to check if the provided |config| corresponds to a WEP network or not.
      */
+    @Keep
     public static boolean isConfigForWepNetwork(WifiConfiguration config) {
         return config.isSecurityType(WifiConfiguration.SECURITY_TYPE_WEP);
     }
@@ -194,6 +203,7 @@ public class WifiConfigurationUtil {
      * Helper method to check if the provided |config| corresponds to an open or enhanced
      * open network, or not.
      */
+    @Keep
     public static boolean isConfigForOpenNetwork(WifiConfiguration config) {
         return (!(isConfigForWepNetwork(config) || isConfigForPskNetwork(config)
                 || isConfigForWapiPskNetwork(config) || isConfigForWapiCertNetwork(config)
@@ -724,6 +734,42 @@ public class WifiConfigurationUtil {
                 Log.e(TAG, "validateIpConfiguration failed: null static ip Address");
                 return false;
             }
+            if (staticIpConfig.getDnsServers() != null
+                    && staticIpConfig.getDnsServers().size() > MAX_ENTRY_SIZE) {
+                Log.e(TAG, "validateIpConfiguration failed: too many DNS server");
+                return false;
+            }
+            if (staticIpConfig.getDomains() != null
+                    && staticIpConfig.getDomains().length() > MAX_STRING_LENGTH) {
+                Log.e(TAG, "validateIpConfiguration failed: domain name too long");
+                return false;
+            }
+        }
+        ProxyInfo proxyInfo = ipConfig.getHttpProxy();
+        if (proxyInfo != null) {
+            if (!proxyInfo.isValid()) {
+                Log.e(TAG, "validateIpConfiguration failed: invalid proxy info");
+                return false;
+            }
+            if (proxyInfo.getHost() != null
+                    && proxyInfo.getHost().length() > MAX_STRING_LENGTH) {
+                Log.e(TAG, "validateIpConfiguration failed: host name too long");
+                return false;
+            }
+            if (proxyInfo.getExclusionList() != null) {
+                if (proxyInfo.getExclusionList().length > MAX_ENTRY_SIZE) {
+                    Log.e(TAG, "validateIpConfiguration failed: too many entry in exclusion list");
+                    return false;
+                }
+                int sum = 0;
+                for (String s : proxyInfo.getExclusionList()) {
+                    sum += s.length();
+                    if (sum > MAX_STRING_LENGTH) {
+                        Log.e(TAG, "validateIpConfiguration failed: exclusion list size too large");
+                        return false;
+                    }
+                }
+            }
         }
         return true;
     }
@@ -827,6 +873,15 @@ public class WifiConfigurationUtil {
         }
         // TBD: Validate some enterprise params as well in the future here.
         return true;
+    }
+
+    /**
+     * Please check {@link #validate(WifiConfiguration, BitSet, boolean)}
+     */
+    @Keep
+    public static boolean validate(WifiConfiguration config, long supportedFeatureSet,
+            boolean isAdd) {
+        return validate(config, longToBitset(supportedFeatureSet), isAdd);
     }
 
     private static boolean validateStringField(String field, int maxLength) {
@@ -1187,7 +1242,7 @@ public class WifiConfigurationUtil {
     private static boolean isSecurityParamsSupported(SecurityParams params) {
         final BitSet wifiFeatures = WifiInjector.getInstance()
                 .getActiveModeWarden().getPrimaryClientModeManager()
-                .getSupportedFeatures();
+                .getSupportedFeaturesBitSet();
         switch (params.getSecurityType()) {
             case WifiConfiguration.SECURITY_TYPE_SAE:
                 return wifiFeatures.get(WifiManager.WIFI_FEATURE_WPA3_SAE);

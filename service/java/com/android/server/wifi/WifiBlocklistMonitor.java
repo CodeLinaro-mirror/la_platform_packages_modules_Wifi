@@ -34,6 +34,8 @@ import android.util.LocalLog;
 import android.util.Log;
 import android.util.SparseArray;
 
+import androidx.annotation.Keep;
+
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.wifi.util.StringUtil;
 import com.android.server.wifi.util.WifiPermissionsUtil;
@@ -428,6 +430,14 @@ public class WifiBlocklistMonitor {
         }
     }
 
+    /**
+     * Clear the blocklisted bssid entries with a specific block reason.
+     * @param blockReason block reason from WifiBlocklistMonitor.REASON_*
+     */
+    public void clearBssidBlocklistForReason(@FailureReason int blockReason) {
+        mBssidStatusMap.entrySet().removeIf(entry -> entry.getValue().blockReason == blockReason);
+    }
+
     private String getFailureReasonString(@FailureReason int reasonCode) {
         if (reasonCode == INVALID_REASON) {
             return "INVALID_REASON";
@@ -733,6 +743,7 @@ public class WifiBlocklistMonitor {
      * Clears the blocklist for BSSIDs associated with the input SSID only.
      * @param ssid
      */
+    @Keep
     public void clearBssidBlocklistForSsid(@NonNull String ssid) {
         int prevSize = mBssidStatusMap.size();
         mBssidStatusMap.entrySet().removeIf(e -> {

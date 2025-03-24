@@ -59,6 +59,7 @@ import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
 import android.util.SparseArray;
+import android.os.SystemProperties;
 
 import com.android.internal.annotations.Immutable;
 import com.android.internal.annotations.VisibleForTesting;
@@ -119,6 +120,8 @@ public class WifiNative {
     private NetdWrapper mNetdWrapper;
     private boolean mVerboseLoggingEnabled = false;
     private boolean mIsEnhancedOpenSupported = false;
+    private boolean mIsWifiChipOnRemoteTarget =
+            SystemProperties.getBoolean("ro.vendor.wlan.hal.rpc", false);
     private final List<CoexUnsafeChannel> mCachedCoexUnsafeChannels = new ArrayList<>();
     private int mCachedCoexRestrictions;
     private CountryCodeChangeListenerInternal mCountryCodeChangeListener;
@@ -1405,7 +1408,7 @@ public class WifiNative {
                 return null;
             }
             String ifaceInstanceName = iface.name;
-            if (isBridged) {
+            if (isBridged || mIsWifiChipOnRemoteTarget) {
                 List<String> instances = getBridgedApInstances(iface.name);
                 if (instances == null || instances.size() == 0) {
                     errorMsg = "Failed to get bridged AP instances" + iface.name;
@@ -4555,7 +4558,15 @@ public class WifiNative {
                 return null;
             }
             if (iface.phyCapabilities == null) {
-                iface.phyCapabilities = mWifiCondManager.getDeviceWiphyCapabilities(ifaceName);
+                if (mIsWifiChipOnRemoteTarget) {
+                    //remote wlan always create bridge interface in AP mode,
+                    //but it will not create bridge and instance interface in STA mode
+                    String bridgedInstance = mWifiCondIfacesForBridgedAp.get(ifaceName);
+                    iface.phyCapabilities = mWifiCondManager.getDeviceWiphyCapabilities(
+                                            (bridgedInstance != null) ? bridgedInstance : ifaceName);
+                } else {
+                    iface.phyCapabilities = mWifiCondManager.getDeviceWiphyCapabilities(ifaceName);
+                }
             }
             return iface.phyCapabilities;
         }

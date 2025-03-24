@@ -1117,16 +1117,10 @@ public class ApConfigUtil {
                         && context.getResources().getBoolean(
                         R.bool.config_wifiSoftap5ghzSupported);
             case SoftApConfiguration.BAND_6GHZ:
-                //If config_wifiChipOnRemoteTarget is true, that means wifi chip
-                //is attached on remote targets, then ro.vendor.wlan.6ghz will not
-                //be configured. Therefore no need to check the vaule of
-                //ro.vendor.wlan.6ghz in wifi chip on remote case.
                 return context.getResources().getBoolean(R.bool.config_wifi6ghzSupport)
                         && context.getResources().getBoolean(
                         R.bool.config_wifiSoftap6ghzSupported)
-                        && context.getResources().getBoolean(
-                        R.bool.config_wifiChipOnRemoteTarget) ?
-                        true : SystemProperties.getBoolean(
+                        && SystemProperties.getBoolean(
                         "ro.vendor.wlan.6ghz", false);
             case SoftApConfiguration.BAND_60GHZ:
                 return context.getResources().getBoolean(R.bool.config_wifi60ghzSupport)

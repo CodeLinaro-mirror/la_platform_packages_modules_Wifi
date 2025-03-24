@@ -16,7 +16,7 @@
 
 /**
  * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -6189,6 +6189,14 @@ public class WifiManager {
             throw e.rethrowFromSystemServer();
         }
     }
+
+   public boolean sendObtainedIpInfoToClient(@NonNull String ipInfo, @NonNull boolean isPrimarySta) {
+        try {
+            return mService.sendObtainedIpInfoToClient(ipInfo, isPrimarySta);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+   }
 
     /**
      * Enable/Disable TDLS on a specific local route.

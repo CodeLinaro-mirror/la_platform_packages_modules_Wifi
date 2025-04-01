@@ -75,6 +75,7 @@ import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.coex.CoexManager;
 import com.android.server.wifi.hal.WifiChip;
+import com.android.server.wifi.mainline_supplicant.MainlineSupplicant;
 import com.android.server.wifi.p2p.WifiP2pNative;
 import com.android.server.wifi.proto.WifiStatsLog;
 import com.android.server.wifi.util.NativeUtil;
@@ -271,6 +272,7 @@ public class WifiNativeTest extends WifiBaseTest {
     @Mock private WifiVendorHal mWifiVendorHal;
     @Mock private WifiNl80211Manager mWificondControl;
     @Mock private SupplicantStaIfaceHal mStaIfaceHal;
+    @Mock private MainlineSupplicant mMainlineSupplicant;
     @Mock private HostapdHal mHostapdHal;
     @Mock private WifiMonitor mWifiMonitor;
     @Mock private PropertyService mPropertyService;
@@ -368,7 +370,7 @@ public class WifiNativeTest extends WifiBaseTest {
         mWifiNative = new WifiNative(
                 mWifiVendorHal, mStaIfaceHal, mHostapdHal, mWificondControl,
                 mWifiMonitor, mPropertyService, mWifiMetrics,
-                mHandler, mRandom, mBuildProperties, mWifiInjector);
+                mHandler, mRandom, mBuildProperties, mWifiInjector, mMainlineSupplicant);
         mWifiNative.enableVerboseLogging(true, true);
         mWifiNative.initialize();
         assertNull(mWifiNative.mUnknownAkmMap);
@@ -1177,8 +1179,29 @@ public class WifiNativeTest extends WifiBaseTest {
     @Test
     public void testRemoveIfaceInstanceFromBridgedApIface() throws Exception {
         mWifiNative.removeIfaceInstanceFromBridgedApIface(
-                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME);
+                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME, false);
+        verify(mHostapdHal, never()).removeLinkFromMultipleLinkBridgedApIface(anyString(),
+                anyString());
         verify(mWifiVendorHal).removeIfaceInstanceFromBridgedApIface(
+                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME);
+
+        // verify removeLinkFromMultipleLinkBridgedApIface never call when flags is not enabled.
+        when(Flags.mloSap()).thenReturn(false);
+        mWifiNative.removeIfaceInstanceFromBridgedApIface(
+                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME, true);
+        verify(mHostapdHal, never()).removeLinkFromMultipleLinkBridgedApIface(anyString(),
+                anyString());
+        verify(mWifiVendorHal, times(2)).removeIfaceInstanceFromBridgedApIface(
+                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME);
+
+        // verify removeLinkFromMultipleLinkBridgedApIface will be called when feature flag
+        // is enabled.
+        when(Flags.mloSap()).thenReturn(true);
+        mWifiNative.removeIfaceInstanceFromBridgedApIface(
+                "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME, true);
+        verify(mHostapdHal).removeLinkFromMultipleLinkBridgedApIface("br_" + WIFI_IFACE_NAME,
+                WIFI_IFACE_NAME);
+        verify(mWifiVendorHal, times(3)).removeIfaceInstanceFromBridgedApIface(
                 "br_" + WIFI_IFACE_NAME, WIFI_IFACE_NAME);
     }
 
@@ -1724,6 +1747,35 @@ public class WifiNativeTest extends WifiBaseTest {
     }
 
     /**
+     * Verifies that getSupportedBandsForStaFromWifiCond() calls underlying wificond
+     * when all 5G available channels are DFS channels.
+     */
+    @Test
+    public void testGetSupportedBandsWhenOnly5DhsExist() throws Exception {
+        when(mWificondControl.getChannelsMhzForBand(WifiScanner.WIFI_BAND_24_GHZ)).thenReturn(
+                new int[]{2412});
+        when(mWificondControl.getChannelsMhzForBand(WifiScanner.WIFI_BAND_5_GHZ)).thenReturn(
+                new int[0]);
+        when(mWificondControl.getChannelsMhzForBand(WifiScanner.WIFI_BAND_5_GHZ_DFS_ONLY))
+                .thenReturn(new int[]{5500});
+        when(mWificondControl.getChannelsMhzForBand(WifiScanner.WIFI_BAND_6_GHZ)).thenReturn(
+                new int[0]);
+        when(mWificondControl.getChannelsMhzForBand(WifiScanner.WIFI_BAND_60_GHZ)).thenReturn(
+                new int[0]);
+        when(mWifiVendorHal.getUsableChannels(WifiScanner.WIFI_BAND_24_5_WITH_DFS_6_60_GHZ,
+                WifiAvailableChannel.OP_MODE_STA,
+                WifiAvailableChannel.FILTER_REGULATORY)).thenReturn(null);
+        mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE,
+                mConcreteClientModeManager);
+        mWifiNative.switchClientInterfaceToConnectivityMode(WIFI_IFACE_NAME, TEST_WORKSOURCE);
+        verify(mWificondControl, times(2)).getChannelsMhzForBand(WifiScanner.WIFI_BAND_24_GHZ);
+        verify(mWificondControl, times(2)).getChannelsMhzForBand(WifiScanner.WIFI_BAND_5_GHZ);
+        verify(mWificondControl, times(2))
+                .getChannelsMhzForBand(WifiScanner.WIFI_BAND_5_GHZ_DFS_ONLY);
+        assertEquals(3, mWifiNative.getSupportedBandsForSta(WIFI_IFACE_NAME));
+    }
+
+    /**
      * Verifies that isSoftApInstanceDiedHandlerSupported() calls underlying HostapdHal.
      */
     @Test
@@ -1813,7 +1865,8 @@ public class WifiNativeTest extends WifiBaseTest {
                         mHandler,
                         mRandom,
                         mBuildProperties,
-                        mWifiInjector);
+                        mWifiInjector,
+                        mMainlineSupplicant);
         assertNull(wifiNativeInstance.mUnknownAkmMap);
 
         // Test that UnknownAkmMap is not set if non-integer values are added in the config.
@@ -1831,7 +1884,8 @@ public class WifiNativeTest extends WifiBaseTest {
                         mHandler,
                         mRandom,
                         mBuildProperties,
-                        mWifiInjector);
+                        mWifiInjector,
+                        mMainlineSupplicant);
         assertNull(wifiNativeInstance.mUnknownAkmMap);
 
         // Test that UnknownAkmMap is not set when an invalid AKM is set in the known AKM field
@@ -1850,7 +1904,8 @@ public class WifiNativeTest extends WifiBaseTest {
                         mHandler,
                         mRandom,
                         mBuildProperties,
-                        mWifiInjector);
+                        mWifiInjector,
+                        mMainlineSupplicant);
         assertNull(wifiNativeInstance.mUnknownAkmMap);
 
         // Test that UnknownAkmMap is set for a valid configuration
@@ -1869,7 +1924,8 @@ public class WifiNativeTest extends WifiBaseTest {
                         mHandler,
                         mRandom,
                         mBuildProperties,
-                        mWifiInjector);
+                        mWifiInjector,
+                        mMainlineSupplicant);
         assertEquals(1, wifiNativeInstance.mUnknownAkmMap.size());
         assertEquals(ScanResult.KEY_MGMT_EAP, wifiNativeInstance.mUnknownAkmMap.get(9846784));
 
@@ -1891,7 +1947,8 @@ public class WifiNativeTest extends WifiBaseTest {
                         mHandler,
                         mRandom,
                         mBuildProperties,
-                        mWifiInjector);
+                        mWifiInjector,
+                        mMainlineSupplicant);
         assertEquals(2, wifiNativeInstance.mUnknownAkmMap.size());
         assertEquals(ScanResult.KEY_MGMT_EAP, wifiNativeInstance.mUnknownAkmMap.get(9846784));
         assertEquals(ScanResult.KEY_MGMT_SAE_EXT_KEY, wifiNativeInstance.mUnknownAkmMap.get(1234));
@@ -1964,7 +2021,7 @@ public class WifiNativeTest extends WifiBaseTest {
         mWifiNative = new WifiNative(
                 mWifiVendorHal, mStaIfaceHal, mHostapdHal, mWificondControl,
                 mWifiMonitor, mPropertyService, mWifiMetrics,
-                mHandler, mRandom, mBuildProperties, mWifiInjector);
+                mHandler, mRandom, mBuildProperties, mWifiInjector, mMainlineSupplicant);
         assertTrue(mWifiNative.isMLDApSupportMLO());
         when(Flags.mloSap()).thenReturn(false);
         assertFalse(mWifiNative.isMLDApSupportMLO());

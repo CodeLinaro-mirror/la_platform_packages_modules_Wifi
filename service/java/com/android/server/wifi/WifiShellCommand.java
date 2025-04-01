@@ -188,6 +188,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             "set-mock-wifimodem-methods",
             "force-overlay-config-value",
             "get-softap-supported-features",
+            "get-wifi-supported-features",
             "get-overlay-config-values"
     };
 
@@ -1013,7 +1014,14 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     if (mWifiService.isFeatureSupported(WifiManager.WIFI_FEATURE_STA_BRIDGED_AP)) {
                         pw.println("wifi_softap_bridged_ap_with_sta_supported");
                     }
+                    if (mWifiNative.isMLDApSupportMLO()) {
+                        pw.println("wifi_softap_mlo_supported");
+                    }
                     return 0;
+                case "get-wifi-supported-features": {
+                    pw.println(mWifiService.getSupportedFeaturesString());
+                    return 0;
+                }
                 case "settings-reset":
                     mWifiNative.stopFakingScanDetails();
                     mWifiNative.resetFakeScanDetails();
@@ -2309,6 +2317,10 @@ public class WifiShellCommand extends BasicShellCommandHandler {
 
                     mWifiService.setPerSsidRoamingMode(wifiSsid, mode, SHELL_PACKAGE_NAME);
                     return 0;
+                case "set-scan-throttling-enabled":
+                    mWifiService.setScanThrottleEnabled(
+                            getNextArgRequiredTrueOrFalse("enabled", "disabled"));
+                    return 0;
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -3122,7 +3134,10 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    and/or 'wifi_softap_wpa3_sae_supported',");
         pw.println("    and/or 'wifi_softap_bridged_ap_supported',");
         pw.println("    and/or 'wifi_softap_bridged_ap_with_sta_supported',");
+        pw.println("    and/or 'wifi_softap_mlo_supported',");
         pw.println("    each on a separate line.");
+        pw.println("  get-wifi-supported-features");
+        pw.println("    Gets the features supported by WifiManager");
     }
 
     private void onHelpPrivileged(PrintWriter pw) {
@@ -3405,6 +3420,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    Sets the roaming mode for the given SSID.");
         pw.println("    -x - Specifies the SSID as hex digits instead of plain text.");
         pw.println("    Example: set-ssid-roaming-mode test_ssid aggressive");
+        pw.println("  set-scan-throttling-enabled enabled|disabled");
+        pw.println("    Set wifi scan throttling for 3P apps enabled or disabled.");
     }
 
     @Override

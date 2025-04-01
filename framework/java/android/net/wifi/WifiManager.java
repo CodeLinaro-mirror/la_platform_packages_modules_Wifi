@@ -52,6 +52,7 @@ import android.compat.annotation.ChangeId;
 import android.compat.annotation.EnabledAfter;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.DhcpInfo;
@@ -87,6 +88,7 @@ import android.os.RemoteException;
 import android.os.WorkSource;
 import android.os.connectivity.WifiActivityEnergyInfo;
 import android.security.advancedprotection.AdvancedProtectionFeature;
+import android.security.advancedprotection.AdvancedProtectionManager;
 import android.telephony.SubscriptionInfo;
 import android.text.TextUtils;
 import android.util.ArraySet;
@@ -2230,15 +2232,12 @@ public class WifiManager {
      *
      * @param context the application context
      * @param service the Binder interface
-     * @param looper the Looper used to deliver callbacks
      * @hide - hide this because it takes in a parameter of type IWifiManager, which
      * is a system private class.
      */
-    public WifiManager(@NonNull Context context, @NonNull IWifiManager service,
-        @NonNull Looper looper) {
+    public WifiManager(@NonNull Context context, @NonNull IWifiManager service) {
         mContext = context;
         mService = service;
-        mLooper = looper;
         mTargetSdkVersion = context.getApplicationInfo().targetSdkVersion;
         updateVerboseLoggingEnabledFromService();
     }
@@ -4077,6 +4076,17 @@ public class WifiManager {
      */
     public static final int WIFI_FEATURE_SOFTAP_MLO = 63;
 
+    /**
+     * Supports multiple Wi-Fi 7 multi-link devices (MLD) on SoftAp.
+     * @hide
+     */
+    public static final int WIFI_FEATURE_MULTIPLE_MLD_ON_SAP = 64;
+
+    /**
+     * NOTE: When adding a new WIFI_FEATURE_ value, also be sure to update
+     * {@link com.android.server.wifi.util.FeatureBitsetUtils}
+     */
+
     private boolean isFeatureSupported(int feature) {
         try {
             return mService.isFeatureSupported(feature);
@@ -4090,14 +4100,18 @@ public class WifiManager {
      * @hide
      */
     public boolean isPasspointSupported() {
-        return isFeatureSupported(WIFI_FEATURE_PASSPOINT);
+        // Both OEM and chip support are required
+        return mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_PASSPOINT)
+                && isFeatureSupported(WIFI_FEATURE_PASSPOINT);
     }
 
     /**
      * @return true if this adapter supports WifiP2pManager (Wi-Fi Direct)
      */
     public boolean isP2pSupported() {
-        return isFeatureSupported(WIFI_FEATURE_P2P);
+        // Both OEM and chip support are required
+        return mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT)
+                && isFeatureSupported(WIFI_FEATURE_P2P);
     }
 
     /**
@@ -4123,7 +4137,9 @@ public class WifiManager {
      * @hide
      */
     public boolean isWifiAwareSupported() {
-        return isFeatureSupported(WIFI_FEATURE_AWARE);
+        // Both OEM and chip support are required
+        return mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)
+                && isFeatureSupported(WIFI_FEATURE_AWARE);
     }
 
     /**
@@ -7636,7 +7652,7 @@ public class WifiManager {
             @Nullable ActionListener listener) {
         ActionListenerProxy listenerProxy = null;
         if (listener != null) {
-            listenerProxy = new ActionListenerProxy("connect", mLooper, listener);
+            listenerProxy = new ActionListenerProxy("connect", mContext.getMainLooper(), listener);
         }
         try {
             Bundle extras = new Bundle();
@@ -7785,7 +7801,7 @@ public class WifiManager {
         if (config == null) throw new IllegalArgumentException("config cannot be null");
         ActionListenerProxy listenerProxy = null;
         if (listener != null) {
-            listenerProxy = new ActionListenerProxy("save", mLooper, listener);
+            listenerProxy = new ActionListenerProxy("save", mContext.getMainLooper(), listener);
         }
         try {
             mService.save(config, listenerProxy, mContext.getOpPackageName());
@@ -7823,7 +7839,7 @@ public class WifiManager {
         if (netId < 0) throw new IllegalArgumentException("Network id cannot be negative");
         ActionListenerProxy listenerProxy = null;
         if (listener != null) {
-            listenerProxy = new ActionListenerProxy("forget", mLooper, listener);
+            listenerProxy = new ActionListenerProxy("forget", mContext.getMainLooper(), listener);
         }
         try {
             mService.forget(netId, listenerProxy);
@@ -13291,14 +13307,15 @@ public class WifiManager {
     @FlaggedApi(android.security.Flags.FLAG_AAPM_API)
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     @NonNull
+    @SuppressLint("NewApi")
     public List<AdvancedProtectionFeature> getAvailableAdvancedProtectionFeatures() {
         if (!Environment.isSdkAtLeastB()) {
             throw new UnsupportedOperationException();
         }
         List<AdvancedProtectionFeature> features = new ArrayList<>();
-        if (Flags.wepDisabledInApm()) {
-            // TODO: b/362586268 Change to AdvancedProtectionManager.FEATURE_ID_DISALLOW_WEP
-            features.add(new AdvancedProtectionFeature("WEP"));
+        if (Flags.wepDisabledInApm() && android.security.Flags.aapmApi()) {
+            features.add(new AdvancedProtectionFeature(
+                    AdvancedProtectionManager.FEATURE_ID_DISALLOW_WEP));
         }
         return features;
     }

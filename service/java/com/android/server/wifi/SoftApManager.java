@@ -1679,13 +1679,16 @@ public class SoftApManager implements ActiveModeManager {
 
                 if (mCurrentSoftApInfoMap.get(changedInstance) != null) {
                     SoftApInfo apInfoInMap = mCurrentSoftApInfoMap.get(changedInstance);
-                    if (apInfoInMap.getBssid().equals(apInfo.getBssid())) {
+                    if (apInfoInMap.getBssid().equals(apInfo.getBssid()) &&
+                        !apInfo.getMloLinks().isEmpty()) {
                         Map<Integer, MloLink> linkInfos = apInfo.getMloLinks();
                         for (MloLink linkInfo : linkInfos.values()) {
                             apInfoInMap.setMloLink(linkInfo);
                         }
+                        mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfoInMap));
+                    } else {
+                        mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfo));
                     }
-                    mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfoInMap));
                 } else {
                     mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfo));
                 }

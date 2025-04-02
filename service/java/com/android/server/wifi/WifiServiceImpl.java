@@ -16,7 +16,7 @@
 
 /**
  * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -53,6 +53,7 @@ import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TR
 import static com.android.server.wifi.ClientModeImpl.RESET_SIM_REASON_DEFAULT_DATA_SIM_CHANGED;
 import static com.android.server.wifi.ClientModeImpl.RESET_SIM_REASON_SIM_INSERTED;
 import static com.android.server.wifi.ClientModeImpl.RESET_SIM_REASON_SIM_REMOVED;
+import static com.android.server.wifi.ClientModeImpl.CMD_REMOTE_WLAN_OBTAIN_IP_SUCCESS;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_AP;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_AP_BRIDGE;
 import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_NAN;
@@ -175,6 +176,7 @@ import android.os.UserManager;
 import android.os.WorkSource;
 import android.os.connectivity.WifiActivityEnergyInfo;
 import android.os.SystemProperties;
+import android.os.Message;
 import android.provider.Settings;
 import android.telephony.CarrierConfigManager;
 import android.telephony.PhoneStateListener;
@@ -1231,6 +1233,17 @@ public class WifiServiceImpl extends BaseWifiService {
         return mWifiThreadRunner.call(
                 () -> mActiveModeWarden.getPrimaryClientModeManager(),
                 mDefaultClientModeManager);
+    }
+
+    private ClientModeManager getSecondaryClientModeManager() {
+        List<ConcreteClientModeManager> secondaryCmms = null;
+        secondaryCmms = mActiveModeWarden.getClientModeManagersInRoles(
+                ROLE_CLIENT_LOCAL_ONLY, ROLE_CLIENT_SECONDARY_LONG_LIVED);
+        for (ConcreteClientModeManager cmm : secondaryCmms) {
+             return cmm;
+        }
+        Log.d(TAG, "fail to get secondary CMM and fail to send obtained IP Info to CMM");
+        return mDefaultClientModeManager;
     }
 
     /**
@@ -2988,6 +3001,20 @@ public class WifiServiceImpl extends BaseWifiService {
             return false;
         }
     }
+
+   @Override
+   public boolean sendObtainedIpInfoToClient(String ipInfo, boolean isPrimarySta) {
+        ClientModeManager cm = isPrimarySta ?
+            getPrimaryClientModeManagerBlockingThreadSafe() :
+            getSecondaryClientModeManager();
+        if (ipInfo.length() > 0) {
+            Message msg = Message.obtain(null,
+                ClientModeImpl.CMD_REMOTE_WLAN_OBTAIN_IP_SUCCESS, ipInfo);
+            Log.d(TAG, "sendObtainedIpInfoToClient: ipInfo: " + ipInfo + " isPrimarySta: " + isPrimarySta);
+            cm.sendMessageToClientModeImpl(msg);
+        }
+        return true;
+   }
 
     /**
      * see {@link android.net.wifi.WifiManager#setScanAlwaysAvailable(boolean)}

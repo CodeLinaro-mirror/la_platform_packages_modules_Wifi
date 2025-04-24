@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/**
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 package android.net.wifi;
 
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
@@ -1106,6 +1112,14 @@ public class WifiManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public static final String WIFI_AP_STATE_CHANGED_ACTION =
         "android.net.wifi.WIFI_AP_STATE_CHANGED";
+
+    /**
+     * Broadcast intent action indicating that clients have been added/removed to/from AP.
+     *
+     * @hide
+     */
+    public static final String WIFI_AP_CLIENTS_CHANGED_ACTION =
+        "android.net.wifi.WIFI_AP_CLIENTS_CHANGED";
 
     /**
      * The lookup key for an int that indicates whether Wi-Fi AP is enabled,
@@ -4303,6 +4317,27 @@ public class WifiManager {
     }
 
     /**
+     * Query the bands which are occupied by high priorty connections(eg, internet connection on
+     * primary STA or CarPlay connection on LOHS|Tethering), so that app can choose to perform
+     * low rate scan or disable scan on these bands to guarantee link quality of these connections.
+     *
+     * If the bit[0] of return value equals 0x1 which means 2.4G band has critical connection,
+     * bit [2:1] equals 0x3 means 5G band includes DFS channel has critical connection.
+     *
+     * @param apMode Interface IP mode, IFACE_IP_MODE_TETHERED or IFACE_IP_MODE_LOCAL_ONLY.
+     * @return Combination of WIFI_BAND_24_GHZ and WIFI_BAND_5_GHZ_WITH_DFS.
+     * @hide
+     */
+     public int getBandsWithCriticalConnections(int apMode) {
+        try {
+            String packageName = mContext.getOpPackageName();
+            return mService.getBandsWithCriticalConnections(packageName, apMode);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+     }
+
+    /**
      * WPS has been deprecated from Client mode operation.
      *
      * @return null
@@ -5786,6 +5821,24 @@ public class WifiManager {
         }
     }
 
+   /**
+    * Allow system applications to stop LocalOnlyHotspot in some speical cases such as suspend to disk.
+    *
+    * @hide
+    */
+    @SystemApi
+    @RequiresPermission(android.Manifest.permission.CHANGE_WIFI_STATE)
+    public boolean stopAllLocalOnlyHotspotRequests() {
+        synchronized (mLock) {
+            try {
+                mLOHSCallbackProxy = null;
+                return mService.stopAllLocalOnlyHotspotRequests(mContext.getOpPackageName());
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
     /**
      * Registers a callback for local only hotspot. See {@link SoftApCallback}. Caller will receive
      * the following callbacks on registration:
@@ -5968,6 +6021,38 @@ public class WifiManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public boolean isWifiApEnabled() {
         return getWifiApState() == WIFI_AP_STATE_ENABLED;
+    }
+
+    /**
+     * Gets the local-only Wi-Fi hotspot enabled state.
+     * @return One of {@link #WIFI_AP_STATE_DISABLED},
+     *         {@link #WIFI_AP_STATE_DISABLING}, {@link #WIFI_AP_STATE_ENABLED},
+     *         {@link #WIFI_AP_STATE_ENABLING}, {@link #WIFI_AP_STATE_FAILED}
+     * @see #isWifiLocalOnlyHotspotEnabled()
+     *
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
+    public int getWifiLocalOnlyHotspotState() {
+        try {
+            return mService.getWifiLocalOnlyHotspotEnabledState();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Return whether local-only Wi-Fi hotspot is enabled or disabled.
+     * @return {@code true} if local-only Wi-Fi hotspot is enabled
+     * @see #getWifiLocalOnlyHotspotState()
+     *
+     * @hide
+     */
+    @SystemApi
+    @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
+    public boolean isWifiLocalOnlyHotspotEnabled() {
+        return getWifiLocalOnlyHotspotState() == WIFI_AP_STATE_ENABLED;
     }
 
     /**

@@ -614,19 +614,21 @@ public class WifiNetworkSelector {
         // network won't show up in the scan results. We don't act on these scan results
         // to avoid aggressive network switching which might trigger disconnection.
         // TODO(b/147751334) this may no longer be needed
-        for (ClientModeManagerState cmmState : cmmStates) {
-            // TODO (b/169413079): Disable network selection on corresponding CMM instead.
-            if (cmmState.connected && cmmState.wifiInfo.getScore() >= WIFI_POOR_SCORE
-                    && !scanResultPresentForCurrentBssids.contains(cmmState.wifiInfo.getBSSID())) {
-                if (isSufficiencyCheckEnabled()) {
-                    localLog("Current connected BSSID " + cmmState.wifiInfo.getBSSID()
-                            + " is not in the scan results. Skip network selection.");
-                    validScanDetails.clear();
-                    return validScanDetails;
-                } else {
-                    localLog("Current connected BSSID " + cmmState.wifiInfo.getBSSID()
-                            + " is not in the scan results. But continue network selection because"
-                            + " sufficiency check is disabled.");
+        if (!mScanRequestProxy.isSingleBandScanEnabled()) {
+            for (ClientModeManagerState cmmState : cmmStates) {
+                // TODO (b/169413079): Disable network selection on corresponding CMM instead.
+                if (cmmState.connected && cmmState.wifiInfo.getScore() >= WIFI_POOR_SCORE
+                        && !scanResultPresentForCurrentBssids.contains(cmmState.wifiInfo.getBSSID())) {
+                    if (isSufficiencyCheckEnabled()) {
+                        localLog("Current connected BSSID " + cmmState.wifiInfo.getBSSID()
+                                + " is not in the scan results. Skip network selection.");
+                        validScanDetails.clear();
+                        return validScanDetails;
+                    } else {
+                        localLog("Current connected BSSID " + cmmState.wifiInfo.getBSSID()
+                                + " is not in the scan results. But continue network selection because"
+                                + " sufficiency check is disabled.");
+                    }
                 }
             }
         }

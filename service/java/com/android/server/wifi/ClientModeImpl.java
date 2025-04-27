@@ -5484,6 +5484,13 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mNetworkAgent.sendNetworkCapabilitiesAndCache(networkCapabilities);
     }
 
+    private void removeCurrentNetworkAndNativeData(int networkId) {
+        // remove local PMKSA cache in framework
+        mWifiNative.removeNetworkCachedData(networkId);
+        // remove network so that supplicant's PMKSA cache & other cached data are cleared.
+        mWifiNative.removeAllNetworks(mInterfaceName);
+    }
+
     private void handleEapAuthFailure(int networkId, int errorCode) {
         WifiConfiguration targetedNetwork =
                 mWifiConfigManager.getConfiguredNetwork(mTargetNetworkId);
@@ -5494,6 +5501,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 case WifiEnterpriseConfig.Eap.AKA_PRIME:
                     if (errorCode == WifiNative.EAP_SIM_VENDOR_SPECIFIC_CERT_EXPIRED) {
                         mWifiCarrierInfoManager.resetCarrierKeysForImsiEncryption(targetedNetwork);
+                        removeCurrentNetworkAndNativeData(networkId);
                     } else {
                         int carrierId = targetedNetwork.carrierId;
                         if (mWifiCarrierInfoManager.isOobPseudonymFeatureEnabled(carrierId)) {
@@ -6718,7 +6726,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     NetworkConnectionEventInfo connectionInfo =
                             (NetworkConnectionEventInfo) message.obj;
                     mLastNetworkId = connectionInfo.networkId;
-                    mWifiMetrics.onRoamComplete();
+                    mWifiMetrics.onRoamComplete(mInterfaceName);
                     handleNetworkConnectionEventInfo(
                             getConnectedWifiConfigurationInternal(), connectionInfo);
                     mWifiInfo.setMacAddress(mWifiNative.getMacAddress(mInterfaceName));
@@ -6880,10 +6888,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             mWifiMetrics.logStaEvent(mInterfaceName,
                                     StaEvent.TYPE_FRAMEWORK_DISCONNECT,
                                     StaEvent.DISCONNECT_RESET_SIM_NETWORKS);
-                            // remove local PMKSA cache in framework
-                            mWifiNative.removeNetworkCachedData(mLastNetworkId);
-                            // remove network so that supplicant's PMKSA cache is cleared
-                            mWifiNative.removeAllNetworks(mInterfaceName);
+                            removeCurrentNetworkAndNativeData(mLastNetworkId);
                             if (isPrimary() && isSimBasedNetwork && !isLastSubReady) {
                                 mSimRequiredNotifier.showSimRequiredNotification(
                                         config, mLastSimBasedConnectionCarrierName);

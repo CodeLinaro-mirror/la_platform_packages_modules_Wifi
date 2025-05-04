@@ -3697,8 +3697,18 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         AsyncChannel wifiChannel = mAsyncChannel;
         sendChannelHalfConnectedEvent(mClientMessenger, wifiChannel);
         WifiDialogManager.DialogHandle dialogHandle = mock(WifiDialogManager.DialogHandle.class);
-        when(mWifiDialogManager.createSimpleDialog(
-                any(), any(), any(), any(), any(), any(), any())).thenReturn(dialogHandle);
+        WifiDialogManager.SimpleDialogBuilder dialogBuilder =
+                mock(WifiDialogManager.SimpleDialogBuilder.class);
+        when(dialogBuilder.build()).thenReturn(dialogHandle);
+        when(mWifiDialogManager.createSimpleDialogBuilder()).thenReturn(dialogBuilder);
+        when(dialogBuilder.setTitle(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setMessage(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setPositiveButtonText(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setNegativeButtonText(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setNeutralButtonText(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setMessageUrl(any(), anyInt(), anyInt())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setCallback(any(), any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.build()).thenReturn(dialogHandle);
         ArgumentCaptor<WifiDialogManager.SimpleDialogCallback> callbackCaptor =
                 ArgumentCaptor.forClass(WifiDialogManager.SimpleDialogCallback.class);
 
@@ -3716,8 +3726,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
             verify(mAlertDialogBuilder).setPositiveButton(any(), clickListener.capture());
             clickListener.getValue().onClick(mAlertDialog, DialogInterface.BUTTON_POSITIVE);
         } else {
-            verify(mWifiDialogManager).createSimpleDialog(
-                    any(), any(), any(), any(), any(), callbackCaptor.capture(), any());
+            verify(dialogBuilder).setCallback(callbackCaptor.capture(), any());
             verify(dialogHandle).launchDialog();
             callbackCaptor.getValue().onPositiveButtonClicked();
         }
@@ -3766,8 +3775,17 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         AsyncChannel wifiChannel = mock(AsyncChannel.class);
         sendChannelHalfConnectedEvent(mClientMessenger, wifiChannel);
         WifiDialogManager.DialogHandle dialogHandle = mock(WifiDialogManager.DialogHandle.class);
-        when(mWifiDialogManager.createSimpleDialog(
-                any(), any(), any(), any(), any(), any(), any())).thenReturn(dialogHandle);
+        WifiDialogManager.SimpleDialogBuilder dialogBuilder =
+                mock(WifiDialogManager.SimpleDialogBuilder.class);
+        when(mWifiDialogManager.createSimpleDialogBuilder()).thenReturn(dialogBuilder);
+        when(dialogBuilder.setTitle(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setMessage(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setPositiveButtonText(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setNegativeButtonText(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setNeutralButtonText(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setMessageUrl(any(), anyInt(), anyInt())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setCallback(any(), any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.build()).thenReturn(dialogHandle);
         ArgumentCaptor<WifiDialogManager.SimpleDialogCallback> callbackCaptor =
                 ArgumentCaptor.forClass(WifiDialogManager.SimpleDialogCallback.class);
 
@@ -3785,11 +3803,9 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
             verify(mAlertDialogBuilder).setNegativeButton(any(), clickListener.capture());
             clickListener.getValue().onClick(mAlertDialog, DialogInterface.BUTTON_NEGATIVE);
         } else {
-            verify(mWifiDialogManager).createSimpleDialog(
-                    any(), any(), any(), any(), any(), callbackCaptor.capture(), any());
+            verify(dialogBuilder).setCallback(callbackCaptor.capture(), any());
             verify(dialogHandle).launchDialog();
             callbackCaptor.getValue().onNegativeButtonClicked();
-
         }
         mLooper.dispatchAll();
         verify(mWifiP2pMetrics).endConnectionEvent(P2pConnectionEvent.CLF_USER_REJECT);
@@ -3805,10 +3821,17 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         AsyncChannel wifiChannel = mock(AsyncChannel.class);
         sendChannelHalfConnectedEvent(mClientMessenger, wifiChannel);
         WifiDialogManager.DialogHandle dialogHandle = mock(WifiDialogManager.DialogHandle.class);
-        when(mWifiDialogManager.createSimpleDialog(
-                any(), any(), any(), any(), any(), any(), any())).thenReturn(dialogHandle);
-        ArgumentCaptor<WifiDialogManager.SimpleDialogCallback> callbackCaptor =
-                ArgumentCaptor.forClass(WifiDialogManager.SimpleDialogCallback.class);
+        WifiDialogManager.SimpleDialogBuilder dialogBuilder =
+                mock(WifiDialogManager.SimpleDialogBuilder.class);
+        when(mWifiDialogManager.createSimpleDialogBuilder()).thenReturn(dialogBuilder);
+        when(dialogBuilder.setTitle(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setMessage(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setPositiveButtonText(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setNegativeButtonText(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setNeutralButtonText(any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setMessageUrl(any(), anyInt(), anyInt())).thenReturn(dialogBuilder);
+        when(dialogBuilder.setCallback(any(), any())).thenReturn(dialogBuilder);
+        when(dialogBuilder.build()).thenReturn(dialogHandle);
 
         mockEnterGroupNegotiationState();
         mockPeersList();
@@ -3828,8 +3851,6 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
             verify(mAlertDialog).show();
             verify(mAlertDialog).dismiss();
         } else {
-            verify(mWifiDialogManager).createSimpleDialog(
-                    any(), any(), any(), any(), any(), callbackCaptor.capture(), any());
             verify(dialogHandle).launchDialog();
             verify(dialogHandle).dismissDialog();
         }
@@ -8656,6 +8677,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         assertEquals(config.deviceAddress, mTestWifiP2pV2Device.deviceAddress);
         assertEquals(GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL,
                 config.getGroupClientIpProvisioningMode());
+        assertEquals(WifiP2pGroup.NETWORK_ID_PERSISTENT, config.netId);
     }
 
     /**
@@ -8697,6 +8719,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         assertEquals(config.deviceAddress, mTestWifiP2pV2Device.deviceAddress);
         assertEquals(GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL,
                 config.getGroupClientIpProvisioningMode());
+        assertEquals(WifiP2pGroup.NETWORK_ID_PERSISTENT, config.netId);
     }
 
     /**
@@ -8739,6 +8762,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         assertEquals(config.deviceAddress, mTestWifiP2pV2Device.deviceAddress);
         assertEquals(GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL,
                 config.getGroupClientIpProvisioningMode());
+        assertEquals(WifiP2pGroup.NETWORK_ID_PERSISTENT, config.netId);
     }
 
 
@@ -8786,6 +8810,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         assertTrue(config.isAuthorizeConnectionFromPeerEnabled());
         assertEquals(GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL,
                 config.getGroupClientIpProvisioningMode());
+        assertEquals(WifiP2pGroup.NETWORK_ID_PERSISTENT, config.netId);
     }
 
     /**
@@ -8831,6 +8856,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         assertTrue(config.isAuthorizeConnectionFromPeerEnabled());
         assertEquals(GROUP_CLIENT_IP_PROVISIONING_MODE_IPV6_LINK_LOCAL,
                 config.getGroupClientIpProvisioningMode());
+        assertEquals(WifiP2pGroup.NETWORK_ID_PERSISTENT, config.netId);
     }
 
     /**
@@ -8869,6 +8895,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                         .PAIRING_BOOTSTRAPPING_METHOD_OPPORTUNISTIC,
                 config.getPairingBootstrappingConfig().getPairingBootstrappingMethod());
         assertTrue(config.isAuthorizeConnectionFromPeerEnabled());
+        assertEquals(WifiP2pGroup.NETWORK_ID_PERSISTENT, config.netId);
     }
 
     /**
@@ -8909,6 +8936,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                         .PAIRING_BOOTSTRAPPING_METHOD_KEYPAD_PINCODE,
                 config.getPairingBootstrappingConfig().getPairingBootstrappingMethod());
         assertTrue(config.isAuthorizeConnectionFromPeerEnabled());
+        assertEquals(WifiP2pGroup.NETWORK_ID_PERSISTENT, config.netId);
     }
 
     /**
@@ -8948,6 +8976,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                         .PAIRING_BOOTSTRAPPING_METHOD_KEYPAD_PASSPHRASE,
                 config.getPairingBootstrappingConfig().getPairingBootstrappingMethod());
         assertTrue(config.isAuthorizeConnectionFromPeerEnabled());
+        assertEquals(WifiP2pGroup.NETWORK_ID_PERSISTENT, config.netId);
     }
 
     /**
@@ -8992,6 +9021,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         assertEquals(pincode,
                 config.getPairingBootstrappingConfig().getPairingBootstrappingPassword());
         assertTrue(config.isAuthorizeConnectionFromPeerEnabled());
+        assertEquals(WifiP2pGroup.NETWORK_ID_PERSISTENT, config.netId);
     }
 
     /**
@@ -9036,6 +9066,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         assertEquals(passphrase,
                 config.getPairingBootstrappingConfig().getPairingBootstrappingPassword());
         assertTrue(config.isAuthorizeConnectionFromPeerEnabled());
+        assertEquals(WifiP2pGroup.NETWORK_ID_PERSISTENT, config.netId);
     }
 
     /**

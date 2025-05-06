@@ -394,6 +394,13 @@ public final class SoftApInfo implements Parcelable {
     /**
      * @hide
      */
+    public void removeMloLink(int linkId) {
+        mMloLinks.remove(linkId);
+    }
+
+    /**
+     * @hide
+     */
     public SoftApInfo(@Nullable SoftApInfo source) {
         if (source != null) {
             mFrequency = source.mFrequency;

@@ -761,7 +761,7 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         IWifiAwareEventCallback mockCallback1 = mock(IWifiAwareEventCallback.class);
         IWifiAwareEventCallback mockCallback2 = mock(IWifiAwareEventCallback.class);
         ArgumentCaptor<Short> transactionIdCapture = ArgumentCaptor.forClass(Short.class);
-        InOrder inOrder = inOrder(mockCallback1, mockCallback2, mMockNative);
+        InOrder inOrder = inOrder(mockCallback1, mockCallback2, mMockNative, mMockNativeManager);
 
         mDut.enableUsage();
         mMockLooper.dispatchAll();
@@ -827,7 +827,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
 
         validateInternalClientInfoCleanedUp(clientId1);
         validateInternalClientInfoCleanedUp(clientId2);
-
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNativeManager).releaseAware();
         verifyNoMoreInteractions(mockCallback1, mockCallback2, mMockNative);
     }
 
@@ -4093,6 +4094,7 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         inOrder.verify(mockCallback).onAttachTerminate();
         collector.checkThat("usage enabled", mDut.isUsageEnabled(), equalTo(true));
         assertFalse(mDut.isDeviceAttached());
+        mMockLooper.dispatchAll();
         validateCorrectAwareStatusChangeBroadcast(inOrder);
 
         // (3) try reconnect client
@@ -4590,7 +4592,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         final String alias = "alias";
 
         AwarePairingConfig pairingConfig = new AwarePairingConfig(true, true, true,
-                AwarePairingConfig.PAIRING_BOOTSTRAPPING_QR_SCAN);
+                AwarePairingConfig.PAIRING_BOOTSTRAPPING_QR_SCAN,
+                WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128);
         ConfigRequest configRequest = new ConfigRequest.Builder().build();
         PublishConfig publishConfig = new PublishConfig.Builder()
                 .setPairingConfig(pairingConfig).build();
@@ -4724,7 +4727,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         final String alias = "alias";
 
         AwarePairingConfig pairingConfig = new AwarePairingConfig(true, true, true,
-                AwarePairingConfig.PAIRING_BOOTSTRAPPING_QR_SCAN);
+                AwarePairingConfig.PAIRING_BOOTSTRAPPING_QR_SCAN,
+                WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128);
         ConfigRequest configRequest = new ConfigRequest.Builder().build();
         PublishConfig publishConfig = new PublishConfig.Builder()
                 .setPairingConfig(pairingConfig).build();
@@ -4852,7 +4856,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         final String alias = "alias";
 
         AwarePairingConfig pairingConfig = new AwarePairingConfig(true, true, true,
-                AwarePairingConfig.PAIRING_BOOTSTRAPPING_QR_SCAN);
+                AwarePairingConfig.PAIRING_BOOTSTRAPPING_QR_SCAN,
+                WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128);
 
         ConfigRequest configRequest = new ConfigRequest.Builder().build();
         SubscribeConfig subscribeConfig = new SubscribeConfig.Builder()
@@ -4983,7 +4988,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         final String alias = "alias";
 
         AwarePairingConfig pairingConfig = new AwarePairingConfig(true, true, true,
-                AwarePairingConfig.PAIRING_BOOTSTRAPPING_QR_SCAN);
+                AwarePairingConfig.PAIRING_BOOTSTRAPPING_QR_SCAN,
+                WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128);
 
         ConfigRequest configRequest = new ConfigRequest.Builder().build();
         SubscribeConfig subscribeConfig = new SubscribeConfig.Builder()
@@ -5107,7 +5113,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         final String alias = "alias";
 
         AwarePairingConfig pairingConfig = new AwarePairingConfig(true, true, true,
-                AwarePairingConfig.PAIRING_BOOTSTRAPPING_QR_SCAN);
+                AwarePairingConfig.PAIRING_BOOTSTRAPPING_QR_SCAN,
+                WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128);
 
         ConfigRequest configRequest = new ConfigRequest.Builder().build();
         SubscribeConfig subscribeConfig = new SubscribeConfig.Builder()
@@ -5791,7 +5798,7 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         IWifiAwareEventCallback mockCallback1 = mock(IWifiAwareEventCallback.class);
         IWifiAwareEventCallback mockCallback2 = mock(IWifiAwareEventCallback.class);
         ArgumentCaptor<Short> transactionIdCapture = ArgumentCaptor.forClass(Short.class);
-        InOrder inOrder = inOrder(mockCallback1, mockCallback2, mMockNative);
+        InOrder inOrder = inOrder(mockCallback1, mockCallback2, mMockNative, mMockNativeManager);
 
         mDut.enableUsage();
         mMockLooper.dispatchAll();
@@ -5830,7 +5837,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
 
         validateInternalClientInfoCleanedUp(clientId1);
         validateInternalClientInfoCleanedUp(clientId2);
-
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNativeManager).releaseAware();
         verifyNoMoreInteractions(mockCallback1, mockCallback2, mMockNative);
     }
 
@@ -5859,7 +5867,7 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         IWifiAwareEventCallback mockCallback1 = mock(IWifiAwareEventCallback.class);
         IWifiAwareEventCallback mockCallback2 = mock(IWifiAwareEventCallback.class);
         ArgumentCaptor<Short> transactionIdCapture = ArgumentCaptor.forClass(Short.class);
-        InOrder inOrder = inOrder(mockCallback1, mockCallback2, mMockNative);
+        InOrder inOrder = inOrder(mockCallback1, mockCallback2, mMockNative, mMockNativeManager);
 
         mDut.enableUsage();
         mMockLooper.dispatchAll();
@@ -5910,7 +5918,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
 
         validateInternalClientInfoCleanedUp(clientId1);
         validateInternalClientInfoCleanedUp(clientId2);
-
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNativeManager).releaseAware();
         verifyNoMoreInteractions(mockCallback1, mockCallback2, mMockNative);
     }
 
@@ -5971,7 +5980,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         inOrder.verify(mockCallback1).onAttachTerminate();
 
         validateInternalClientInfoCleanedUp(clientId1);
-
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNativeManager).releaseAware();
         verifyNoMoreInteractions(mockCallback1, mMockNative);
     }
 }

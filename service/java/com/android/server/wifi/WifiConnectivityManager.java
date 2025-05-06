@@ -25,6 +25,7 @@ import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_LO
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TRANSIENT;
 import static com.android.server.wifi.ClientModeImpl.WIFI_WORK_SOURCE;
 import static com.android.server.wifi.WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE;
+import static com.android.server.wifi.WifiMetrics.ConnectionEvent.FAILURE_NO_RESPONSE;
 import static com.android.server.wifi.proto.nano.WifiMetricsProto.ConnectionEvent.AUTH_FAILURE_EAP_FAILURE;
 
 import android.annotation.NonNull;
@@ -52,6 +53,7 @@ import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.Process;
 import android.os.WorkSource;
+import android.telephony.SubscriptionManager;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.ArrayMap;
@@ -2700,9 +2702,12 @@ public class WifiConnectivityManager {
                         config.isPasspoint() ? config.FQDN : config.SSID)
                 || (config.enterpriseConfig != null
                 && config.enterpriseConfig.isAuthenticationSimBased()
-                && config.carrierId != TelephonyManager.UNKNOWN_CARRIER_ID)
+                && config.carrierId != TelephonyManager.UNKNOWN_CARRIER_ID
                 && !mWifiCarrierInfoManager.isSimReady(
-                        mWifiCarrierInfoManager.getBestMatchSubscriptionId(config)));
+                        mWifiCarrierInfoManager.getBestMatchSubscriptionId(config)))
+                || (config.subscriptionId != SubscriptionManager.INVALID_SUBSCRIPTION_ID
+                && !mWifiCarrierInfoManager.isCarrierNetworkOffloadEnabled(
+                        config.subscriptionId, config.carrierMerged)));
         return networks;
     }
 
@@ -3321,6 +3326,7 @@ public class WifiConnectivityManager {
             // Only attempt to reconnect when connection on the primary CMM fails, since MBB
             // CMM will be destroyed after the connection failure.
             if (clientModeManager.getRole() == ROLE_CLIENT_PRIMARY
+                    && failureCode != FAILURE_NO_RESPONSE // Do not retry since this is a timeout
                     && !mWifiPermissionsUtil.isAdminRestrictedNetwork(config)) {
                 retryConnectionOnLatestCandidates(clientModeManager, bssid, config,
                         failureCode == FAILURE_AUTHENTICATION_FAILURE

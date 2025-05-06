@@ -182,6 +182,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         when(mActiveModeWarden.getPrimaryClientModeManager()).thenReturn(mPrimaryClientModeManager);
         when(mDeviceConfigFacade.getFeatureFlags()).thenReturn(mFeatureFlags);
         when(mFeatureFlags.delayedCarrierNetworkSelection()).thenReturn(true);
+        when(mWifiCarrierInfoManager.isCarrierNetworkOffloadEnabled(anyInt(), anyBoolean()))
+                .thenReturn(true);
         doAnswer(new AnswerWithArguments() {
             public void answer(ExternalClientModeManagerRequestListener listener,
                     WorkSource requestorWs, String ssid, String bssid) {
@@ -2460,6 +2462,41 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
                 argThat(new WifiCandidatesListSizeMatcher(0)));
         verify(mPrimaryClientModeManager, times(2)).startConnectToNetwork(
                 anyInt(), anyInt(), any());
+    }
+
+    @Test
+    public void testNoRetryConnectionOnNetworkNotFoundFailure() {
+        // Setup WifiNetworkSelector to return 2 valid candidates from scan results
+        MacAddress macAddress = MacAddress.fromString(CANDIDATE_BSSID_2);
+        WifiCandidates.Key key = new WifiCandidates.Key(mock(ScanResultMatchInfo.class),
+                macAddress, 0, WifiConfiguration.SECURITY_TYPE_OPEN);
+        WifiCandidates.Candidate otherCandidate = mock(WifiCandidates.Candidate.class);
+        when(otherCandidate.getKey()).thenReturn(key);
+        List<WifiCandidates.Candidate> candidateList = new ArrayList<>();
+        candidateList.add(mCandidate1);
+        candidateList.add(otherCandidate);
+        when(mWifiNS.getCandidatesFromScan(any(), any(), any(), anyBoolean(), anyBoolean(),
+                anyBoolean(), any(), anyBoolean())).thenReturn(candidateList);
+
+        // Set WiFi to disconnected state to trigger scan
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        mLooper.dispatchAll();
+        // Verify a connection starting
+        verify(mWifiNS).selectNetwork((List<WifiCandidates.Candidate>)
+                argThat(new WifiCandidatesListSizeMatcher(2)));
+        verify(mPrimaryClientModeManager).startConnectToNetwork(anyInt(), anyInt(), any());
+
+        // Simulate the connection failing due to FAILURE_NO_RESPONSE
+        WifiConfiguration config = WifiConfigurationTestUtil.createPskNetwork(CANDIDATE_SSID);
+        mWifiConnectivityManager.handleConnectionAttemptEnded(
+                mPrimaryClientModeManager,
+                WifiMetrics.ConnectionEvent.FAILURE_NO_RESPONSE,
+                WifiMetricsProto.ConnectionEvent.FAILURE_REASON_UNKNOWN, CANDIDATE_BSSID,
+                config);
+        // Verify there is no retry
+        verify(mPrimaryClientModeManager).startConnectToNetwork(anyInt(), anyInt(), any());
     }
 
     @Test
@@ -5890,11 +5927,14 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         WifiConfiguration network3 = WifiConfigurationTestUtil.createOpenHiddenNetwork();
         WifiConfiguration network4 = WifiConfigurationTestUtil.createEapNetwork(
                 WifiEnterpriseConfig.Eap.SIM, WifiEnterpriseConfig.Phase2.NONE);
+        WifiConfiguration network5 = WifiConfigurationTestUtil.createPskNetwork();
+        network5.subscriptionId = 2;
         network4.carrierId = 123; // Assign a valid carrier ID
         network1.getNetworkSelectionStatus().setHasEverConnected(true);
         network2.getNetworkSelectionStatus().setHasEverConnected(true);
         network3.getNetworkSelectionStatus().setHasEverConnected(true);
         network4.getNetworkSelectionStatus().setHasEverConnected(true);
+        network5.getNetworkSelectionStatus().setHasEverConnected(true);
         when(mWifiCarrierInfoManager.isSimReady(anyInt())).thenReturn(true);
 
         List<WifiConfiguration> networkList = new ArrayList<>();
@@ -5902,6 +5942,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         networkList.add(network2);
         networkList.add(network3);
         networkList.add(network4);
+        networkList.add(network5);
+        mLruConnectionTracker.addNetwork(network5);
         mLruConnectionTracker.addNetwork(network4);
         mLruConnectionTracker.addNetwork(network3);
         mLruConnectionTracker.addNetwork(network2);
@@ -5911,12 +5953,13 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         List<WifiScanner.PnoSettings.PnoNetwork> pnoNetworks =
                 mWifiConnectivityManager.retrievePnoNetworkList();
         verify(mWifiNetworkSuggestionsManager).getAllScanOptimizationSuggestionNetworks();
-        assertEquals(5, pnoNetworks.size());
+        assertEquals(6, pnoNetworks.size());
         assertEquals(network1.SSID, pnoNetworks.get(0).ssid);
         assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(1).ssid); // Possible untranslated SSID
         assertEquals(network2.SSID, pnoNetworks.get(2).ssid);
         assertEquals(network3.SSID, pnoNetworks.get(3).ssid);
         assertEquals(network4.SSID, pnoNetworks.get(4).ssid);
+        assertEquals(network5.SSID, pnoNetworks.get(5).ssid);
 
         // Now permanently disable |network3|. This should remove network 3 from the list.
         network3.getNetworkSelectionStatus().setNetworkSelectionStatus(
@@ -5926,7 +5969,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         // Retrieve the Pno network list & verify.
         pnoNetworks = mWifiConnectivityManager.retrievePnoNetworkList();
-        assertEquals(3, pnoNetworks.size());
+        assertEquals(4, pnoNetworks.size());
         assertEquals(network1.SSID, pnoNetworks.get(0).ssid);
         assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(1).ssid); // Possible untranslated SSID
         assertEquals(network2.SSID, pnoNetworks.get(2).ssid);
@@ -5935,13 +5978,21 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         network1.allowAutojoin = false;
         // Retrieve the Pno network list & verify.
         pnoNetworks = mWifiConnectivityManager.retrievePnoNetworkList();
-        assertEquals(2, pnoNetworks.size());
+        assertEquals(3, pnoNetworks.size());
         assertEquals(network2.SSID, pnoNetworks.get(0).ssid);
         assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(1).ssid); // Possible untranslated SSID
 
         // Now set network2 to be temporarily disabled by the user. This should remove network 2
         // from the list.
         when(mWifiConfigManager.isNetworkTemporarilyDisabledByUser(network2.SSID)).thenReturn(true);
+        pnoNetworks = mWifiConnectivityManager.retrievePnoNetworkList();
+        assertEquals(2, pnoNetworks.size());
+        assertEquals(network5.SSID, pnoNetworks.get(0).ssid);
+        assertEquals(UNTRANSLATED_HEX_SSID, pnoNetworks.get(1).ssid); // Possible untranslated SSID
+
+        // Set carrier offload to disabled. Should remove the last network
+        when(mWifiCarrierInfoManager.isCarrierNetworkOffloadEnabled(anyInt(), anyBoolean()))
+                .thenReturn(false);
         pnoNetworks = mWifiConnectivityManager.retrievePnoNetworkList();
         assertEquals(0, pnoNetworks.size());
     }

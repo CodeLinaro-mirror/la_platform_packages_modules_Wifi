@@ -52,6 +52,7 @@ class GroupOwnerNegotiationTest(base_test.BaseTestClass):
     def _setup_device(self, ad: android_device.AndroidDevice) -> None:
         ad.load_snippet('wifi', constants.WIFI_SNIPPET_PACKAGE_NAME)
         wifi_test_utils.set_screen_on_and_unlock(ad)
+        wifi_test_utils.enable_wifi_verbose_logging(ad)
         # Clear all saved Wi-Fi networks.
         ad.wifi.wifiDisable()
         ad.wifi.wifiClearConfiguredNetworks()
@@ -91,7 +92,11 @@ class GroupOwnerNegotiationTest(base_test.BaseTestClass):
         )
 
         requester.ad.log.info('Trying to connect the peer device with WPS PBC.')
-        p2p_utils.p2p_connect(requester, responder, constants.WpsInfo.PBC)
+        p2p_config = constants.WifiP2pConfig(
+            device_address=responder.p2p_device.device_address,
+            wps_setup=constants.WpsInfo.PBC,
+        )
+        p2p_utils.p2p_connect(requester, responder, p2p_config)
 
         requester.ad.log.info('Disconnecting the peer device.')
         p2p_utils.remove_group_and_verify_disconnected(
@@ -131,7 +136,11 @@ class GroupOwnerNegotiationTest(base_test.BaseTestClass):
         )
 
         requester.ad.log.info('Trying to connect the peer device with WPS PIN.')
-        p2p_utils.p2p_connect(requester, responder, constants.WpsInfo.DISPLAY)
+        p2p_config = constants.WifiP2pConfig(
+            device_address=responder.p2p_device.device_address,
+            wps_setup=constants.WpsInfo.DISPLAY,
+        )
+        p2p_utils.p2p_connect(requester, responder, p2p_config)
 
         requester.ad.log.info('Disconnecting the peer device.')
         p2p_utils.remove_group_and_verify_disconnected(
@@ -139,8 +148,10 @@ class GroupOwnerNegotiationTest(base_test.BaseTestClass):
         )
 
     def _teardown_device(self, ad: android_device.AndroidDevice):
-        p2p_utils.teardown_wifi_p2p(ad)
-        ad.services.create_output_excerpts_all(self.current_test_info)
+        try:
+            p2p_utils.teardown_wifi_p2p(ad)
+        finally:
+            ad.services.create_output_excerpts_all(self.current_test_info)
 
     def teardown_test(self) -> None:
         utils.concurrent_exec(

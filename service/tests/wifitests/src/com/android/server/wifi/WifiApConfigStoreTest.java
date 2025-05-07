@@ -946,6 +946,16 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
                 configBuilder.build(), true, mContext, mWifiNative));
     }
 
+    @Test
+    public void test11BERequires11AXConfigInValidateApWifiConfigurationCheck() {
+        assumeTrue(SdkLevel.isAtLeastT());
+        assertFalse(WifiApConfigStore.validateApWifiConfiguration(
+                new SoftApConfiguration.Builder()
+                .setSsid(TEST_DEFAULT_HOTSPOT_SSID)
+                .setIeee80211axEnabled(false)
+                .setIeee80211beEnabled(true)
+                .build(), true, mContext, mWifiNative));
+    }
 
     /**
      * Verify the default configuration security when SAE support.
@@ -1550,5 +1560,13 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
         // verify that the config passes the validateApWifiConfiguration check
         assertTrue(WifiApConfigStore.validateApWifiConfiguration(softApConfig, true, mContext,
                 mWifiNative));
+        // Test 6G band with non-isPrivileged use case
+        mResources.setBoolean(R.bool.config_wifi_softap_sae_supported, true);
+        customConfigBuilder.setBand(SoftApConfiguration.BAND_6GHZ);
+        softApConfig = store.generateLocalOnlyHotspotConfig(
+                mContext, customConfigBuilder.build(), mSoftApCapability, false);
+        assertThat(softApConfig.getBand()).isEqualTo(SoftApConfiguration.BAND_6GHZ);
+        assertTrue(WifiApConfigStore.validateApWifiConfiguration(
+                softApConfig, false, mContext, mWifiNative));
     }
 }

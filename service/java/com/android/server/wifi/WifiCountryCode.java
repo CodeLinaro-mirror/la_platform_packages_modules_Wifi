@@ -516,7 +516,7 @@ public class WifiCountryCode {
     }
 
     private boolean shouldDisconnectWifiToForceUpdate() {
-        if (!hasCalling() || mWifiCarrierInfoManager.isWifiCallingAvailable()) {
+        if (hasCalling() && mWifiCarrierInfoManager.isWifiCallingAvailable()) {
             return false;
         }
 
@@ -763,7 +763,7 @@ public class WifiCountryCode {
     /**
      * Method to check if current driver Country Code is in the world mode
      */
-    private boolean isDriverCountryCodeWorldMode() {
+    public boolean isDriverCountryCodeWorldMode() {
         if (mDriverCountryCode == null) {
             return true;
         }

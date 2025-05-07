@@ -1085,23 +1085,6 @@ public class SupplicantP2pIfaceHalAidlImpl implements ISupplicantP2pIfaceHal {
                             + " out of band! Fail");
                     return false;
                 }
-                if (pairingBootstrappingMethod
-                        == P2pPairingBootstrappingMethodMask.BOOTSTRAPPING_DISPLAY_PINCODE) {
-                    pairingBootstrappingMethod =
-                            P2pPairingBootstrappingMethodMask.BOOTSTRAPPING_KEYPAD_PINCODE;
-                } else if (pairingBootstrappingMethod
-                        == P2pPairingBootstrappingMethodMask.BOOTSTRAPPING_KEYPAD_PINCODE) {
-                    pairingBootstrappingMethod =
-                            P2pPairingBootstrappingMethodMask.BOOTSTRAPPING_DISPLAY_PINCODE;
-                } else if (pairingBootstrappingMethod
-                        == P2pPairingBootstrappingMethodMask.BOOTSTRAPPING_DISPLAY_PASSPHRASE) {
-                    pairingBootstrappingMethod =
-                            P2pPairingBootstrappingMethodMask.BOOTSTRAPPING_KEYPAD_PASSPHRASE;
-                }  else if (pairingBootstrappingMethod
-                        == P2pPairingBootstrappingMethodMask.BOOTSTRAPPING_KEYPAD_PASSPHRASE) {
-                    pairingBootstrappingMethod =
-                            P2pPairingBootstrappingMethodMask.BOOTSTRAPPING_DISPLAY_PASSPHRASE;
-                }
                 targetWpsMethod = WpsProvisionMethod.NONE;
             } else {
                 targetWpsMethod = wpsInfoToConfigMethod(config.wps.setup);
@@ -1167,7 +1150,8 @@ public class SupplicantP2pIfaceHalAidlImpl implements ISupplicantP2pIfaceHal {
         return false;
     }
 
-    private static int convertPairingBootstrappingMethodToAidl(int pairingBootstrappingMethod) {
+    @VisibleForTesting
+    protected static int convertPairingBootstrappingMethodToAidl(int pairingBootstrappingMethod) {
         switch (pairingBootstrappingMethod) {
             case WifiP2pPairingBootstrappingConfig.PAIRING_BOOTSTRAPPING_METHOD_OPPORTUNISTIC:
                 return P2pPairingBootstrappingMethodMask.BOOTSTRAPPING_OPPORTUNISTIC;

@@ -11,7 +11,6 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
-
 # Lint as: python3
 
 from collections.abc import Sequence
@@ -26,7 +25,7 @@ from mobly.controllers import android_device
 
 from direct import constants
 
-_DEFAULT_TIMEOUT = datetime.timedelta(seconds=60)
+_DEFAULT_TIMEOUT = datetime.timedelta(seconds=45)
 
 
 @dataclasses.dataclass
@@ -38,20 +37,20 @@ class DeviceState:
         p2p_device: The object that represents a Wi-Fi p2p device.
         broadcast_receiver: The object for getting events that represent
             Wi-Fi p2p broadcast intents on device.
-        upnp_response_listener: The listener that corresponds to
-            UpnpServiceResponseListener on device.
-        dns_sd_response_listener: The listener that listens for callback
-            invocation of DnsSdServiceResponseListener and
-            DnsSdTxtRecordListener.
+        channel_ids: The IDs of all p2p channels initialized by Mobly snippets.
+        upnp_response_listeners: Maps channel IDs to UPnP listeners. These
+            listeners correspond to UpnpServiceResponseListener on device.
+        dns_sd_response_listeners: Maps channel IDs to DNS SD listeners. These
+            listeners listen for callback invocation of
+            DnsSdServiceResponseListener and DnsSdTxtRecordListener.
     """
 
     ad: android_device.AndroidDevice
     p2p_device: constants.WifiP2pDevice
     broadcast_receiver: callback_handler_v2.CallbackHandlerV2
-    upnp_response_listener: callback_handler_v2.CallbackHandlerV2 | None = None
-    dns_sd_response_listener: callback_handler_v2.CallbackHandlerV2 | None = (
-        None
-    )
+    channel_ids: Sequence[int] = dataclasses.field(default_factory=list)
+    upnp_response_listeners: dict[int, callback_handler_v2.CallbackHandlerV2] = dataclasses.field(default_factory=dict)
+    dns_sd_response_listeners: dict[int, callback_handler_v2.CallbackHandlerV2] = dataclasses.field(default_factory=dict)
 
 
 def setup_wifi_p2p(ad: android_device.AndroidDevice) -> DeviceState:
@@ -66,7 +65,10 @@ def setup_wifi_p2p(ad: android_device.AndroidDevice) -> DeviceState:
         'required by API WifiP2pManager#requestConnectionInfo',
     )
     return DeviceState(
-        ad=ad, p2p_device=p2p_device, broadcast_receiver=broadcast_receiver
+        ad=ad,
+        p2p_device=p2p_device,
+        broadcast_receiver=broadcast_receiver,
+        channel_ids=[broadcast_receiver.ret_value],
     )
 
 
@@ -156,6 +158,13 @@ def _get_p2p_device(
     return constants.WifiP2pDevice.from_dict(
         event.data[constants.EVENT_KEY_P2P_DEVICE]
     )
+
+
+def init_extra_channel(device: DeviceState) -> int:
+  """Initializes an extra p2p channel and returns the channel ID."""
+  channel_id = device.ad.wifi.wifiP2pInitExtraChannel()
+  device.channel_ids.append(channel_id)
+  return channel_id
 
 
 def discover_p2p_peer(
@@ -295,7 +304,7 @@ def create_group(
 def p2p_connect(
     requester: DeviceState,
     responder: DeviceState,
-    wps_config: constants.WpsInfo,
+    config: constants.WifiP2pConfig,
 ) -> None:
     """Establishes Wi-Fi p2p connection with WPS configuration.
 
@@ -306,9 +315,11 @@ def p2p_connect(
     Args:
         requester: The requester device.
         responder: The responder device.
-        wps_config: The WPS method to establish the connection.
+        config: The Wi-Fi p2p configuration.
     """
-    logging.info('Establishing a p2p connection through WPS %s.', wps_config)
+    logging.info(
+        'Establishing a p2p connection through p2p configuration %s.', config
+    )
 
     # Clear events in broadcast receiver.
     _clear_events(requester, constants.WIFI_P2P_PEERS_CHANGED_ACTION)
@@ -316,25 +327,23 @@ def p2p_connect(
     _clear_events(responder, constants.WIFI_P2P_PEERS_CHANGED_ACTION)
     _clear_events(responder, constants.WIFI_P2P_CONNECTION_CHANGED_ACTION)
 
-    config = constants.WifiP2pConfig(
-        device_address=responder.p2p_device.device_address,
-        wps_setup=wps_config,
-    )
     requester.ad.wifi.wifiP2pConnect(config.to_dict())
     requester.ad.log.info('Sent P2P connect invitation to responder.')
-    if wps_config == constants.WpsInfo.PBC:
+    # Connect with WPS config requires user inetraction through UI.
+    if config.wps_setup == constants.WpsInfo.PBC:
         responder.ad.wifi.wifiP2pAcceptInvitation(
             requester.p2p_device.device_name
         )
-    elif wps_config == constants.WpsInfo.DISPLAY:
+        responder.ad.log.info('Accepted connect invitation.')
+    elif config.wps_setup == constants.WpsInfo.DISPLAY:
         pin = requester.ad.wifi.wifiP2pGetPinCode(
             responder.p2p_device.device_name
         )
         requester.ad.log.info('p2p connection PIN code: %s', pin)
         responder.ad.wifi.wifiP2pEnterPin(pin, requester.p2p_device.device_name)
-    else:
-        asserts.fail(f'Unsupported WPS configuration: {wps_config}')
-    responder.ad.log.info('Accepted connect invitation.')
+        responder.ad.log.info('Enetered PIN code.')
+    elif config.wps_setup is not None:
+        asserts.fail(f'Unsupported WPS configuration: {config.wps_setup}')
 
     # Check p2p status on requester.
     _wait_connection_notice(requester.broadcast_receiver)
@@ -357,7 +366,6 @@ def p2p_connect(
         'Connected with device %s through wifi p2p.',
         requester.p2p_device.device_address,
     )
-
     logging.info('Established wifi p2p connection.')
 
 
@@ -504,7 +512,7 @@ def teardown_wifi_p2p(ad: android_device.AndroidDevice):
 def add_upnp_local_service(device: DeviceState, config: dict):
     """Adds p2p local Upnp service."""
     device.ad.wifi.wifiP2pAddUpnpLocalService(
-        config['udid'], config['device'], config['services']
+        config['uuid'], config['device'], config['services']
     )
 
 
@@ -515,47 +523,98 @@ def add_bonjour_local_service(device: DeviceState, config: dict):
     )
 
 
-def set_upnp_response_listener(device: DeviceState):
+def set_upnp_response_listener(
+    device: DeviceState, channel_id: int | None = None
+):
     """Set response listener for Upnp service."""
-    upnp_response_listener = device.ad.wifi.wifiP2pSetUpnpResponseListener()
-    device.upnp_response_listener = upnp_response_listener
+    channel_id = channel_id or device.channel_ids[0]
+    upnp_response_listener = device.ad.wifi.wifiP2pSetUpnpResponseListener(
+        channel_id
+    )
+    device.upnp_response_listeners[channel_id] = upnp_response_listener
 
 
-def unset_upnp_response_listener(device: DeviceState):
-    """Unset response listener for Upnp service."""
-    device.ad.wifi.wifiP2pUnsetUpnpResponseListener()
-    device.upnp_response_listener = None
-
-
-def set_dns_sd_response_listeners(device: DeviceState):
+def set_dns_sd_response_listeners(
+    device: DeviceState, channel_id: int | None = None
+):
     """Set response listener for Bonjour service."""
-    listener = device.ad.wifi.wifiP2pSetDnsSdResponseListeners()
-    device.dns_sd_response_listener = listener
+    channel_id = channel_id or device.channel_ids[0]
+    listener = device.ad.wifi.wifiP2pSetDnsSdResponseListeners(channel_id)
+    device.dns_sd_response_listeners[channel_id] = listener
 
 
-def unset_dns_sd_response_listender(device: DeviceState):
-    """Unset response listener for Bonjour service."""
-    device.ad.wifi.wifiP2pUnsetDnsSdResponseListeners()
-    device.dns_sd_response_listener = None
-
-
-def reset_p2p_service_state(ad: android_device.AndroidDevice):
+def reset_p2p_service_state(
+    ad: android_device.AndroidDevice, channel_id
+):
     """Clears all p2p service related states on device."""
-    ad.wifi.wifiP2pClearServiceRequests()
-    ad.wifi.wifiP2pUnsetDnsSdResponseListeners()
-    ad.wifi.wifiP2pUnsetUpnpResponseListener()
-    ad.wifi.wifiP2pClearLocalServices()
+    ad.wifi.wifiP2pClearServiceRequests(channel_id)
+    ad.wifi.wifiP2pUnsetDnsSdResponseListeners(channel_id)
+    ad.wifi.wifiP2pUnsetUpnpResponseListener(channel_id)
+    ad.wifi.wifiP2pClearLocalServices(channel_id)
+
+
+def check_discovered_services(
+    requester: DeviceState,
+    expected_src_device_address: str,
+    expected_dns_sd_sequence: Sequence[Sequence[str, dict[str, str]]],
+    expected_dns_txt_sequence: Sequence[Sequence[str, str]],
+    expected_upnp_sequence: Sequence[str],
+    channel_id: int | None = None,
+):
+    """Checks the discovered service responses are as expected.
+
+    This checks all services discovered within the timeout `_DEFAULT_TIMEOUT`.
+    If any expected service sequence is empty, this checks that no such service
+    are received within timeout.
+
+    Args:
+        device: The device that is discovering services.
+        expected_src_device_address: Only check services advertised from this
+            device address.
+        expected_dns_sd_sequence: Expected DNS SD responses.
+        expected_dns_txt_sequence: Expected DNS SD TXT records.
+        expected_upnp_sequence: Expected UPnP services.
+        channel_id: The channel to check for expected services.
+    """
+    channel_id = channel_id or requester.channel_ids[0]
+    start_time = datetime.datetime.now()
+    timeout = _DEFAULT_TIMEOUT
+    check_discovered_dns_sd_response(
+        requester,
+        expected_responses=expected_dns_sd_sequence,
+        expected_src_device_address=expected_src_device_address,
+        channel_id=channel_id,
+        timeout=timeout,
+    )
+    remaining_timeout = timeout - (datetime.datetime.now() - start_time)
+    check_discovered_dns_sd_txt_record(
+        requester,
+        expected_records=expected_dns_txt_sequence,
+        expected_src_device_address=expected_src_device_address,
+        channel_id=channel_id,
+        timeout=remaining_timeout,
+    )
+    remaining_timeout = timeout - (datetime.datetime.now() - start_time)
+    check_discovered_upnp_services(
+        requester,
+        expected_services=expected_upnp_sequence,
+        expected_src_device_address=expected_src_device_address,
+        channel_id=channel_id,
+        timeout=remaining_timeout,
+    )
 
 
 def check_discovered_upnp_services(
     device: DeviceState,
     expected_services: Sequence[str],
     expected_src_device_address: str,
+    channel_id: int | None = None,
+    timeout: datetime.timedelta = _DEFAULT_TIMEOUT,
 ):
     """Check discovered Upnp services.
 
-    If no services are expected, check all discovered services now and return
-    immediately. Otherwise, wait until all expected services are discovered.
+    If no services are expected, check that no UPnP service appear within
+    timeout. Otherwise, wait for all expected services within timeout.
 
     This assumes that Upnp service listener is set by
     `set_upnp_response_listener`.
@@ -565,18 +624,22 @@ def check_discovered_upnp_services(
         expected_services: The expected Upnp services.
         expected_src_device_address: This only checks services that are from the
             expected source device.
+        channel_id: The channel to check for expected services.
+        timeout: The wait timeout.
     """
+    channel_id = channel_id or device.channel_ids[0]
+    callback_handler = device.upnp_response_listeners[channel_id]
     if len(expected_services) == 0:
         _check_no_discovered_service(
             ad=device.ad,
-            callback_handler=device.upnp_response_listener,
+            callback_handler=callback_handler,
             event_name=constants.ON_UPNP_SERVICE_AVAILABLE,
             expected_src_device_address=expected_src_device_address,
+            timeout=timeout,
         )
         return
 
-    expected_services = set(expected_services.copy())
-
+    expected_services = set(expected_services)
     def _all_service_received(event):
         nonlocal expected_services
         src_device = constants.WifiP2pDevice.from_dict(
@@ -586,14 +649,19 @@ def check_discovered_upnp_services(
             return False
         for service in event.data['serviceList']:
             if service in expected_services:
+                device.ad.log.debug('Received upnp services: %s', service)
                 expected_services.remove(service)
         return len(expected_services) == 0
 
+    device.ad.log.debug('Waiting for UpnP services: %s', expected_services)
+    # Set to a small timeout to allow pulling all received events
+    if timeout.total_seconds() <= 1:
+        timeout = datetime.timedelta(seconds=1)
     try:
-        device.upnp_response_listener.waitForEvent(
+        callback_handler.waitForEvent(
             event_name=constants.ON_UPNP_SERVICE_AVAILABLE,
             predicate=_all_service_received,
-            timeout=_DEFAULT_TIMEOUT.total_seconds(),
+            timeout=timeout.total_seconds(),
         )
     except errors.CallbackHandlerTimeoutError as e:
         asserts.fail(
@@ -603,13 +671,15 @@ def check_discovered_upnp_services(
 
 def check_discovered_dns_sd_response(
     device: DeviceState,
-    expected_responses: Sequence[(str, str)],
+    expected_responses: Sequence[Sequence[str, str]],
     expected_src_device_address: str,
+    channel_id: int | None = None,
+    timeout: datetime.timedelta = _DEFAULT_TIMEOUT,
 ):
     """Check discovered DNS SD responses.
 
-    If no responses are expected, check all discovered responses now and return
-    immediately. Otherwise, wait until all expected responses are discovered.
+    If no responses are expected, check that no DNS SD response appear within
+    timeout. Otherwise, wait for all expected responses within timeout.
 
     This assumes that Bonjour service listener is set by
     `set_dns_sd_response_listeners`.
@@ -619,15 +689,22 @@ def check_discovered_dns_sd_response(
         expected_responses: The expected DNS SD responses.
         expected_src_device_address: This only checks services that are from the
             expected source device.
+        channel_id: The channel to check for expected responses.
+        timeout: The wait timeout.
     """
+    channel_id = channel_id or device.channel_ids[0]
+    callback_handler = device.dns_sd_response_listeners[channel_id]
     if not expected_responses:
         _check_no_discovered_service(
             device.ad,
-            callback_handler=device.dns_sd_response_listener,
+            callback_handler=callback_handler,
             event_name=constants.ON_DNS_SD_SERVICE_AVAILABLE,
             expected_src_device_address=expected_src_device_address,
+            timeout=timeout,
         )
         return
+
+    expected_responses = list(expected_responses)
 
     def _all_service_received(event):
         nonlocal expected_responses
@@ -638,14 +715,21 @@ def check_discovered_dns_sd_response(
             return False
         registration_type = event.data['registrationType']
         instance_name = event.data['instanceName']
-        expected_responses.remove((registration_type, instance_name))
+        service_tuple = (instance_name, registration_type)
+        device.ad.log.debug('Received DNS SD response: %s', service_tuple)
+        if service_tuple in expected_responses:
+            expected_responses.remove(service_tuple)
         return len(expected_responses) == 0
 
+    device.ad.log.debug('Waiting for DNS SD services: %s', expected_responses)
+    # Set to a small timeout to allow pulling all received events
+    if timeout.total_seconds() <= 1:
+        timeout = datetime.timedelta(seconds=1)
     try:
-        device.dns_sd_response_listener.waitForEvent(
+        callback_handler.waitForEvent(
             event_name=constants.ON_DNS_SD_SERVICE_AVAILABLE,
             predicate=_all_service_received,
-            timeout=_DEFAULT_TIMEOUT.total_seconds(),
+            timeout=timeout.total_seconds(),
         )
     except errors.CallbackHandlerTimeoutError as e:
         asserts.fail(
@@ -655,13 +739,15 @@ def check_discovered_dns_sd_response(
 
 def check_discovered_dns_sd_txt_record(
     device: DeviceState,
-    expected_records: Sequence[(str, dict)],
+    expected_records: Sequence[Sequence[str, dict[str, str]]],
     expected_src_device_address: str,
+    channel_id: int | None = None,
+    timeout: datetime.timedelta = _DEFAULT_TIMEOUT,
 ):
     """Check discovered DNS SD TXT records.
 
-    If no records are expected, check all discovered records now and return
-    immediately. Otherwise, wait until all expected records are discovered.
+    If no records are expected, check that no DNS SD TXT record appear within
+    timeout. Otherwise, wait for all expected records within timeout.
 
     This assumes that Bonjour service listener is set by
     `set_dns_sd_response_listeners`.
@@ -671,16 +757,24 @@ def check_discovered_dns_sd_txt_record(
         expected_records: The expected DNS SD TXT records.
         expected_src_device_address: This only checks services that are from the
             expected source device.
+        channel_id: The channel to check for expected records.
+        timeout: The wait timeout.
     """
+    channel_id = channel_id or device.channel_ids[0]
+    idx = device.channel_ids.index(channel_id)
+    callback_handler = device.dns_sd_response_listeners[idx]
     if not expected_records:
         _check_no_discovered_service(
             device.ad,
-            callback_handler=device.dns_sd_response_listener,
+            callback_handler=callback_handler,
             event_name=constants.ON_DNS_SD_TXT_RECORD_AVAILABLE,
             expected_src_device_address=expected_src_device_address,
+            timeout=timeout,
         )
         return
 
+    expected_records = list(expected_records)
+    device.ad.log.debug('Expected DNS SD TXT records: %s', expected_records)
     def _all_service_received(event):
         nonlocal expected_records
         src_device = constants.WifiP2pDevice.from_dict(
@@ -689,15 +783,22 @@ def check_discovered_dns_sd_txt_record(
         if src_device.device_address != expected_src_device_address:
             return False
         full_domain_name = event.data['fullDomainName']
-        txt_record_map = tuple(event.data['txtRecordMap'].items())
-        expected_records.remove((full_domain_name, txt_record_map))
+        txt_record_map = event.data['txtRecordMap']
+        record_to_remove = (full_domain_name, txt_record_map)
+        device.ad.log.debug('Received DNS SD TXT record: %s', record_to_remove)
+        if record_to_remove in expected_records:
+            expected_records.remove(record_to_remove)
         return len(expected_records) == 0
 
+    device.ad.log.debug('Waiting for DNS SD TXT records: %s', expected_records)
+    # Set to a small timeout to allow pulling all received events
+    if timeout.total_seconds() <= 1:
+        timeout = datetime.timedelta(seconds=1)
     try:
-        device.dns_sd_response_listener.waitForEvent(
+        callback_handler.waitForEvent(
             event_name=constants.ON_DNS_SD_TXT_RECORD_AVAILABLE,
             predicate=_all_service_received,
-            timeout=_DEFAULT_TIMEOUT.total_seconds(),
+            timeout=timeout.total_seconds(),
         )
     except errors.CallbackHandlerTimeoutError as e:
         asserts.fail(
@@ -710,16 +811,28 @@ def _check_no_discovered_service(
     callback_handler: callback_handler_v2.CallbackHandlerV2,
     event_name: str,
     expected_src_device_address: str,
+    timeout: datetime.timedelta = _DEFAULT_TIMEOUT,
 ):
     """Checks that no service is received from the specified source device."""
-    all_events = callback_handler.getAll(event_name)
-    filtered_events = []
-    for event in all_events:
-        src_device = WifiP2pDevice.from_dict(event.data['sourceDevice'])
-        if src_device.device_address == expected_src_device_address:
-            filtered_events.append(event)
-    asserts.assert_equal(
-        len(filtered_events),
-        0,
-        f'{ad} should not discover p2p service. Discovered: {filtered_events}',
+    def _is_expected_event(event):
+        src_device = constants.WifiP2pDevice.from_dict(
+            event.data['sourceDevice']
+        )
+        return src_device.device_address == expected_src_device_address
+
+    # Set to a small timeout to allow pulling all received events
+    if timeout.total_seconds() <= 1:
+        timeout = datetime.timedelta(seconds=1)
+    try:
+        event = callback_handler.waitForEvent(
+            event_name=event_name,
+            predicate=_is_expected_event,
+            timeout=timeout.total_seconds(),
+        )
+    except errors.CallbackHandlerTimeoutError as e:
+        # Timeout error is expected as there should not be any qualified service
+        return
+    asserts.assert_is_none(
+        event,
+        f'{ad} should not discover p2p service. Discovered: {event}',
     )

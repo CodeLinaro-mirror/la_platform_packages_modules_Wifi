@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/**
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 package android.net.wifi;
 
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
@@ -46,6 +52,7 @@ import android.compat.annotation.ChangeId;
 import android.compat.annotation.EnabledAfter;
 import android.compat.annotation.UnsupportedAppUsage;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.ConnectivityManager.NetworkCallback;
 import android.net.DhcpInfo;
@@ -4062,6 +4069,12 @@ public class WifiManager {
     public static final int WIFI_FEATURE_SOFTAP_MLO = 63;
 
     /**
+     * Supports multiple Wi-Fi 7 multi-link devices (MLD) on SoftAp.
+     * @hide
+     */
+    public static final int WIFI_FEATURE_MULTIPLE_MLD_ON_SAP = 64;
+
+    /**
      * NOTE: When adding a new WIFI_FEATURE_ value, also be sure to update
      * {@link com.android.server.wifi.util.FeatureBitsetUtils}
      */
@@ -4079,14 +4092,18 @@ public class WifiManager {
      * @hide
      */
     public boolean isPasspointSupported() {
-        return isFeatureSupported(WIFI_FEATURE_PASSPOINT);
+        // Both OEM and chip support are required
+        return mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_PASSPOINT)
+                && isFeatureSupported(WIFI_FEATURE_PASSPOINT);
     }
 
     /**
      * @return true if this adapter supports WifiP2pManager (Wi-Fi Direct)
      */
     public boolean isP2pSupported() {
-        return isFeatureSupported(WIFI_FEATURE_P2P);
+        // Both OEM and chip support are required
+        return mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_DIRECT)
+                && isFeatureSupported(WIFI_FEATURE_P2P);
     }
 
     /**
@@ -4112,7 +4129,9 @@ public class WifiManager {
      * @hide
      */
     public boolean isWifiAwareSupported() {
-        return isFeatureSupported(WIFI_FEATURE_AWARE);
+        // Both OEM and chip support are required
+        return mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)
+                && isFeatureSupported(WIFI_FEATURE_AWARE);
     }
 
     /**
@@ -6133,6 +6152,23 @@ public class WifiManager {
         }
     }
 
+   /**
+    * Allow system applications to stop LocalOnlyHotspot in some speical cases such as suspend to disk.
+    *
+    * @hide
+    */
+    @RequiresPermission(android.Manifest.permission.CHANGE_WIFI_STATE)
+    public boolean stopAllLocalOnlyHotspotRequests() {
+        synchronized (mLock) {
+            try {
+                mLOHSCallbackProxy = null;
+                return mService.stopAllLocalOnlyHotspotRequests(mContext.getOpPackageName());
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
     /**
      * Registers a callback for local only hotspot. See {@link SoftApCallback}. Caller will receive
      * the following callbacks on registration:
@@ -6315,6 +6351,36 @@ public class WifiManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public boolean isWifiApEnabled() {
         return getWifiApState() == WIFI_AP_STATE_ENABLED;
+    }
+
+    /**
+     * Gets the local-only Wi-Fi hotspot enabled state.
+     * @return One of {@link #WIFI_AP_STATE_DISABLED},
+     *         {@link #WIFI_AP_STATE_DISABLING}, {@link #WIFI_AP_STATE_ENABLED},
+     *         {@link #WIFI_AP_STATE_ENABLING}, {@link #WIFI_AP_STATE_FAILED}
+     * @see #isWifiLocalOnlyHotspotEnabled()
+     *
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
+    public int getWifiLocalOnlyHotspotState() {
+        try {
+            return mService.getWifiLocalOnlyHotspotEnabledState();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Return whether local-only Wi-Fi hotspot is enabled or disabled.
+     * @return {@code true} if local-only Wi-Fi hotspot is enabled
+     * @see #getWifiLocalOnlyHotspotState()
+     *
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
+    public boolean isWifiLocalOnlyHotspotEnabled() {
+        return getWifiLocalOnlyHotspotState() == WIFI_AP_STATE_ENABLED;
     }
 
     /**
@@ -13212,12 +13278,13 @@ public class WifiManager {
     @FlaggedApi(android.security.Flags.FLAG_AAPM_API)
     @RequiresApi(Build.VERSION_CODES.BAKLAVA)
     @NonNull
+    @SuppressLint("NewApi")
     public List<AdvancedProtectionFeature> getAvailableAdvancedProtectionFeatures() {
         if (!Environment.isSdkAtLeastB()) {
             throw new UnsupportedOperationException();
         }
         List<AdvancedProtectionFeature> features = new ArrayList<>();
-        if (Flags.wepDisabledInApm()) {
+        if (Flags.wepDisabledInApm() && android.security.Flags.aapmApi()) {
             features.add(new AdvancedProtectionFeature(
                     AdvancedProtectionManager.FEATURE_ID_DISALLOW_WEP));
         }

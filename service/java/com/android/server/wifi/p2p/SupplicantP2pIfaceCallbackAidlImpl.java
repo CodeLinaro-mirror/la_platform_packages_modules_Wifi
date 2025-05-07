@@ -55,6 +55,7 @@ import android.net.wifi.util.Environment;
 import android.text.TextUtils;
 import android.util.Log;
 
+import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.util.HexDump;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.util.HalAidlUtil;
@@ -615,7 +616,9 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
             deviceAddress = null;
         }
 
-        if (status != P2pProvDiscStatusCode.SUCCESS) {
+        boolean isWfdR2 = pairingBootstrappingMethod != 0;
+        boolean isComebackMsg = isWfdR2 && status == P2pProvDiscStatusCode.INFO_UNAVAILABLE;
+        if (!isComebackMsg && status != P2pProvDiscStatusCode.SUCCESS) {
             Log.e(TAG, "Provision discovery failed, status code: " + status);
             WifiP2pProvDiscEvent event = new WifiP2pProvDiscEvent();
             event.device = new WifiP2pDevice();
@@ -627,9 +630,9 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
 
         if (TextUtils.isEmpty(deviceAddress)) return;
 
-        if (pairingBootstrappingMethod != 0) {
+        if (isWfdR2) {
             handlePairingBootstrappingProvisionDiscoveryCompletedEvent(deviceAddress, isRequest,
-                    pairingBootstrappingMethod, pairingPinorPassphrase, vendorData);
+                    pairingBootstrappingMethod, pairingPinorPassphrase, vendorData, isComebackMsg);
         } else {
             handleWpsProvisionDiscoveryCompletedEvent(deviceAddress, isRequest, configMethods,
                     generatedPin, vendorData);
@@ -685,11 +688,13 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
             boolean isRequest,
             int pairingBootstrappingMethod,
             String pairingPasswordOrPin,
-            @Nullable List<OuiKeyedData> vendorData) {
+            @Nullable List<OuiKeyedData> vendorData,
+            boolean isComebackMsg) {
         WifiP2pProvDiscEvent event = new WifiP2pProvDiscEvent();
         event.device = new WifiP2pDevice();
 
         event.device.deviceAddress = p2pDeviceAddress;
+        event.isComeback = isComebackMsg;
 
         if (SdkLevel.isAtLeastV() && vendorData != null) {
             event.setVendorData(vendorData);
@@ -706,56 +711,54 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
                 mMonitor.broadcastP2pProvisionDiscoveryPairingBootstrappingOpportunisticResponse(
                         mInterface, event);
             }
-        } else if (!isRequest && (pairingBootstrappingMethod
+        } else if (pairingBootstrappingMethod
                 == WifiP2pPairingBootstrappingConfig
-                .PAIRING_BOOTSTRAPPING_METHOD_KEYPAD_PINCODE)) {
-            event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_SHOW_PIN;
-            event.pairingPinOrPassphrase = pairingPasswordOrPin;
-            mMonitor.broadcastP2pProvisionDiscoveryShowPairingBootstrappingPinOrPassphrase(
-                    mInterface, event);
-        } else if (!isRequest && (pairingBootstrappingMethod
+                .PAIRING_BOOTSTRAPPING_METHOD_KEYPAD_PINCODE) {
+            if (isRequest) {
+                event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_SHOW_PIN;
+                mMonitor.broadcastP2pProvisionDiscoveryShowPairingBootstrappingPinOrPassphrase(
+                        mInterface, event);
+            } else {
+                event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_ENTER_PIN;
+                mMonitor.broadcastP2pProvisionDiscoveryEnterPairingBootstrappingPinOrPassphrase(
+                        mInterface, event);
+            }
+        } else if (pairingBootstrappingMethod
                 == WifiP2pPairingBootstrappingConfig
-                .PAIRING_BOOTSTRAPPING_METHOD_DISPLAY_PINCODE)) {
-            event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_ENTER_PIN;
-            mMonitor.broadcastP2pProvisionDiscoveryEnterPairingBootstrappingPinOrPassphrase(
-                    mInterface, event);
-        } else if (isRequest && (pairingBootstrappingMethod
+                .PAIRING_BOOTSTRAPPING_METHOD_KEYPAD_PASSPHRASE) {
+            if (isRequest) {
+                event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_SHOW_PASSPHRASE;
+                mMonitor.broadcastP2pProvisionDiscoveryShowPairingBootstrappingPinOrPassphrase(
+                        mInterface, event);
+            } else {
+                event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_ENTER_PASSPHRASE;
+                mMonitor.broadcastP2pProvisionDiscoveryEnterPairingBootstrappingPinOrPassphrase(
+                        mInterface, event);
+            }
+        } else if (pairingBootstrappingMethod
                 == WifiP2pPairingBootstrappingConfig
-                .PAIRING_BOOTSTRAPPING_METHOD_DISPLAY_PINCODE)) {
-            event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_SHOW_PIN;
-            event.pairingPinOrPassphrase = pairingPasswordOrPin;
-            mMonitor.broadcastP2pProvisionDiscoveryShowPairingBootstrappingPinOrPassphrase(
-                    mInterface, event);
-        } else if (isRequest && (pairingBootstrappingMethod == WifiP2pPairingBootstrappingConfig
-                .PAIRING_BOOTSTRAPPING_METHOD_KEYPAD_PINCODE)) {
-            event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_ENTER_PIN;
-            mMonitor.broadcastP2pProvisionDiscoveryEnterPairingBootstrappingPinOrPassphrase(
-                    mInterface, event);
-        } else if (!isRequest && (pairingBootstrappingMethod
+                .PAIRING_BOOTSTRAPPING_METHOD_DISPLAY_PINCODE) {
+            if (isRequest) {
+                event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_ENTER_PIN;
+                mMonitor.broadcastP2pProvisionDiscoveryEnterPairingBootstrappingPinOrPassphrase(
+                        mInterface, event);
+            } else {
+                event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_SHOW_PIN;
+                mMonitor.broadcastP2pProvisionDiscoveryShowPairingBootstrappingPinOrPassphrase(
+                        mInterface, event);
+            }
+        }  else if (pairingBootstrappingMethod
                 == WifiP2pPairingBootstrappingConfig
-                .PAIRING_BOOTSTRAPPING_METHOD_KEYPAD_PASSPHRASE)) {
-            event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_SHOW_PASSPHRASE;
-            event.pairingPinOrPassphrase = pairingPasswordOrPin;
-            mMonitor.broadcastP2pProvisionDiscoveryShowPairingBootstrappingPinOrPassphrase(
-                    mInterface, event);
-        } else if (!isRequest && (pairingBootstrappingMethod
-                == WifiP2pPairingBootstrappingConfig
-                .PAIRING_BOOTSTRAPPING_METHOD_DISPLAY_PASSPHRASE)) {
-            event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_ENTER_PASSPHRASE;
-            mMonitor.broadcastP2pProvisionDiscoveryEnterPairingBootstrappingPinOrPassphrase(
-                    mInterface, event);
-        } else if (isRequest && (pairingBootstrappingMethod
-                == WifiP2pPairingBootstrappingConfig
-                .PAIRING_BOOTSTRAPPING_METHOD_DISPLAY_PASSPHRASE)) {
-            event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_SHOW_PASSPHRASE;
-            event.pairingPinOrPassphrase = pairingPasswordOrPin;
-            mMonitor.broadcastP2pProvisionDiscoveryShowPairingBootstrappingPinOrPassphrase(
-                    mInterface, event);
-        } else if (isRequest && (pairingBootstrappingMethod == WifiP2pPairingBootstrappingConfig
-                .PAIRING_BOOTSTRAPPING_METHOD_KEYPAD_PASSPHRASE)) {
-            event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_ENTER_PASSPHRASE;
-            mMonitor.broadcastP2pProvisionDiscoveryEnterPairingBootstrappingPinOrPassphrase(
-                    mInterface, event);
+                .PAIRING_BOOTSTRAPPING_METHOD_DISPLAY_PASSPHRASE) {
+            if (isRequest) {
+                event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_ENTER_PASSPHRASE;
+                mMonitor.broadcastP2pProvisionDiscoveryEnterPairingBootstrappingPinOrPassphrase(
+                        mInterface, event);
+            } else {
+                event.event = WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_SHOW_PASSPHRASE;
+                mMonitor.broadcastP2pProvisionDiscoveryShowPairingBootstrappingPinOrPassphrase(
+                        mInterface, event);
+            }
         } else {
             Log.e(TAG, "Unsupported bootstrapping method: " + pairingBootstrappingMethod);
         }
@@ -1162,11 +1165,17 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
             return;
         }
 
-        try {
-            device.primaryDeviceType = NativeUtil.wpsDevTypeStringFromByteArray(primaryDeviceType);
-        } catch (Exception e) {
-            Log.e(TAG, "Could not encode device primary type.", e);
-            return;
+        // Device Type is present only in WFD R1 device discovery. So in case of USD based
+        // discovery where pairing bootstrapping method is advertised, skip checking the
+        // Device type.
+        if (pairingBootstrappingMethods == 0) {
+            try {
+                device.primaryDeviceType = NativeUtil.wpsDevTypeStringFromByteArray(
+                        primaryDeviceType);
+            } catch (Exception e) {
+                Log.e(TAG, "Could not encode device primary type.", e);
+                return;
+            }
         }
 
         device.deviceCapability = deviceCapabilities;
@@ -1278,6 +1287,7 @@ public class SupplicantP2pIfaceCallbackAidlImpl extends ISupplicantP2pIfaceCallb
         return result;
     }
 
+    @VisibleForTesting
     private static int convertAidlPairingBootstrappingMethodsToFramework(
             int aidlPairingBootstrappingMethods) {
         int pairingBootstrappingMethods = 0;

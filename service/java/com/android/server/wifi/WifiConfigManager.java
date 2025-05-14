@@ -30,6 +30,7 @@ import static com.android.server.wifi.WifiConfigurationUtil.validatePassword;
 import android.Manifest;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.annotation.SuppressLint;
 import android.app.ActivityManager;
 import android.app.AlarmManager;
 import android.content.ContentResolver;
@@ -51,6 +52,7 @@ import android.net.wifi.WifiManager;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
 import android.net.wifi.util.BuildProperties;
+import android.net.wifi.util.Environment;
 import android.os.Handler;
 import android.os.Process;
 import android.os.UserHandle;
@@ -370,6 +372,11 @@ public class WifiConfigManager {
      * Current logged in user ID.
      */
     private int mCurrentUserId = UserHandle.SYSTEM.getIdentifier();
+
+    /**
+     * Whether the forground user is an admin user.
+     */
+    private boolean mIsForegroundUserAdmin = false;
     /**
      * Flag to indicate that the new user's store has not yet been read since user switch.
      * Initialize this flag to |true| to trigger a read on the first user unlock after
@@ -1082,9 +1089,11 @@ public class WifiConfigManager {
      * @param config         WifiConfiguration object corresponding to the network to be modified.
      * @param uid            UID of the app requesting the modification.
      * @param packageName    Package name of the app requesting the modification.
+     * @param requireUserCheck requires to check if calling uid and creator uid from the same user.
      */
+    @SuppressLint("NewApi")
     private boolean canModifyNetwork(WifiConfiguration config, int uid,
-            @Nullable String packageName) {
+            @Nullable String packageName, boolean requireUserCheck) {
         // Passpoint configurations are generated and managed by PasspointManager. They can be
         // added by either PasspointNetworkNominator (for auto connection) or Settings app
         // (for manual connection), and need to be removed once the connection is completed.
@@ -1100,6 +1109,14 @@ public class WifiConfigManager {
                 && uid == Process.WIFI_UID
                 && config.enterpriseConfig.isAuthenticationSimBased()) {
             return true;
+        }
+
+        // The configuration is disallowed to be updated by other user.
+        if (Environment.isSdkNewerThanB()
+                && mFeatureFlags.multiUserWifiEnhancement()
+                && requireUserCheck && !config.isAllowedToUpdateByOtherUsers()
+                && !mWifiPermissionsUtil.areTwoAppsFromSameUser(config.creatorUid, uid)) {
+            return false;
         }
 
         // TODO: ideally package should not be null here (and hence we wouldn't need the
@@ -1231,6 +1248,7 @@ public class WifiConfigManager {
      * @param internalConfig WifiConfiguration object in our internal map.
      * @param externalConfig WifiConfiguration object provided from the external API.
      */
+    @SuppressLint("NewApi")
     private void mergeWithInternalWifiConfiguration(
             WifiConfiguration internalConfig, WifiConfiguration externalConfig) {
         if (externalConfig.SSID != null) {
@@ -1346,6 +1364,12 @@ public class WifiConfigManager {
         internalConfig.setRepeaterEnabled(externalConfig.isRepeaterEnabled());
         internalConfig.setSendDhcpHostnameEnabled(externalConfig.isSendDhcpHostnameEnabled());
         internalConfig.setWifi7Enabled(externalConfig.isWifi7Enabled());
+        if (Environment.isSdkNewerThanB()
+                && mFeatureFlags.multiUserWifiEnhancement()
+                && externalConfig.shared) {
+            internalConfig.setAllowedToUpdateByOtherUsers(
+                    externalConfig.isAllowedToUpdateByOtherUsers());
+        }
     }
 
     /**
@@ -1375,6 +1399,7 @@ public class WifiConfigManager {
      * @return New WifiConfiguration object with parameters merged from the provided external
      * configuration.
      */
+    @SuppressLint("NewApi")
     private WifiConfiguration createNewInternalWifiConfigurationFromExternal(
             WifiConfiguration externalConfig, int uid, @Nullable String packageName) {
         WifiConfiguration newInternalConfig = new WifiConfiguration();
@@ -1403,6 +1428,12 @@ public class WifiConfigManager {
         newInternalConfig.shared = externalConfig.shared;
         newInternalConfig.updateIdentifier = externalConfig.updateIdentifier;
         newInternalConfig.setPasspointUniqueId(externalConfig.getPasspointUniqueId());
+        if (Environment.isSdkNewerThanB()
+                && mFeatureFlags.multiUserWifiEnhancement()
+                && externalConfig.shared) {
+            newInternalConfig.setAllowedToUpdateByOtherUsers(
+                    externalConfig.isAllowedToUpdateByOtherUsers());
+        }
 
         // Add debug information for network addition.
         newInternalConfig.creatorUid = newInternalConfig.lastUpdateUid = uid;
@@ -1520,8 +1551,10 @@ public class WifiConfigManager {
                                 STATUS_INVALID_CONFIGURATION),
                         existingInternalConfig);
             }
+
             // Check for the app's permission before we let it update this network.
-            if (!canModifyNetwork(existingInternalConfig, uid, packageName)) {
+            if (!canModifyNetwork(existingInternalConfig, uid,
+                    packageName, true /* requireUserCheck */)) {
                 Log.e(TAG, "UID " + uid + " does not have permission to update configuration "
                         + config.getProfileKey());
                 return new Pair<>(
@@ -2024,7 +2057,9 @@ public class WifiConfigManager {
         if (config == null) {
             return false;
         }
-        if (!canModifyNetwork(config, uid, packageName)) {
+
+        if (!canModifyNetwork(config, uid, packageName,
+                !mIsForegroundUserAdmin /* requireUserCheck */)) {
             Log.e(TAG, "UID " + uid + " does not have permission to delete configuration "
                     + config.getProfileKey());
             return false;
@@ -2358,7 +2393,8 @@ public class WifiConfigManager {
         if (disableOthers) {
             setLastSelectedNetwork(networkId);
         }
-        if (!canModifyNetwork(config, uid, packageName)) {
+
+        if (!canModifyNetwork(config, uid, packageName, true /* requireUserCheck */)) {
             Log.e(TAG, "UID " + uid +  " package " + packageName
                     + " does not have permission to update configuration "
                     + config.getProfileKey());
@@ -2398,7 +2434,7 @@ public class WifiConfigManager {
         if (networkId == mLastSelectedNetworkId) {
             clearLastSelectedNetwork();
         }
-        if (!canModifyNetwork(config, uid, packageName)) {
+        if (!canModifyNetwork(config, uid, packageName, true /* requireUserCheck */)) {
             Log.e(TAG, "UID " + uid + " package " + packageName
                     + " does not have permission to update configuration "
                     + config.getProfileKey());
@@ -3486,6 +3522,8 @@ public class WifiConfigManager {
         Set<Integer> removedNetworkIds = clearInternalDataForUser(mCurrentUserId);
         mConfiguredNetworks.setNewUser(userId);
         mCurrentUserId = userId;
+        // New API in Android V
+        mIsForegroundUserAdmin = SdkLevel.isAtLeastV() && mUserManager.isForegroundUserAdmin();
 
         if (mUserManager.isUserUnlockingOrUnlocked(UserHandle.of(mCurrentUserId))) {
             handleUserUnlockOrSwitch(mCurrentUserId);
@@ -3515,6 +3553,8 @@ public class WifiConfigManager {
             Log.e(TAG, "Ignore user unlock for non current user " + userId);
             return;
         }
+        // New API in Android V
+        mIsForegroundUserAdmin = SdkLevel.isAtLeastV() && mUserManager.isForegroundUserAdmin();
         if (mPendingStoreRead) {
             Log.w(TAG, "Ignore user unlock until store is read!");
             mDeferredUserUnlockRead = true;
@@ -3973,6 +4013,7 @@ public class WifiConfigManager {
         pw.println("WifiConfigManager - Log Begin ----");
         mLocalLog.dump(fd, pw, args);
         pw.println("WifiConfigManager - Log End ----");
+        pw.println("WifiConfigManager - mIsForegroundUserAdmin:" + mIsForegroundUserAdmin);
         pw.println("WifiConfigManager - Configured networks Begin ----");
         for (WifiConfiguration network : getInternalConfiguredNetworks()) {
             pw.println(network);

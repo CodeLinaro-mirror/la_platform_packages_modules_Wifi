@@ -1143,6 +1143,9 @@ public class HostapdHalAidlImp implements IHostapdHal {
 
         if (SdkLevel.isAtLeastT()) {
             hwModeParams.enable80211BE = config.isIeee80211beEnabled();
+            // No need to upstream to Google because they
+            // have added isMlo AIDL interface in Android 16
+            hwModeParams.enable80211BE &= config.isMultiLinkOperationEnabledInternal();
             hwModeParams.maximumChannelBandwidth =
                     mapSoftApInfoBandwidthToHal(config.getMaxChannelBandwidth());
         } else {

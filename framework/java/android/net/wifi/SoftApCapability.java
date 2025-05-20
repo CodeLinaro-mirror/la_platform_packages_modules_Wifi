@@ -16,6 +16,7 @@
 
 package android.net.wifi;
 
+import android.annotation.FlaggedApi;
 import android.annotation.LongDef;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
@@ -24,6 +25,8 @@ import android.net.MacAddress;
 import android.net.wifi.SoftApConfiguration.BandType;
 import android.os.Parcel;
 import android.os.Parcelable;
+
+import com.android.wifi.flags.Flags;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -142,18 +145,13 @@ public final class SoftApCapability implements Parcelable {
      */
     public static final long SOFTAP_FEATURE_WPA3_OWE = 1 << 11;
 
-    /**
-     * Support for 802.11be SAP MLO.
-     * flag when {@code R.bool.config_wifisoftapMultiLinkOperationSupported} is true
-     *
-     * <p>
-     * Use this flag with {@link #areFeaturesSupported(long)}
-     * to verify that MLO is supported before enabling it using
-     * {@link SoftApConfiguration.Builder#setMultiLinkOperationEnabled(boolean)}
-     *
-     * @hide
+    /*
+     * Support for multiple link operation on a single multiple link device.
+     * Flag when {@code R.Integer.config_wifiSoftApMaxNumberMLDSupported} is configured
+     * to non zero value and chip report MLO SoftAP is supported.
      */
-    public static final long SOFTAP_FEATURE_MULTI_LINK_OPERATION = 1 << 12;
+    @FlaggedApi(Flags.FLAG_MLO_SAP)
+    public static final long SOFTAP_FEATURE_MLO = 1 << 12;
 
     /** @hide */
     @Retention(RetentionPolicy.SOURCE)
@@ -170,6 +168,7 @@ public final class SoftApCapability implements Parcelable {
             SOFTAP_FEATURE_BAND_60G_SUPPORTED,
             SOFTAP_FEATURE_WPA3_OWE_TRANSITION,
             SOFTAP_FEATURE_WPA3_OWE,
+            SOFTAP_FEATURE_MLO,
     })
     public @interface HotspotFeatures {}
 

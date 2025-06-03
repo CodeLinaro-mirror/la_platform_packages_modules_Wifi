@@ -9,6 +9,12 @@
      WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
      See the License for the specific language governing permissions and
      limitations under the License.
+
+     Changes from Qualcomm Innovation Center, Inc. are provided under the
+     following license:
+
+     Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+     SPDX-License-Identifier: BSD-3-Clause-Clear
 -->
 
 <!-- These values can be used to control wifi stack behavior/features on individual devices.
@@ -20,6 +26,7 @@
         <policy type="odm|product|system|vendor">
 
           <!-- Params from config.xml that can be overlayed -->
+          <item type="bool" name="config_wifiChipOnRemoteTarget" />
           <item type="bool" name="config_wifi24ghzSupport" />
           <item type="bool" name="config_wifi5ghzSupport" />
           <item type="bool" name="config_wifi6ghzSupport" />
@@ -111,6 +118,7 @@
           <item type="bool" name="config_wifi_softap_ieee80211ac_supported" />
           <item type="bool" name="config_wifiSoftapIeee80211axSupported" />
           <item type="bool" name="config_wifiSoftapIeee80211beSupported" />
+          <item type="bool" name="config_wifiSoftapMultiLinkOperationSupported" />
           <item type="bool" name="config_wifiSoftap24ghzSupported" />
           <item type="bool" name="config_wifiSoftap5ghzSupported" />
           <item type="bool" name="config_wifiSoftap6ghzSupported" />
@@ -247,6 +255,7 @@
           <item type="bool" name="config_wifiMultiStaLocalOnlyConcurrencyEnabled" />
           <item type="bool" name="config_wifiMultiStaRestrictedConcurrencyEnabled" />
           <item type="bool" name="config_wifiMultiStaMultiInternetConcurrencyEnabled" />
+          <item type="bool" name="config_wifiAllowConnectPolicyForDualStation" />
           <item type="bool" name="config_wifiDefaultCoexAlgorithmEnabled"/>
           <item type="bool" name="config_wifiCoexForGpsL1"/>
           <item type="integer" name="config_wifiCoexGpsL1ThresholdKhz"/>

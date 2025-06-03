@@ -15,6 +15,11 @@
  */
 package com.android.server.wifi;
 
+import static android.net.wifi.WifiScanner.WIFI_BAND_24_GHZ;
+import static android.net.wifi.WifiScanner.WIFI_BAND_5_GHZ;
+import static android.net.wifi.WifiScanner.WIFI_BAND_6_GHZ;
+import static android.net.wifi.WifiScanner.WIFI_BAND_UNSPECIFIED;
+
 import android.annotation.NonNull;
 import android.content.Context;
 import android.hardware.wifi.hostapd.ApInfo;
@@ -39,6 +44,7 @@ import android.net.wifi.SoftApConfiguration.BandType;
 import android.net.wifi.SoftApInfo;
 import android.net.wifi.WifiAnnotations;
 import android.net.wifi.WifiManager;
+import android.net.wifi.MloLink;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.IBinder.DeathRecipient;
@@ -391,13 +397,35 @@ public class HostapdHalAidlImp implements IHostapdHal {
             Log.v(TAG, "onApInstanceInfoChanged on " + info.ifaceName + " / "
                     + info.apIfaceInstance);
             try {
-                if (mSoftApEventCallback != null) {
-                    mSoftApEventCallback.onInfoChanged(info.apIfaceInstance, info.freqMhz,
-                            mapHalChannelBandwidthToSoftApInfo(info.channelBandwidth),
-                            mapHalGenerationToWifiStandard(info.generation),
-                            MacAddress.fromBytes(info.apIfaceInstanceMacAddress));
+                if (info.apIfaceInstanceMacAddress.length == 12) {
+                    byte[] linkMacAddress = new byte[6];
+                    byte[] mldMacAddress = new byte[6];
+                    System.arraycopy(info.apIfaceInstanceMacAddress, 0, linkMacAddress, 0, 6);
+                    System.arraycopy(info.apIfaceInstanceMacAddress, 6, mldMacAddress, 0, 6);
+
+                    String[] linkInfo = info.apIfaceInstance.split("_");
+                    MloLink mloLink = new MloLink();
+                    mloLink.setLinkId(Integer.parseInt(linkInfo[1]));
+                    mloLink.setBand(mapHalFreqToWifiBand(info.freqMhz));
+                    mloLink.setChannel(ScanResult.convertFrequencyMhzToChannelIfSupported(info.freqMhz));
+                    mloLink.setApMacAddress(MacAddress.fromBytes(linkMacAddress));
+
+                    if (mSoftApEventCallback != null) {
+                        mSoftApEventCallback.onLinkInfoChanged(info.ifaceName,
+                                mapHalGenerationToWifiStandard(info.generation),
+                                MacAddress.fromBytes(mldMacAddress),
+                                mloLink);
+                    }
+                    mActiveInstances.add(info.apIfaceInstance);
+                } else {
+                    if (mSoftApEventCallback != null) {
+                       mSoftApEventCallback.onInfoChanged(info.apIfaceInstance, info.freqMhz,
+                               mapHalChannelBandwidthToSoftApInfo(info.channelBandwidth),
+                               mapHalGenerationToWifiStandard(info.generation),
+                               MacAddress.fromBytes(info.apIfaceInstanceMacAddress));
+                    }
+                    mActiveInstances.add(info.apIfaceInstance);
                 }
-                mActiveInstances.add(info.apIfaceInstance);
             } catch (IllegalArgumentException iae) {
                 Log.e(TAG, " Invalid apIfaceInstanceMacAddress, " + iae);
             }
@@ -965,6 +993,21 @@ public class HostapdHalAidlImp implements IHostapdHal {
             ServiceSpecificException exception, String methodStr) {
         synchronized (mLock) {
             Log.e(TAG, "IHostapd." + methodStr + " failed: " + exception.toString());
+        }
+    }
+
+    /**
+     * convert AP frequency into wifi band defined @WifiAnnotations.WifiBandBasic
+     */
+    private int mapHalFreqToWifiBand(int freqMhz) {
+        if (ScanResult.is24GHz(freqMhz)) {
+            return WIFI_BAND_24_GHZ;
+        } else if (ScanResult.is5GHz(freqMhz)) {
+            return WIFI_BAND_5_GHZ;
+        } else if(ScanResult.is6GHz(freqMhz)) {
+            return WIFI_BAND_6_GHZ;
+        } else {
+            return WIFI_BAND_UNSPECIFIED;
         }
     }
 

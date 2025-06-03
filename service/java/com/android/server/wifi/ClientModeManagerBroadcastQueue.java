@@ -12,13 +12,19 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.server.wifi;
 
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SCAN_ONLY;
+import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_LOCAL_ONLY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TRANSIENT;
+import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_LONG_LIVED;
 
 import android.annotation.NonNull;
 import android.content.Context;
@@ -78,7 +84,9 @@ public class ClientModeManagerBroadcastQueue {
             @NonNull QueuedBroadcast broadcast) {
 
         if (manager.getRole() == ROLE_CLIENT_PRIMARY
-                || manager.getRole() == ROLE_CLIENT_SCAN_ONLY) {
+                || manager.getRole() == ROLE_CLIENT_SCAN_ONLY
+                || manager.getRole() == ROLE_CLIENT_SECONDARY_LONG_LIVED
+                || manager.getRole() == ROLE_CLIENT_LOCAL_ONLY) {
             // Primary or scan only, send existing queued broadcasts and send the new broadcast
             // immediately. Assume that queue is empty for this manager (flushed when it originally
             // became primary).
@@ -120,7 +128,7 @@ public class ClientModeManagerBroadcastQueue {
      */
     public void fakeDisconnectionBroadcasts() {
         ClientModeImpl.sendNetworkChangeBroadcast(
-                mContext, NetworkInfo.DetailedState.DISCONNECTED, mVerboseLoggingEnabled);
+                mContext, NetworkInfo.DetailedState.DISCONNECTED, null, mVerboseLoggingEnabled);
     }
 
     private class PrimaryClientModeManagerChangedCallback

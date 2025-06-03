@@ -142,6 +142,19 @@ public final class SoftApCapability implements Parcelable {
      */
     public static final long SOFTAP_FEATURE_WPA3_OWE = 1 << 11;
 
+    /**
+     * Support for 802.11be SAP MLO.
+     * flag when {@code R.bool.config_wifisoftapMultiLinkOperationSupported} is true
+     *
+     * <p>
+     * Use this flag with {@link #areFeaturesSupported(long)}
+     * to verify that MLO is supported before enabling it using
+     * {@link SoftApConfiguration.Builder#setMultiLinkOperationEnabled(boolean)}
+     *
+     * @hide
+     */
+    public static final long SOFTAP_FEATURE_MULTI_LINK_OPERATION = 1 << 12;
+
     /** @hide */
     @Retention(RetentionPolicy.SOURCE)
     @LongDef(flag = true, prefix = { "SOFTAP_FEATURE_" }, value = {

@@ -12,6 +12,10 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
+ *
+ * Changes from Qualcomm Innovation Center, Inc. are provided under the following license:
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
 package com.android.server.wifi;
@@ -71,6 +75,7 @@ import android.net.Uri;
 import android.net.ip.IIpClient;
 import android.net.ip.IpClientCallbacks;
 import android.net.ip.IpClientManager;
+import android.net.LinkAddress;
 import android.net.networkstack.aidl.dhcp.DhcpOption;
 import android.net.networkstack.aidl.ip.ReachabilityLossInfoParcelable;
 import android.net.networkstack.aidl.ip.ReachabilityLossReason;
@@ -119,6 +124,7 @@ import android.util.ArraySet;
 import android.util.Log;
 import android.util.Pair;
 import android.util.Range;
+import android.os.SystemProperties;
 
 import androidx.annotation.RequiresApi;
 
@@ -199,12 +205,15 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private static final int IPCLIENT_STARTUP_TIMEOUT_MS = 2_000;
     private static final int IPCLIENT_SHUTDOWN_TIMEOUT_MS = 60_000; // 60 seconds
     private static final int NETWORK_AGENT_TEARDOWN_DELAY_MS = 5_000; // Max teardown delay.
+    private static final int TIME_WAIT_FOR_DICONNECT_COMPLETE_MS = 200;
+
     @VisibleForTesting public static final long CONNECTING_WATCHDOG_TIMEOUT_MS = 30_000; // 30 secs.
     @VisibleForTesting
     public static final String ARP_TABLE_PATH = "/proc/net/arp";
 
     private boolean mVerboseLoggingEnabled = false;
 
+    private boolean mIsWifiChipOnRemoteTarget = SystemProperties.getBoolean("ro.vendor.wlan.hal.rpc", false);
     /**
      * Log with error attribute
      *
@@ -571,6 +580,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     @VisibleForTesting
     static final int CMD_REJECT_EAP_INSECURE_CONNECTION                 = BASE + 302;
 
+    static final int CMD_REMOTE_WLAN_OBTAIN_IP_TIMED_OUT                = BASE + 340;
+
+    static final int CMD_REMOTE_WLAN_OBTAIN_IP_SUCCESS                  = BASE + 341;
+
+    static final int CMD_TRANSITION_TO_WAIT_REMOTE_L3PROVIONING_STATE   = BASE + 342;
     /* Tracks if suspend optimizations need to be disabled by DHCP,
      * screen or due to high perf mode.
      * When any of them needs to disable it, we keep the suspend optimizations
@@ -602,6 +616,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private State mWaitBeforeL3ProvisioningState;
     /* fetching IP after connection to access point (assoc+auth complete) */
     private State mL3ProvisioningState;
+    /* wait fetching IP after connection to access point (assoc+auth complete) in remote side*/
+    private State mWaitRemoteL3ProvisioningState;
     /* Connected with IP addr */
     private State mL3ConnectedState;
     /* Roaming */
@@ -879,6 +895,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mL2ConnectedState = new L2ConnectedState(threshold);
         mWaitBeforeL3ProvisioningState = new WaitBeforeL3ProvisioningState(threshold);
         mL3ProvisioningState = new L3ProvisioningState(threshold);
+        mWaitRemoteL3ProvisioningState =  new WaitRemoteL3ProvisioningState(threshold);
         mL3ConnectedState = new L3ConnectedState(threshold);
         mRoamingState = new RoamingState(threshold);
         mDisconnectedState = new DisconnectedState(threshold);
@@ -889,6 +906,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 addState(mL2ConnectedState, mConnectingOrConnectedState); {
                     addState(mWaitBeforeL3ProvisioningState, mL2ConnectedState);
                     addState(mL3ProvisioningState, mL2ConnectedState);
+                    addState(mWaitRemoteL3ProvisioningState, mL2ConnectedState);
                     addState(mL3ConnectedState, mL2ConnectedState);
                     addState(mRoamingState, mL2ConnectedState);
                 }
@@ -1690,7 +1708,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     public boolean isConnecting() {
         IState state = getCurrentState();
         return state == mL2ConnectingState || state == mL2ConnectedState
-                || state == mWaitBeforeL3ProvisioningState || state == mL3ProvisioningState;
+                || state == mWaitBeforeL3ProvisioningState || state == mL3ProvisioningState
+                || state == mWaitRemoteL3ProvisioningState;
     }
 
     @Override
@@ -2635,6 +2654,40 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (mVerboseLoggingEnabled) log("mSuspendOptNeedsDisabled " + mSuspendOptNeedsDisabled);
     }
 
+    private void updateMloLinkFromPollResults(MloLink link, WifiSignalPollResults pollResults) {
+        if (link == null) return;
+        int linkId = link.getLinkId();
+        link.setRssi(pollResults.getRssi(linkId));
+        link.setTxLinkSpeedMbps(pollResults.getTxLinkSpeed(linkId));
+        link.setRxLinkSpeedMbps(pollResults.getRxLinkSpeed(linkId));
+        link.setChannel(ScanResult.convertFrequencyMhzToChannelIfSupported(
+                pollResults.getFrequency(linkId)));
+        link.setBand(ScanResult.toBand(pollResults.getFrequency(linkId)));
+        if (mVerboseLoggingEnabled) {
+            logd("updateMloLinkFromPollResults: linkId=" + linkId + " rssi=" + link.getRssi()
+                    + " channel=" + link.getChannel()
+                    + " band=" + link.getBand()
+                    + " TxLinkspeed=" + link.getTxLinkSpeedMbps()
+                    + " RxLinkSpeed=" + link.getRxLinkSpeedMbps());
+
+        }
+    }
+
+    private void updateMloLinkFromScanResult(MloLink link) {
+        if (link == null || link.getApMacAddress() == null) return;
+        ScanDetailCache scanDetailCache = mWifiConfigManager.getScanDetailCacheForNetwork(
+                mWifiInfo.getNetworkId());
+        if (scanDetailCache == null) return;
+        ScanResult matchingScanResult = scanDetailCache.getScanResult(
+                link.getApMacAddress().toString());
+        if (matchingScanResult == null) return;
+        link.setRssi(matchingScanResult.level);
+        if (mVerboseLoggingEnabled) {
+            logd("updateMloLinkFromScanResult: linkId=" + link.getLinkId() + " rssi="
+                    + link.getRssi());
+        }
+    }
+
     /*
      * Fetch link layer stats, RSSI, linkspeed, and frequency on current connection
      * and update Network capabilities
@@ -2659,21 +2712,13 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     + " RxLinkSpeed=" + newRxLinkSpeed);
         }
 
-        /* Set link specific signal poll results */
         for (MloLink link : mWifiInfo.getAffiliatedMloLinks()) {
-            int linkId = link.getLinkId();
-            link.setRssi(pollResults.getRssi(linkId));
-            link.setTxLinkSpeedMbps(pollResults.getTxLinkSpeed(linkId));
-            link.setRxLinkSpeedMbps(pollResults.getRxLinkSpeed(linkId));
-            link.setChannel(ScanResult.convertFrequencyMhzToChannelIfSupported(
-                    pollResults.getFrequency(linkId)));
-            link.setBand(ScanResult.toBand(pollResults.getFrequency(linkId)));
-            if (mVerboseLoggingEnabled) {
-                logd("linkId=" + linkId + " rssi=" + link.getRssi()
-                        + " channel=" + link.getChannel()
-                        + " band=" + link.getBand()
-                        + " TxLinkspeed=" + link.getTxLinkSpeedMbps()
-                        + " RxLinkSpeed=" + link.getRxLinkSpeedMbps());
+            if (pollResults.isAvailable(link.getLinkId())
+                    && (link.getState() == MloLink.MLO_LINK_STATE_IDLE
+                    || link.getState() == MloLink.MLO_LINK_STATE_ACTIVE)) {
+                updateMloLinkFromPollResults(link, pollResults);
+            } else {
+                updateMloLinkFromScanResult(link);
             }
         }
 
@@ -2983,15 +3028,15 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mBroadcastQueue.queueOrSendBroadcast(
                 mClientModeManager,
                 () -> sendNetworkChangeBroadcast(
-                        mContext, networkAgentState, mVerboseLoggingEnabled));
+                        mContext, networkAgentState, mInterfaceName, mVerboseLoggingEnabled));
     }
 
     /** Send a NETWORK_STATE_CHANGED_ACTION broadcast. */
     public static void sendNetworkChangeBroadcast(
-            Context context, DetailedState networkAgentState, boolean verboseLoggingEnabled) {
+            Context context, DetailedState networkAgentState, @Nullable String extraInfo, boolean verboseLoggingEnabled) {
         Intent intent = new Intent(WifiManager.NETWORK_STATE_CHANGED_ACTION);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
-        NetworkInfo networkInfo = makeNetworkInfo(networkAgentState);
+        NetworkInfo networkInfo = makeNetworkInfo(networkAgentState, extraInfo);
         intent.putExtra(WifiManager.EXTRA_NETWORK_INFO, networkInfo);
         if (verboseLoggingEnabled) {
             Log.d(TAG, "Sending broadcast=NETWORK_STATE_CHANGED_ACTION"
@@ -3011,9 +3056,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
     }
 
-    private static NetworkInfo makeNetworkInfo(DetailedState networkAgentState) {
+    private static NetworkInfo makeNetworkInfo(DetailedState networkAgentState, @Nullable String extraInfo) {
         final NetworkInfo ni = new NetworkInfo(ConnectivityManager.TYPE_WIFI, 0, NETWORKTYPE, "");
-        ni.setDetailedState(networkAgentState, null, null);
+        //extraInfo store STA interface name,
+        //qtiwifi and remote side need it to differ primary STA or secondary STA.
+        ni.setDetailedState(networkAgentState, null, extraInfo);
         return ni;
     }
 
@@ -4582,7 +4629,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     mNetworkNotFoundEventCount = 0;
                     /* Check for FILS configuration again after updating the config */
                     if (config.isFilsSha256Enabled() || config.isFilsSha384Enabled()) {
-                        boolean isIpClientStarted = startIpClient(config, true);
+                        boolean isIpClientStarted = startIpClient(config, true, false, false);
                         if (isIpClientStarted) {
                             mIpClientWithPreConnection = true;
                             transitionTo(mL2ConnectingState);
@@ -6728,7 +6775,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         @Override
         public void enterImpl() {
-            startL3Provisioning();
+            if (!mIsWifiChipOnRemoteTarget) {
+                startL3Provisioning();
+            } else {
+                sendMessage(CMD_TRANSITION_TO_WAIT_REMOTE_L3PROVIONING_STATE);
+            }
         }
 
         @Override
@@ -6757,6 +6808,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     handleStatus = NOT_HANDLED;
                     break;
                 }
+                case CMD_TRANSITION_TO_WAIT_REMOTE_L3PROVIONING_STATE: {
+                    transitionTo(mWaitRemoteL3ProvisioningState);
+                    break;
+                }
                 default: {
                     handleStatus = NOT_HANDLED;
                     break;
@@ -6776,11 +6831,97 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 mIpClientWithPreConnection = false;
                 mSentHLPs = false;
             } else {
-                startIpClient(currentConfig, false);
+                startIpClient(currentConfig, false, false, false);
             }
             // Get Link layer stats so as we get fresh tx packet counters
             getWifiLinkLayerStats();
         }
+    }
+
+    private class WaitRemoteL3ProvisioningState extends RunnerState {
+        //remote side will try to get IP Info at 1/2/3 secs.
+        //Then set timeout time longer than 3 seconds in worst case
+        private static final int TIMEOUT_MS = 10_000;
+
+        WaitRemoteL3ProvisioningState(int threshold) {
+            super(threshold, mWifiInjector.getWifiHandlerLocalLog());
+        }
+
+        @Override
+        void enterImpl() {
+            startRemoteL3Provisioning();
+            sendMessageDelayed(CMD_REMOTE_WLAN_OBTAIN_IP_TIMED_OUT, TIMEOUT_MS);
+        }
+
+        @Override
+        void exitImpl() {
+        }
+
+        @Override
+        boolean processMessageImpl(Message message) {
+            boolean handleStatus = HANDLED;
+
+            switch(message.what) {
+                case WifiMonitor.NETWORK_DISCONNECTION_EVENT: {
+                    DisconnectEventInfo eventInfo = (DisconnectEventInfo) message.obj;
+                    mWifiLastResortWatchdog.noteConnectionFailureAndTriggerIfNeeded(
+                            getConnectingSsidInternal(),
+                            !isValidBssid(eventInfo.bssid)
+                            ? mTargetBssid : eventInfo.bssid,
+                            WifiLastResortWatchdog.FAILURE_CODE_DHCP,
+                            isConnected());
+                    handleStatus = NOT_HANDLED;
+                    break;
+                }
+                case CMD_REMOTE_WLAN_OBTAIN_IP_TIMED_OUT: {
+                    //start local L3Provisoing with dynamic IP via DHCP,
+                    //it will go to failure finally due to CMD_IP_CONFIGURATION_LOST
+                    //and invoke IpClient callbacks with linkInfo parameter
+                    logd("Don't obtain IP from remote side, timeout occurs");
+                    WifiConfiguration config = getConnectedWifiConfigurationInternal();
+                    startIpClient(config, false, false, false);
+                    break;
+                }
+                case CMD_REMOTE_WLAN_OBTAIN_IP_SUCCESS: {
+                    removeMessages(CMD_REMOTE_WLAN_OBTAIN_IP_TIMED_OUT);
+                    String ipInfo = (String)message.obj;
+                    logd("obtain remote side IP info: " + ipInfo);
+                    //start local L3Provisioning with static IP
+                    WifiConfiguration currentConfig = getConnectedWifiConfigurationInternal();
+                    startIpClient(currentConfig, false, false, true);
+                    break;
+                }
+                default: {
+                    handleStatus = NOT_HANDLED;
+                    break;
+                }
+            }
+
+            if (handleStatus == HANDLED) {
+                logStateAndMessage(message, this);
+            }
+            return handleStatus;
+        }
+
+        @Override
+            String getMessageLogRec(int what) {
+                 return ClientModeImpl.class.getSimpleName() + "."
+                          + WaitRemoteL3ProvisioningState.class.getSimpleName() + "." + getWhatToString(what);
+            }
+
+        private void startRemoteL3Provisioning() {
+            WifiConfiguration currentConfig = getConnectedWifiConfigurationInternal();
+            if (mIpClientWithPreConnection && mIpClient != null) {
+                mIpClient.notifyPreconnectionComplete(mSentHLPs);
+                mIpClientWithPreConnection = false;
+                mSentHLPs = false;
+            } else {
+                startIpClient(currentConfig, false, true, false);
+            }
+            // Get Link layer stats so as we get fresh tx packet counters
+            getWifiLinkLayerStats();
+        }
+
     }
 
     /**
@@ -7436,7 +7577,29 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * @param bssid BSSID of the network
      */
     public void startConnectToNetwork(int networkId, int uid, String bssid) {
+        if (mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+            WifiConfiguration config =
+                    mWifiConfigManager.getConfiguredNetworkWithoutMasking(networkId);
+            //Before disconnecting 2nd STA, need to know the freq of selected candidate network
+            //Here do the selecting candidate before handling CMD_START_CONNECT, otherwise
+            //it could not make sure disconnect 2nd STA completed before primary STA prepare to connect
+            //since selecting condidate is followed by connecting candidate.
+            selectCandidateBeforePrepareToConnect(config);
+            if (mWifiConnectivityManager.disconnectSecondaryClientIfNecessary(
+                    mWifiConfigManager.getConfiguredNetworkWithoutMasking(networkId))){
+                Log.d(TAG, "Need to disconnect 2nd STA before connection");
+                //delay to make sure disconnect 2nd STA completed before primary STA prepare to connect
+                sendMessageDelayed(CMD_START_CONNECT, networkId, uid, bssid, TIME_WAIT_FOR_DICONNECT_COMPLETE_MS);
+                return;
+            }
+
+        }
         sendMessage(CMD_START_CONNECT, networkId, uid, bssid);
+    }
+
+    void selectCandidateBeforePrepareToConnect(WifiConfiguration config) {
+        List<ScanResult> scanResults = mScanRequestProxy.getScanResults();
+        selectCandidateSecurityParamsIfNecessary(config, scanResults);
     }
 
     /**
@@ -7846,11 +8009,43 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
     }
 
-    private boolean startIpClient(WifiConfiguration config, boolean isFilsConnection) {
+    private StaticIpConfiguration CreateFakeStaticIpConfig() {
+        final ArrayList<InetAddress> dnsServers = new ArrayList<>();
+        dnsServers.add(InetAddress.parseNumericAddress("8.8.8.8"));
+        dnsServers.add(InetAddress.parseNumericAddress("8.8.4.4"));
+        dnsServers.add(InetAddress.parseNumericAddress("4.4.4.4"));
+
+        //primary   STA wlan0: 10.41.2.203
+        //secondary STA wlan1: 10.42.2.203
+        if (isPrimary()) {
+            return new StaticIpConfiguration.Builder()
+                      .setIpAddress(new LinkAddress("10.41.2.203/16"))
+                      .setGateway(InetAddress.parseNumericAddress("10.41.3.1"))
+                      .setDnsServers(dnsServers)
+                      .setDomains("")
+                      .build();
+        } else {
+            return new StaticIpConfiguration.Builder()
+                      .setIpAddress(new LinkAddress("10.42.2.203/16"))
+                      .setGateway(InetAddress.parseNumericAddress("10.42.3.1"))
+                      .setDnsServers(dnsServers)
+                      .setDomains("")
+                      .build();
+        }
+    }
+
+    private boolean startIpClient(WifiConfiguration config, boolean isFilsConnection,
+                        boolean isRemoteControl, boolean isForceStaticIpForRemote) {
         if (mIpClient == null || config == null) {
             return false;
         }
 
+        if (isRemoteControl && mIsWifiChipOnRemoteTarget) {
+            //inform remote side to start obtain IP processing
+            log("remote control mode: send OBTAINING_IPADDR");
+            sendNetworkChangeBroadcast(DetailedState.OBTAINING_IPADDR);
+            return true;
+        }
         final boolean isUsingStaticIp =
                 (config.getIpAssignment() == IpConfiguration.IpAssignment.STATIC);
         final boolean isUsingMacRandomization =
@@ -7867,7 +8062,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     + " roam=" + mIsAutoRoaming
                     + " static=" + isUsingStaticIp
                     + " randomMac=" + isUsingMacRandomization
-                    + " isFilsConnection=" + isFilsConnection);
+                    + " isFilsConnection=" + isFilsConnection
+                    + " isWifiChipOnRemoteTarget" + mIsWifiChipOnRemoteTarget
+                    + " isForceStaticIpForRemote=" + isForceStaticIpForRemote);
         }
 
         final MacAddress currentBssid = getCurrentBssidInternalMacAddress();
@@ -7904,7 +8101,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             prov.withDhcpOptions(convertToInternalDhcpOptions(options));
             mIpClient.startProvisioning(prov.build());
         } else {
-            sendNetworkChangeBroadcast(DetailedState.OBTAINING_IPADDR);
+            if (!mIsWifiChipOnRemoteTarget) {
+                sendNetworkChangeBroadcast(DetailedState.OBTAINING_IPADDR);
+            }
             // We must clear the config BSSID, as the wifi chipset may decide to roam
             // from this point on and having the BSSID specified in the network block would
             // cause the roam to fail and the device to disconnect.
@@ -7936,14 +8135,25 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         scanResult.BSSID, ies);
             }
             final Network network = (mNetworkAgent != null) ? mNetworkAgent.getNetwork() : null;
-            if (!isUsingStaticIp) {
+            if (!isUsingStaticIp && !isForceStaticIpForRemote) {
                 prov = new ProvisioningConfiguration.Builder()
                     .withPreDhcpAction()
                     .withNetwork(network)
                     .withDisplayName(config.SSID)
                     .withScanResultInfo(scanResultInfo)
                     .withLayer2Information(layer2Info);
+            } else if (isForceStaticIpForRemote) {
+                StaticIpConfiguration mFakeStaticIpConfig = CreateFakeStaticIpConfig();
+                config.setStaticIpConfiguration(mFakeStaticIpConfig);
+                StaticIpConfiguration staticIpConfig = config.getStaticIpConfiguration();
+                prov = new ProvisioningConfiguration.Builder()
+                        .withStaticConfiguration(staticIpConfig)
+                        .withoutIpReachabilityMonitor()
+                        .withNetwork(network)
+                        .withDisplayName(config.SSID)
+                        .withLayer2Information(layer2Info);
             } else {
+                //case: isUsingStaticIp = true
                 StaticIpConfiguration staticIpConfig = config.getStaticIpConfiguration();
                 prov = new ProvisioningConfiguration.Builder()
                         .withStaticConfiguration(staticIpConfig)

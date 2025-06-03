@@ -392,6 +392,11 @@ public final class SoftApConfiguration implements Parcelable {
     private boolean mIeee80211beEnabled;
 
     /**
+     * Whether MultiLinkOperation is enabled or not.
+     */
+    private boolean mMultiLinkOperationEnabled;
+
+    /**
      * Whether the current configuration is configured by user or not.
      */
     private boolean mIsUserConfiguration;
@@ -457,7 +462,7 @@ public final class SoftApConfiguration implements Parcelable {
             @NonNull List<MacAddress> blockedList, @NonNull List<MacAddress> allowedList,
             int macRandomizationSetting, boolean bridgedModeOpportunisticShutdownEnabled,
             boolean ieee80211axEnabled, boolean ieee80211beEnabled, boolean isUserConfiguration,
-            long bridgedModeOpportunisticShutdownTimeoutMillis,
+            boolean multiLinkOperationEnabled, long bridgedModeOpportunisticShutdownTimeoutMillis,
             @NonNull List<ScanResult.InformationElement> vendorElements,
             @Nullable MacAddress persistentRandomizedMacAddress,
             @NonNull Set<Integer> allowedAcsChannels24g, @NonNull Set<Integer> allowedAcsChannels5g,
@@ -485,6 +490,7 @@ public final class SoftApConfiguration implements Parcelable {
         mIeee80211axEnabled = ieee80211axEnabled;
         mIeee80211beEnabled = ieee80211beEnabled;
         mIsUserConfiguration = isUserConfiguration;
+        mMultiLinkOperationEnabled = multiLinkOperationEnabled;
         mBridgedModeOpportunisticShutdownTimeoutMillis =
                 bridgedModeOpportunisticShutdownTimeoutMillis;
         mVendorElements = new ArrayList<>(vendorElements);
@@ -522,6 +528,7 @@ public final class SoftApConfiguration implements Parcelable {
                 && mIeee80211axEnabled == other.mIeee80211axEnabled
                 && mIeee80211beEnabled == other.mIeee80211beEnabled
                 && mIsUserConfiguration == other.mIsUserConfiguration
+                && mMultiLinkOperationEnabled == other.mMultiLinkOperationEnabled
                 && mBridgedModeOpportunisticShutdownTimeoutMillis
                         == other.mBridgedModeOpportunisticShutdownTimeoutMillis
                 && Objects.equals(mVendorElements, other.mVendorElements)
@@ -540,7 +547,7 @@ public final class SoftApConfiguration implements Parcelable {
                 mShutdownTimeoutMillis, mClientControlByUser, mBlockedClientList,
                 mAllowedClientList, mMacRandomizationSetting,
                 mBridgedModeOpportunisticShutdownEnabled, mIeee80211axEnabled, mIeee80211beEnabled,
-                mIsUserConfiguration, mBridgedModeOpportunisticShutdownTimeoutMillis,
+                mIsUserConfiguration, mMultiLinkOperationEnabled, mBridgedModeOpportunisticShutdownTimeoutMillis,
                 mVendorElements, mPersistentRandomizedMacAddress, mAllowedAcsChannels2g,
                 mAllowedAcsChannels5g, mAllowedAcsChannels6g, mMaxChannelBandwidth);
     }
@@ -569,6 +576,7 @@ public final class SoftApConfiguration implements Parcelable {
         sbuf.append(" \n Ieee80211axEnabled = ").append(mIeee80211axEnabled);
         sbuf.append(" \n Ieee80211beEnabled = ").append(mIeee80211beEnabled);
         sbuf.append(" \n isUserConfiguration = ").append(mIsUserConfiguration);
+        sbuf.append(" \n MultiLinkOperationEnabled = ").append(mMultiLinkOperationEnabled);
         sbuf.append(" \n vendorElements = ").append(mVendorElements);
         sbuf.append(" \n mPersistentRandomizedMacAddress = ")
                 .append(mPersistentRandomizedMacAddress);
@@ -598,6 +606,7 @@ public final class SoftApConfiguration implements Parcelable {
         dest.writeBoolean(mIeee80211axEnabled);
         dest.writeBoolean(mIeee80211beEnabled);
         dest.writeBoolean(mIsUserConfiguration);
+        dest.writeBoolean(mMultiLinkOperationEnabled);
         dest.writeLong(mBridgedModeOpportunisticShutdownTimeoutMillis);
         dest.writeTypedList(mVendorElements);
         dest.writeParcelable(mPersistentRandomizedMacAddress, flags);
@@ -685,8 +694,8 @@ public final class SoftApConfiguration implements Parcelable {
                     in.readInt(), in.readBoolean(), in.readLong(), in.readBoolean(),
                     in.createTypedArrayList(MacAddress.CREATOR),
                     in.createTypedArrayList(MacAddress.CREATOR), in.readInt(), in.readBoolean(),
-                    in.readBoolean(), in.readBoolean(), in.readBoolean(), in.readLong(),
-                    in.createTypedArrayList(ScanResult.InformationElement.CREATOR),
+                    in.readBoolean(), in.readBoolean(), in.readBoolean(), in.readBoolean(),
+                    in.readLong(), in.createTypedArrayList(ScanResult.InformationElement.CREATOR),
                     in.readParcelable(MacAddress.class.getClassLoader()),
                     readHashSetInt(in),
                     readHashSetInt(in),
@@ -1042,6 +1051,28 @@ public final class SoftApConfiguration implements Parcelable {
     }
 
     /**
+     * @see #isMultiLinkOperationEnabled
+     * @hide
+     */
+    public boolean isMultiLinkOperationEnabledInternal() {
+        return mMultiLinkOperationEnabled;
+    }
+
+    /**
+     * Returns whether or not the Soft AP is configured to enable Multi Link Operation.
+     * This is an indication that if the device support MLO then to enable or disable
+     * that feature. If the device does not support MLO then this flag is ignored.
+     *
+     * @hide
+     */
+    public boolean isMultiLinkOperationEnabled() {
+        if (!SdkLevel.isAtLeastT()) {
+            throw new UnsupportedOperationException();
+        }
+        return isMultiLinkOperationEnabledInternal();
+    }
+
+    /**
      * Returns the allowed channels for ACS in a selected band.
      *
      * If an empty array is returned, then all channels in that band are allowed
@@ -1241,6 +1272,7 @@ public final class SoftApConfiguration implements Parcelable {
         private boolean mIeee80211axEnabled;
         private boolean mIeee80211beEnabled;
         private boolean mIsUserConfiguration;
+        private boolean mMultiLinkOperationEnabled;
         private long mBridgedModeOpportunisticShutdownTimeoutMillis;
         private List<ScanResult.InformationElement> mVendorElements;
         private MacAddress mPersistentRandomizedMacAddress;
@@ -1275,6 +1307,7 @@ public final class SoftApConfiguration implements Parcelable {
             mIeee80211axEnabled = true;
             mIeee80211beEnabled = true;
             mIsUserConfiguration = true;
+            mMultiLinkOperationEnabled = false;
             mBridgedModeOpportunisticShutdownTimeoutMillis = DEFAULT_TIMEOUT;
             mVendorElements = new ArrayList<>();
             mPersistentRandomizedMacAddress = null;
@@ -1311,6 +1344,7 @@ public final class SoftApConfiguration implements Parcelable {
             mIeee80211axEnabled = other.mIeee80211axEnabled;
             mIeee80211beEnabled = other.mIeee80211beEnabled;
             mIsUserConfiguration = other.mIsUserConfiguration;
+            mMultiLinkOperationEnabled = other.mMultiLinkOperationEnabled;
             mBridgedModeOpportunisticShutdownTimeoutMillis =
                     other.mBridgedModeOpportunisticShutdownTimeoutMillis;
             mVendorElements = new ArrayList<>(other.mVendorElements);
@@ -1357,7 +1391,7 @@ public final class SoftApConfiguration implements Parcelable {
                     mAutoShutdownEnabled, mShutdownTimeoutMillis, mClientControlByUser,
                     mBlockedClientList, mAllowedClientList, mMacRandomizationSetting,
                     mBridgedModeOpportunisticShutdownEnabled, mIeee80211axEnabled,
-                    mIeee80211beEnabled, mIsUserConfiguration,
+                    mIeee80211beEnabled, mIsUserConfiguration, mMultiLinkOperationEnabled,
                     mBridgedModeOpportunisticShutdownTimeoutMillis, mVendorElements,
                     mPersistentRandomizedMacAddress, mAllowedAcsChannels2g, mAllowedAcsChannels5g,
                     mAllowedAcsChannels6g, mMaxChannelBandwidth);
@@ -2156,6 +2190,20 @@ public final class SoftApConfiguration implements Parcelable {
                 throw new UnsupportedOperationException();
             }
             mIeee80211beEnabled = enable;
+            return this;
+        }
+
+        /**
+         *
+         * @hide
+         *
+         */
+        @NonNull
+        public Builder setMultiLinkOperationEnabled(boolean enable) {
+            if (!SdkLevel.isAtLeastT()) {
+                throw new UnsupportedOperationException();
+            }
+            mMultiLinkOperationEnabled = enable;
             return this;
         }
 

@@ -43,6 +43,7 @@ import android.net.wifi.WifiContext;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
+import android.net.wifi.MloLink;
 import android.net.wifi.nl80211.DeviceWiphyCapabilities;
 import android.net.wifi.nl80211.NativeScanResult;
 import android.net.wifi.nl80211.NativeWifiClient;
@@ -58,6 +59,7 @@ import android.util.ArrayMap;
 import android.util.ArraySet;
 import android.util.Log;
 import android.util.SparseArray;
+import android.os.SystemProperties;
 
 import com.android.internal.annotations.Immutable;
 import com.android.internal.annotations.VisibleForTesting;
@@ -118,6 +120,8 @@ public class WifiNative {
     private NetdWrapper mNetdWrapper;
     private boolean mVerboseLoggingEnabled = false;
     private boolean mIsEnhancedOpenSupported = false;
+    private boolean mIsWifiChipOnRemoteTarget =
+            SystemProperties.getBoolean("ro.vendor.wlan.hal.rpc", false);
     private final List<CoexUnsafeChannel> mCachedCoexUnsafeChannels = new ArrayList<>();
     private int mCachedCoexRestrictions;
     private CountryCodeChangeListenerInternal mCountryCodeChangeListener;
@@ -258,6 +262,17 @@ public class WifiNative {
          */
         void onConnectedClientsChanged(String apIfaceInstance, MacAddress clientAddress,
                 boolean isConnected);
+        /**
+          * Invoked when a channel switch event happed on any link of MLO SoftAP -i.e. the channel of
+          * the link changed to a different channel. Also called on initial registration.
+          *
+          * @param apIfaceInstance The identity of the ap instance.
+          * @param generation The generation of the SoftAp.
+          * @param mldMacAddress The MLD MAC Address of SoftAp.
+          * @param mloLink The link information.
+          */
+        void onLinkInfoChanged(String apIfaceInstance, int generation, MacAddress mldMacAddress,
+                MloLink mloLink);
     }
 
     /********************************************************
@@ -1393,7 +1408,7 @@ public class WifiNative {
                 return null;
             }
             String ifaceInstanceName = iface.name;
-            if (isBridged) {
+            if (isBridged || mIsWifiChipOnRemoteTarget) {
                 List<String> instances = getBridgedApInstances(iface.name);
                 if (instances == null || instances.size() == 0) {
                     errorMsg = "Failed to get bridged AP instances" + iface.name;
@@ -4543,7 +4558,15 @@ public class WifiNative {
                 return null;
             }
             if (iface.phyCapabilities == null) {
-                iface.phyCapabilities = mWifiCondManager.getDeviceWiphyCapabilities(ifaceName);
+                if (mIsWifiChipOnRemoteTarget) {
+                    //remote wlan always create bridge interface in AP mode,
+                    //but it will not create bridge and instance interface in STA mode
+                    String bridgedInstance = mWifiCondIfacesForBridgedAp.get(ifaceName);
+                    iface.phyCapabilities = mWifiCondManager.getDeviceWiphyCapabilities(
+                                            (bridgedInstance != null) ? bridgedInstance : ifaceName);
+                } else {
+                    iface.phyCapabilities = mWifiCondManager.getDeviceWiphyCapabilities(ifaceName);
+                }
             }
             return iface.phyCapabilities;
         }

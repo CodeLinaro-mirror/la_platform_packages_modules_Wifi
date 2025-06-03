@@ -31,6 +31,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.net.MacAddress;
+import android.net.wifi.nl80211.DeviceWiphyCapabilities;
 import android.net.wifi.ScanResult;
 import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
@@ -42,6 +43,7 @@ import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
+import android.net.wifi.MloLink;
 import android.os.BatteryManager;
 import android.os.Handler;
 import android.os.Looper;
@@ -262,6 +264,21 @@ public class SoftApManager implements ActiveModeManager {
                 Log.e(getTag(), "onConnectedClientsChanged: Invalid type returned");
             }
         }
+
+        @Override
+        public void onLinkInfoChanged(String apIfaceInstance, int generation, MacAddress mldMacAddress,
+                MloLink mloLink) {
+            SoftApInfo apInfo = new SoftApInfo();
+            apInfo.setWifiStandard(generation);
+            if (mldMacAddress != null) {
+                apInfo.setBssid(mldMacAddress);
+            }
+            apInfo.setApInstanceIdentifier(apIfaceInstance != null
+                    ? apIfaceInstance : mApInterfaceName);
+            apInfo.setMloLink(mloLink);
+            mStateMachine.sendMessage(
+                    SoftApStateMachine.CMD_AP_INFO_CHANGED, 0, 0, apInfo);
+        }
     };
 
     // This will only be null if SdkLevel is not at least S
@@ -447,13 +464,19 @@ public class SoftApManager implements ActiveModeManager {
                         == SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION);
     }
 
+    private boolean isMultiLinkOperationMode() {
+        return (SdkLevel.isAtLeastT() && mCurrentSoftApConfiguration != null
+                && (mCurrentSoftApConfiguration.getBands().length > 1)
+                && (mCurrentSoftApConfiguration.isMultiLinkOperationEnabled()));
+    }
+
     private boolean isBridgedMode() {
         return (SdkLevel.isAtLeastS() && mCurrentSoftApConfiguration != null
                 && (mCurrentSoftApConfiguration.getBands().length > 1));
     }
 
     private boolean isBridgeRequired() {
-        return isBridgedMode() || isOweTransition();
+        return (isBridgedMode() || isOweTransition()) && !mCurrentSoftApConfiguration.isMultiLinkOperationEnabled();
     }
 
     private long getShutdownTimeoutMillis() {
@@ -1094,8 +1117,32 @@ public class SoftApManager implements ActiveModeManager {
                             mModeListener.onStartFailure(SoftApManager.this);
                             break;
                         }
-                        if (isBridgedMode()) {
-                            boolean isFallbackToSingleAp = false;
+                        boolean isFallbackToSingleAp = false;
+                        if (isMultiLinkOperationMode()) {
+                            if (mWifiNative.isSoftApInstanceDiedHandlerSupported()
+                                    && !TextUtils.equals(mCountryCode,
+                                      mCurrentSoftApCapability.getCountryCode())) {
+                                Log.i(getTag(), "CountryCode changed, bypass the supported band"
+                                        + "capability check, mCountryCode = " + mCountryCode
+                                        + ", base country in SoftApCapability = "
+                                        + mCurrentSoftApCapability.getCountryCode());
+                            } else {
+                                SoftApConfiguration tempConfig =
+                                        ApConfigUtil.removeUnavailableBandsFromConfig(
+                                                mCurrentSoftApConfiguration,
+                                                mCurrentSoftApCapability, mCoexManager, mContext);
+                                if (tempConfig == null) {
+                                    handleStartSoftApFailure(ERROR_UNSUPPORTED_CONFIGURATION);
+                                    break;
+                                }
+                                mCurrentSoftApConfiguration = tempConfig;
+                                if (mCurrentSoftApConfiguration.getBands().length == 1) {
+                                    isFallbackToSingleAp = true;
+                                    Log.i(getTag(), "Removed unavailable bands"
+                                            + " - fallback to single AP");
+                                }
+                            }
+                        } else if (isBridgedMode()) {
                             final List<ClientModeManager> cmms =
                                     mActiveModeWarden.getClientModeManagers();
                             // Checking STA status only when device supports STA + AP concurrency
@@ -1219,6 +1266,25 @@ public class SoftApManager implements ActiveModeManager {
                             mModeListener.onStartFailure(SoftApManager.this);
                             break;
                         }
+                        String apWifiCondIfaceName = mApInterfaceName;
+                        if (isBridgeRequired()) {
+                            List<String> instances = mWifiNative.getBridgedApInstances(
+                                    mApInterfaceName);
+                            if (instances != null && instances.size() != 0) {
+                                 apWifiCondIfaceName = instances.get(0);
+                            }
+                        }
+                        DeviceWiphyCapabilities capa =
+                                mWifiNative.getDeviceWiphyCapabilities(apWifiCondIfaceName);
+                        if (mCurrentSoftApConfiguration.isIeee80211beEnabled() && (capa == null ||
+                               !capa.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11BE))) {
+                            Log.d(getTag(), "11BE is not supported, Downgrading.");
+                            SoftApConfiguration.Builder newConfigurBuilder =
+                                    new SoftApConfiguration.Builder(mCurrentSoftApConfiguration)
+                                    .setIeee80211beEnabled(false);
+                            mCurrentSoftApConfiguration = newConfigurBuilder.build();
+                        }
+
                         mSoftApNotifier.dismissSoftApShutdownTimeoutExpiredNotification();
                         updateApState(WifiManager.WIFI_AP_STATE_ENABLING,
                                 WifiManager.WIFI_AP_STATE_DISABLED, 0);
@@ -1611,8 +1677,21 @@ public class SoftApManager implements ActiveModeManager {
                             + " changed when client connected, it should NOT happen!!");
                 }
 
-                mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfo));
-                sendBroadcastApConnectionsChanged();
+                if (mCurrentSoftApInfoMap.get(changedInstance) != null) {
+                    SoftApInfo apInfoInMap = mCurrentSoftApInfoMap.get(changedInstance);
+                    if (apInfoInMap.getBssid().equals(apInfo.getBssid()) &&
+                        !apInfo.getMloLinks().isEmpty()) {
+                        Map<Integer, MloLink> linkInfos = apInfo.getMloLinks();
+                        for (MloLink linkInfo : linkInfos.values()) {
+                            apInfoInMap.setMloLink(linkInfo);
+                        }
+                        mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfoInMap));
+                    } else {
+                        mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfo));
+                    }
+                } else {
+                    mCurrentSoftApInfoMap.put(changedInstance, new SoftApInfo(apInfo));
+                }
                 mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
                         mConnectedClientWithApInfoMap, isBridgeRequired());
 

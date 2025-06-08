@@ -412,6 +412,12 @@ public final class SoftApConfiguration implements Parcelable {
     private boolean mIsClientIsolationEnabled;
 
     /**
+     * Whether the frameworks should do band settings optimization.
+     * (i.e. Auto appending 2.4G band to cover co-existence / country code restriction).
+     */
+    private boolean mIsBandOptimizationEnabled;
+
+    /**
      * THe definition of security type OPEN.
      */
     public static final int SECURITY_TYPE_OPEN = 0;
@@ -486,7 +492,8 @@ public final class SoftApConfiguration implements Parcelable {
             @WifiAnnotations.Bandwidth int maxChannelBandwidth,
             @Nullable String oweTransIfaceName,
             @Nullable List<OuiKeyedData> vendorData,
-            boolean isClientIsolationEnabled) {
+            boolean isClientIsolationEnabled,
+            boolean isBandOptimizationEnabled) {
         mWifiSsid = ssid;
         mBssid = bssid;
         mPassphrase = passphrase;
@@ -520,6 +527,7 @@ public final class SoftApConfiguration implements Parcelable {
         mOweTransIfaceName = oweTransIfaceName;
         mVendorData = new ArrayList<>(vendorData);
         mIsClientIsolationEnabled = isClientIsolationEnabled;
+        mIsBandOptimizationEnabled = isBandOptimizationEnabled;
     }
 
     @Override
@@ -560,20 +568,41 @@ public final class SoftApConfiguration implements Parcelable {
                 && mOweTransIfaceName == other.mOweTransIfaceName
                 && mMaxChannelBandwidth == other.mMaxChannelBandwidth
                 && Objects.equals(mVendorData, other.mVendorData)
-                && mIsClientIsolationEnabled == other.mIsClientIsolationEnabled;
+                && mIsClientIsolationEnabled == other.mIsClientIsolationEnabled
+                && mIsBandOptimizationEnabled == other.mIsBandOptimizationEnabled;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(mWifiSsid, mBssid, mPassphrase, mHiddenSsid,
-                mChannels.toString(), mSecurityType, mMaxNumberOfClients, mAutoShutdownEnabled,
-                mShutdownTimeoutMillis, mClientControlByUser, mBlockedClientList,
-                mAllowedClientList, mMacRandomizationSetting,
-                mBridgedModeOpportunisticShutdownEnabled, mIeee80211axEnabled, mIeee80211beEnabled,
-                mIsUserConfiguration, mBridgedModeOpportunisticShutdownTimeoutMillis,
-                mVendorElements, mPersistentRandomizedMacAddress, mAllowedAcsChannels2g,
-                mAllowedAcsChannels5g, mAllowedAcsChannels6g, mMaxChannelBandwidth,
-                mOweTransIfaceName, mVendorData, mIsClientIsolationEnabled);
+        return Objects.hash(
+                mWifiSsid,
+                mBssid,
+                mPassphrase,
+                mHiddenSsid,
+                mChannels.toString(),
+                mSecurityType,
+                mMaxNumberOfClients,
+                mAutoShutdownEnabled,
+                mShutdownTimeoutMillis,
+                mClientControlByUser,
+                mBlockedClientList,
+                mAllowedClientList,
+                mMacRandomizationSetting,
+                mBridgedModeOpportunisticShutdownEnabled,
+                mIeee80211axEnabled,
+                mIeee80211beEnabled,
+                mIsUserConfiguration,
+                mBridgedModeOpportunisticShutdownTimeoutMillis,
+                mVendorElements,
+                mPersistentRandomizedMacAddress,
+                mAllowedAcsChannels2g,
+                mAllowedAcsChannels5g,
+                mAllowedAcsChannels6g,
+                mMaxChannelBandwidth,
+                mOweTransIfaceName,
+                mVendorData,
+                mIsClientIsolationEnabled,
+                mIsBandOptimizationEnabled);
     }
 
     @Override
@@ -610,6 +639,7 @@ public final class SoftApConfiguration implements Parcelable {
         sbuf.append(" \n OWE Transition mode Iface =").append(mOweTransIfaceName);
         sbuf.append(" \n mVendorData = ").append(mVendorData);
         sbuf.append(" \n mIsClientIsolationEnabled = ").append(mIsClientIsolationEnabled);
+        sbuf.append(" \n mIsBandOptimizationEnabled = ").append(mIsBandOptimizationEnabled);
         return sbuf.toString();
     }
 
@@ -642,6 +672,7 @@ public final class SoftApConfiguration implements Parcelable {
         dest.writeString(mOweTransIfaceName);
         dest.writeList(mVendorData);
         dest.writeBoolean(mIsClientIsolationEnabled);
+        dest.writeBoolean(mIsBandOptimizationEnabled);
     }
 
     /* Reference from frameworks/base/core/java/android/os/Parcel.java */
@@ -724,27 +755,40 @@ public final class SoftApConfiguration implements Parcelable {
     }
 
     @NonNull
-    public static final Creator<SoftApConfiguration> CREATOR = new Creator<SoftApConfiguration>() {
-        @Override
-        public SoftApConfiguration createFromParcel(Parcel in) {
-            return new SoftApConfiguration(
-                    in.readParcelable(WifiSsid.class.getClassLoader()),
-                    in.readParcelable(MacAddress.class.getClassLoader()),
-                    in.readString(), in.readBoolean(), readSparseIntArray(in), in.readInt(),
-                    in.readInt(), in.readBoolean(), in.readLong(), in.readBoolean(),
-                    in.createTypedArrayList(MacAddress.CREATOR),
-                    in.createTypedArrayList(MacAddress.CREATOR), in.readInt(), in.readBoolean(),
-                    in.readBoolean(), in.readBoolean(), in.readBoolean(), in.readLong(),
-                    in.createTypedArrayList(ScanResult.InformationElement.CREATOR),
-                    in.readParcelable(MacAddress.class.getClassLoader()),
-                    readHashSetInt(in),
-                    readHashSetInt(in),
-                    readHashSetInt(in),
-                    in.readInt(),
-                    in.readString(),
-                    readOuiKeyedDataList(in),
-                    in.readBoolean());
-        }
+    public static final Creator<SoftApConfiguration> CREATOR =
+            new Creator<SoftApConfiguration>() {
+                @Override
+                public SoftApConfiguration createFromParcel(Parcel in) {
+                    return new SoftApConfiguration(
+                            in.readParcelable(WifiSsid.class.getClassLoader()),
+                            in.readParcelable(MacAddress.class.getClassLoader()),
+                            in.readString(),
+                            in.readBoolean(),
+                            readSparseIntArray(in),
+                            in.readInt(),
+                            in.readInt(),
+                            in.readBoolean(),
+                            in.readLong(),
+                            in.readBoolean(),
+                            in.createTypedArrayList(MacAddress.CREATOR),
+                            in.createTypedArrayList(MacAddress.CREATOR),
+                            in.readInt(),
+                            in.readBoolean(),
+                            in.readBoolean(),
+                            in.readBoolean(),
+                            in.readBoolean(),
+                            in.readLong(),
+                            in.createTypedArrayList(ScanResult.InformationElement.CREATOR),
+                            in.readParcelable(MacAddress.class.getClassLoader()),
+                            readHashSetInt(in),
+                            readHashSetInt(in),
+                            readHashSetInt(in),
+                            in.readInt(),
+                            in.readString(),
+                            readOuiKeyedDataList(in),
+                            in.readBoolean(),
+                            in.readBoolean());
+                }
 
         @Override
         public SoftApConfiguration[] newArray(int size) {
@@ -1231,6 +1275,18 @@ public final class SoftApConfiguration implements Parcelable {
     }
 
     /**
+     * Returns whether the frameworks should do band settings optimization.
+     * (i.e. Auto appending 2.4G band to cover co-existence / country code restriction).
+     *
+     * @hide
+     */
+    @FlaggedApi(Flags.FLAG_BAND_OPTIMIZATION_CONTROL)
+    @SystemApi
+    public boolean isBandOptimizationEnabled() {
+        return mIsBandOptimizationEnabled;
+    }
+
+    /**
      * Returns a {@link WifiConfiguration} representation of this {@link SoftApConfiguration}.
      * Note that SoftApConfiguration may contain configuration which is cannot be represented
      * by the legacy WifiConfiguration, in such cases a null will be returned.
@@ -1336,6 +1392,7 @@ public final class SoftApConfiguration implements Parcelable {
         private String mOweTransIfaceName;
         private @Nullable List<OuiKeyedData> mVendorData;
         private boolean mIsClientIsolationEnabled;
+        private boolean mIsBandOptimizationEnabled;
 
         /**
          * Constructs a Builder with default values (see {@link Builder}).
@@ -1373,6 +1430,7 @@ public final class SoftApConfiguration implements Parcelable {
             mOweTransIfaceName = null;
             mVendorData = new ArrayList<>();
             mIsClientIsolationEnabled = false;
+            mIsBandOptimizationEnabled = true; // enabled by default.
         }
 
         /**
@@ -1422,6 +1480,7 @@ public final class SoftApConfiguration implements Parcelable {
             mOweTransIfaceName = other.mOweTransIfaceName;
             mVendorData = new ArrayList<>(other.mVendorData);
             mIsClientIsolationEnabled = other.mIsClientIsolationEnabled;
+            mIsBandOptimizationEnabled = other.mIsBandOptimizationEnabled;
         }
 
        /**
@@ -1461,7 +1520,8 @@ public final class SoftApConfiguration implements Parcelable {
                     mMaxChannelBandwidth,
                     mOweTransIfaceName, 
                     mVendorData,
-                    mIsClientIsolationEnabled);
+                    mIsClientIsolationEnabled,
+                    mIsBandOptimizationEnabled);
         }
 
         /**
@@ -1494,16 +1554,35 @@ public final class SoftApConfiguration implements Parcelable {
                 // Force 11BE to false since 11ax has dependency with 11AX.
                 mIeee80211beEnabled = false;
             }
-            return new SoftApConfiguration(mWifiSsid, mBssid, mPassphrase,
-                    mHiddenSsid, mChannels, mSecurityType, mMaxNumberOfClients,
-                    mAutoShutdownEnabled, mShutdownTimeoutMillis, mClientControlByUser,
-                    mBlockedClientList, mAllowedClientList, mMacRandomizationSetting,
-                    mBridgedModeOpportunisticShutdownEnabled, mIeee80211axEnabled,
-                    mIeee80211beEnabled, mIsUserConfiguration,
-                    mBridgedModeOpportunisticShutdownTimeoutMillis, mVendorElements,
-                    mPersistentRandomizedMacAddress, mAllowedAcsChannels2g, mAllowedAcsChannels5g,
-                    mAllowedAcsChannels6g, mMaxChannelBandwidth,
-                    mOweTransIfaceName, mVendorData, mIsClientIsolationEnabled);
+            return new SoftApConfiguration(
+                    mWifiSsid,
+                    mBssid,
+                    mPassphrase,
+                    mHiddenSsid,
+                    mChannels,
+                    mSecurityType,
+                    mMaxNumberOfClients,
+                    mAutoShutdownEnabled,
+                    mShutdownTimeoutMillis,
+                    mClientControlByUser,
+                    mBlockedClientList,
+                    mAllowedClientList,
+                    mMacRandomizationSetting,
+                    mBridgedModeOpportunisticShutdownEnabled,
+                    mIeee80211axEnabled,
+                    mIeee80211beEnabled,
+                    mIsUserConfiguration,
+                    mBridgedModeOpportunisticShutdownTimeoutMillis,
+                    mVendorElements,
+                    mPersistentRandomizedMacAddress,
+                    mAllowedAcsChannels2g,
+                    mAllowedAcsChannels5g,
+                    mAllowedAcsChannels6g,
+                    mMaxChannelBandwidth,
+                    mOweTransIfaceName,
+                    mVendorData,
+                    mIsClientIsolationEnabled,
+                    mIsBandOptimizationEnabled);
         }
 
         /**
@@ -2473,6 +2552,23 @@ public final class SoftApConfiguration implements Parcelable {
                 throw new UnsupportedOperationException();
             }
             mIsClientIsolationEnabled = isClientIsolationEnabled;
+            return this;
+        }
+
+        /**
+         * Specifies whether the frameworks should do band settings optimization.
+         * (i.e. Auto appending 2.4G band to cover co-existence / country code restriction)..
+         *
+         * @param isBandOptimizationEnabled true when enabling band settings optimization.
+         * @return Builder for chaining.
+         *
+         * @hide
+         */
+        @FlaggedApi(Flags.FLAG_BAND_OPTIMIZATION_CONTROL)
+        @NonNull
+        @SystemApi
+        public Builder setBandOptimizationEnabled(boolean isBandOptimizationEnabled) {
+            mIsBandOptimizationEnabled = isBandOptimizationEnabled;
             return this;
         }
     }

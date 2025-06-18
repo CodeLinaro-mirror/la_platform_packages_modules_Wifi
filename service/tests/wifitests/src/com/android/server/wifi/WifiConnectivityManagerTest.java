@@ -271,7 +271,6 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         resources.setInteger(R.integer.config_wifiPnoScanLowRssiNetworkRetryMaxDelaySec,
                 LOW_RSSI_NETWORK_RETRY_MAX_DELAY_SEC);
         resources.setBoolean(R.bool.config_wifiEnable6ghzPscScanning, true);
-        resources.setBoolean(R.bool.config_wifiUseHalApiToDisableFwRoaming, true);
         resources.setInteger(R.integer.config_wifiPnoScanIterations, EXPECTED_PNO_ITERATIONS);
         resources.setInteger(R.integer.config_wifiPnoScanIntervalMultiplier,
                 EXPECTED_PNO_MULTIPLIER);
@@ -559,7 +558,6 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         when(cmm.isConnected()).thenReturn(false);
         when(cmm.isDisconnected()).thenReturn(true);
         when(cmm.isSupplicantTransientState()).thenReturn(false);
-        when(cmm.enableRoaming(anyBoolean())).thenReturn(true);
     }
 
     WifiNetworkSelector mockWifiNetworkSelector() {
@@ -768,7 +766,6 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         verify(mWifiConfigManager).considerStopRestrictingAutoJoinToSubscriptionId();
         verify(mPrimaryClientModeManager).startConnectToNetwork(
                 CANDIDATE_NETWORK_ID, Process.WIFI_UID, "any");
-        verify(mPrimaryClientModeManager).enableRoaming(true);
         verify(mActiveModeWarden).stopAllClientModeManagersInRole(ROLE_CLIENT_SECONDARY_TRANSIENT);
         verify(mActiveModeWarden, never()).requestSecondaryTransientClientModeManager(
                 any(), any(), any(), any());
@@ -945,7 +942,6 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         verify(mbbCmm, never()).startConnectToNetwork(anyInt(), anyInt(), any());
         verify(mPrimaryClientModeManager).startConnectToNetwork(
                 eq(CANDIDATE_NETWORK_ID), anyInt(), any());
-        verify(mPrimaryClientModeManager).enableRoaming(true);
     }
 
     /**
@@ -1554,7 +1550,6 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         if (!success) {
             verify(mSecondaryClientModeManager, never()).startConnectToNetwork(
                     targetConfig.networkId, Process.WIFI_UID, targetBssid);
-            verify(mSecondaryClientModeManager, never()).enableRoaming(false);
             verify(mActiveModeWarden, never()).requestSecondaryLongLivedClientModeManager(
                     any(), any(), any(), any());
             return;
@@ -1562,7 +1557,6 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
         verify(mSecondaryClientModeManager, times(2)).startConnectToNetwork(
                 targetConfig.networkId, Process.WIFI_UID, targetBssid);
-        verify(mSecondaryClientModeManager, times(2)).enableRoaming(false);
         verify(mActiveModeWarden, times(2)).requestSecondaryLongLivedClientModeManager(
                 any(), any(), any(), eq(targetBssid));
 
@@ -5006,7 +5000,6 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         mLooper.dispatchAll();
         verify(mPrimaryClientModeManager).startConnectToNetwork(
                 CANDIDATE_NETWORK_ID, Process.WIFI_UID, CANDIDATE_BSSID);
-        verify(mPrimaryClientModeManager).enableRoaming(false);
 
         verify(mWifiMetrics).noteFirstNetworkSelectionAfterBoot(true);
     }
@@ -6464,5 +6457,83 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         assertNotNull(callback);
         callback.onScreenStateChanged(screenOn);
         inOrder.verify(mWifiNS).setScreenState(screenOn);
+    }
+
+    @Test
+    public void testSetExternalScreenOffScanSchedule() {
+        setWifiEnabled(true);
+
+        when(mClock.getElapsedSinceBootMillis()).thenReturn(0L);
+        // Set initial PNO scan schedule parameters
+        int movingScanIntervalMillis = 10000; // 10 seconds
+        int stationaryScanIntervalMillis = 15000; // 15 seconds
+        int scanIterations = 3;
+        int scanMultiplier = 2;
+
+        // Set the external screen off scan schedule
+        mWifiConnectivityManager.setExternalScreenOffScanSchedule(movingScanIntervalMillis,
+                stationaryScanIntervalMillis, scanIterations, scanMultiplier);
+
+        // starts a PNO scan
+        mWifiConnectivityManager.setDeviceMobilityState(
+                WifiManager.DEVICE_MOBILITY_STATE_STATIONARY);
+        setScreenState(false);
+        mWifiConnectivityManager.handleConnectionStateChanged(
+                mPrimaryClientModeManager,
+                WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
+        // Verify that the correct scan intervals are used based on device mobility state
+        verify(mWifiScanner).startPnoScan(
+                argThat(new ArgumentMatcher<ScanSettings>() {
+                    @Override
+                    public boolean matches(ScanSettings argument) {
+                        return argument.periodInMs == stationaryScanIntervalMillis;
+                    }
+                }),
+                argThat(new ArgumentMatcher<PnoSettings>() {
+                    @Override
+                    public boolean matches(PnoSettings argument) {
+                        return argument.scanIterations == scanIterations
+                                && argument.scanIntervalMultiplier == scanMultiplier;
+                    }
+                }),
+                any());
+        // Verify correct PNO parameters are used when device is moving
+        setScreenState(true);
+        mWifiConnectivityManager.setDeviceMobilityState(
+                WifiManager.DEVICE_MOBILITY_STATE_HIGH_MVMT);
+        setScreenState(false);
+        verify(mWifiScanner).startPnoScan(
+                argThat(new ArgumentMatcher<ScanSettings>() {
+                    @Override
+                    public boolean matches(ScanSettings argument) {
+                        return argument.periodInMs == movingScanIntervalMillis;
+                    }
+                }),
+                argThat(new ArgumentMatcher<PnoSettings>() {
+                    @Override
+                    public boolean matches(PnoSettings argument) {
+                        return argument.scanIterations == scanIterations
+                                && argument.scanIntervalMultiplier == scanMultiplier;
+                    }
+                }),
+                any());
+
+        // Reset PNO scan parameters back to overlay default and verify again
+        mWifiConnectivityManager.setExternalScreenOffScanSchedule(0, 0, 0, 0);
+        verify(mWifiScanner).startPnoScan(
+                argThat(new ArgumentMatcher<ScanSettings>() {
+                    @Override
+                    public boolean matches(ScanSettings argument) {
+                        return argument.periodInMs == MOVING_PNO_SCAN_INTERVAL_MILLIS;
+                    }
+                }),
+                argThat(new ArgumentMatcher<PnoSettings>() {
+                    @Override
+                    public boolean matches(PnoSettings argument) {
+                        return argument.scanIterations == EXPECTED_PNO_ITERATIONS
+                                && argument.scanIntervalMultiplier == EXPECTED_PNO_MULTIPLIER;
+                    }
+                }),
+                any());
     }
 }

@@ -241,6 +241,10 @@ public class WifiConnectivityManager {
     private int[] mExternalSingleScanScheduleSec;
     private int[] mExternalSingleScanType;
 
+    private int mMovingScanIntervalMillis;
+    private int mStationaryScanIntervalMillis;
+    private int mScanIterations;
+    private int mScanMultiplier;
     private int mNextScreenOnConnectivityScanDelayMs = 0;
 
     // Scanning Schedules for screen-on periodic scan
@@ -2011,15 +2015,6 @@ public class WifiConnectivityManager {
         if (!shouldConnect()) {
             return;
         }
-        if (mContext.getResources().getBoolean(R.bool.config_wifiUseHalApiToDisableFwRoaming)) {
-            // If network with specified BSSID, disable roaming. Otherwise enable the roaming.
-            boolean enableRoaming = targetNetwork.BSSID == null
-                    || targetNetwork.BSSID.equals(ClientModeImpl.SUPPLICANT_BSSID_ANY);
-            if (!clientModeManager.enableRoaming(enableRoaming)) {
-                Log.w(TAG, "Failed to change roaming to "
-                        + (enableRoaming ? "enabled" : "disabled"));
-            }
-        }
         clientModeManager.startConnectToNetwork(
                 targetNetwork.networkId, Process.WIFI_UID, targetBssid);
     }
@@ -2529,11 +2524,14 @@ public class WifiConnectivityManager {
             case WifiManager.DEVICE_MOBILITY_STATE_UNKNOWN:
             case WifiManager.DEVICE_MOBILITY_STATE_LOW_MVMT:
             case WifiManager.DEVICE_MOBILITY_STATE_HIGH_MVMT:
-                return getScanIntervalWithPowerSaveMultiplier(mContext.getResources()
-                        .getInteger(R.integer.config_wifiMovingPnoScanIntervalMillis));
+                return (mMovingScanIntervalMillis > 0) ? mMovingScanIntervalMillis :
+                        (getScanIntervalWithPowerSaveMultiplier(mContext.getResources()
+                                .getInteger(R.integer.config_wifiMovingPnoScanIntervalMillis)));
             case WifiManager.DEVICE_MOBILITY_STATE_STATIONARY:
-                return getScanIntervalWithPowerSaveMultiplier(mContext.getResources()
-                        .getInteger(R.integer.config_wifiStationaryPnoScanIntervalMillis));
+                return (mStationaryScanIntervalMillis > 0) ? mStationaryScanIntervalMillis :
+                        (getScanIntervalWithPowerSaveMultiplier(mContext.getResources()
+                                .getInteger(R.integer.config_wifiStationaryPnoScanIntervalMillis)));
+
             default:
                 return -1;
         }
@@ -2578,6 +2576,22 @@ public class WifiConnectivityManager {
     public void setExternalScreenOnScanSchedule(int[] scanScheduleSeconds, int[] scanType) {
         mExternalSingleScanScheduleSec = scanScheduleSeconds;
         mExternalSingleScanType = scanType;
+    }
+
+    /**
+     * Sets the PNO external scan schedule .
+     */
+    public void setExternalScreenOffScanSchedule(int movingScanIntervalMillis,
+            int stationaryScanIntervalMillis, int scanIterations, int scanMultiplier) {
+        mMovingScanIntervalMillis = movingScanIntervalMillis;
+        mStationaryScanIntervalMillis = stationaryScanIntervalMillis;
+        mScanIterations = scanIterations;
+        mScanMultiplier = scanMultiplier;
+        if (mPnoScanStarted) {
+            Log.d(TAG, "Restarting PNO Scan with new scan interval");
+            stopPnoScan();
+            startDisconnectedPnoScan();
+        }
     }
 
     /**
@@ -2672,10 +2686,12 @@ public class WifiConnectivityManager {
         pnoSettings.min5GHzRssi = mScoringParams.getEntryRssi(ScanResult.BAND_5_GHZ_START_FREQ_MHZ);
         pnoSettings.min24GHzRssi = mScoringParams.getEntryRssi(
                 ScanResult.BAND_24_GHZ_START_FREQ_MHZ);
-        pnoSettings.scanIterations = mContext.getResources()
-                .getInteger(R.integer.config_wifiPnoScanIterations);
-        pnoSettings.scanIntervalMultiplier = mContext.getResources()
-                .getInteger(R.integer.config_wifiPnoScanIntervalMultiplier);
+        pnoSettings.scanIterations = (mScanIterations > 0) ? mScanIterations
+                : (mContext.getResources()
+                .getInteger(R.integer.config_wifiPnoScanIterations));
+        pnoSettings.scanIntervalMultiplier = (mScanMultiplier > 0) ? mScanMultiplier
+                : (mContext.getResources()
+                .getInteger(R.integer.config_wifiPnoScanIntervalMultiplier));
 
         // Initialize scan settings
         ScanSettings scanSettings = new ScanSettings();

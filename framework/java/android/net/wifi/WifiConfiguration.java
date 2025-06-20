@@ -1964,6 +1964,12 @@ public class WifiConfiguration implements Parcelable {
     public long randomizedMacLastModifiedTimeMs = 0;
 
     /**
+     * Updatable seed value for persistent random MAC generation. This value is persisted to disk.
+     * @hide
+     */
+    public int persistentMacRandomizationSeed = 0;
+
+    /**
      * Checks if the given MAC address can be used for Connected Mac Randomization
      * by verifying that it is non-null, unicast, locally assigned, and not default mac.
      * @param mac MacAddress to check
@@ -3562,6 +3568,8 @@ public class WifiConfiguration implements Parcelable {
         sbuf.append(" randomizedMacLastModifiedTimeMs: ")
                 .append(randomizedMacLastModifiedTimeMs == 0 ? "<none>"
                         : logTimeOfDay(randomizedMacLastModifiedTimeMs)).append("\n");
+        sbuf.append(" persistentMacRandomizationSeed: ").append(persistentMacRandomizationSeed)
+                .append("\n");
         sbuf.append(" mIsSendDhcpHostnameEnabled: ").append(mIsSendDhcpHostnameEnabled)
                 .append("\n");
         sbuf.append(" deletionPriority: ").append(mDeletionPriority).append("\n");
@@ -4167,6 +4175,7 @@ public class WifiConfiguration implements Parcelable {
             macRandomizationSetting = source.macRandomizationSetting;
             randomizedMacExpirationTimeMs = source.randomizedMacExpirationTimeMs;
             randomizedMacLastModifiedTimeMs = source.randomizedMacLastModifiedTimeMs;
+            persistentMacRandomizationSeed = source.persistentMacRandomizationSeed;
             mIsSendDhcpHostnameEnabled = source.mIsSendDhcpHostnameEnabled;
             requirePmf = source.requirePmf;
             updateIdentifier = source.updateIdentifier;
@@ -4296,6 +4305,7 @@ public class WifiConfiguration implements Parcelable {
         dest.writeList(mVendorData);
         dest.writeBoolean(mWifi7Enabled);
         dest.writeBoolean(mIsAllowedToUpdateByOtherUsers);
+        dest.writeInt(persistentMacRandomizationSeed);
     }
 
     /** Implement the Parcelable interface {@hide} */
@@ -4423,6 +4433,7 @@ public class WifiConfiguration implements Parcelable {
                     config.mVendorData = ParcelUtil.readOuiKeyedDataList(in);
                     config.mWifi7Enabled = in.readBoolean();
                     config.mIsAllowedToUpdateByOtherUsers = in.readBoolean();
+                    config.persistentMacRandomizationSeed = in.readInt();
                     return config;
                 }
 

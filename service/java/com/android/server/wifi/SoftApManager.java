@@ -1751,6 +1751,26 @@ public class SoftApManager implements ActiveModeManager {
                 }
             }
 
+            private boolean removeLinkInfoFromMloApIface(String apInterfaceName, int linkId) {
+                if (TextUtils.isEmpty(apInterfaceName)) {
+                    return false;
+                }
+                if (mCurrentSoftApInfoMap.containsKey(apInterfaceName)) {
+                    SoftApInfo apInfoInMap = mCurrentSoftApInfoMap.get(apInterfaceName);
+                    if (apInfoInMap.getMloLinks().size() <= 1) {
+                        Log.i(getTag(), "AP's link already less than 2, no need to remove, stop AP directly.");
+                        return false;
+                    } else {
+                        Log.i(getTag(), "remove the link " + linkId +
+                                " from MLO iface " + apInterfaceName);
+                        apInfoInMap.removeMloLink(linkId);
+                        mCurrentSoftApInfoMap.put(apInterfaceName, new SoftApInfo(apInfoInMap));
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             /**
              * Schedule the timeout message when timeout control is enabled and there is no client
              * connect to the instance.
@@ -2295,6 +2315,20 @@ public class SoftApManager implements ActiveModeManager {
                                             : mCurrentSoftApInfoMap.keySet()) {
                                         removeIfaceInstanceFromBridgedApIface(unavailableInstance);
                                     }
+                                    break;
+                                }
+                            }
+                        }
+                        if (isMultiLinkOperationMode()) {
+                            String[] instanceInfo = instance.split("_");
+                            String apIfaceName = instanceInfo[0];
+                            String linkIdInfo = instanceInfo[1];
+                            if (linkIdInfo != null) {
+                                int linkId = Integer.parseInt(linkIdInfo);
+                                if (removeLinkInfoFromMloApIface(apIfaceName, linkId)) {
+                                    Log.i(getTag(), "In Multi-Link mode, don't send stop AP until no available link exist.");
+                                    mSoftApCallback.onConnectedClientsOrInfoChanged(mCurrentSoftApInfoMap,
+                                            mConnectedClientWithApInfoMap, isBridgeRequired());
                                     break;
                                 }
                             }

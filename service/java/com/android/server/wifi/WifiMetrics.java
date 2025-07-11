@@ -744,12 +744,24 @@ public class WifiMetrics {
     }
 
     /**
-     * Sets the timestamp after roaming is complete.
+     * Updates timestamp and router capabilities metrics upon successful completion of Wi-Fi
+     * roaming.
      */
     public void onRoamComplete(String ifaceName) {
         SessionData currentSession = mCurrentConnectionSessionPerIface.get(ifaceName);
         if (currentSession != null) {
             currentSession.mLastRoamCompleteMillis = mClock.getElapsedSinceBootMillis();
+        }
+
+        synchronized (mLock) {
+            SessionData sessionData = mCurrentConnectionSessionPerIface.get(ifaceName);
+            if (sessionData != null && sessionData.mConnectionEvent != null
+                    && sessionData.mConnectionEvent.mRouterFingerPrint != null) {
+                reportRouterCapabilities(sessionData.mConnectionEvent.mRouterFingerPrint);
+            } else {
+                Log.w(TAG, "onRoamComplete: No current connection session router fingerprint for "
+                        + ifaceName);
+            }
         }
     }
 
@@ -2228,6 +2240,12 @@ public class WifiMetrics {
     public void setConnectionScanDetail(String ifaceName, ScanDetail scanDetail) {
         synchronized (mLock) {
             ConnectionEvent currentConnectionEvent = mCurrentConnectionEventPerIface.get(ifaceName);
+            if (currentConnectionEvent == null) {
+                SessionData sessionData = mCurrentConnectionSessionPerIface.get(ifaceName);
+                if (sessionData != null) {
+                    currentConnectionEvent = sessionData.mConnectionEvent;
+                }
+            }
             if (currentConnectionEvent == null || scanDetail == null) {
                 return;
             }
@@ -5580,6 +5598,36 @@ public class WifiMetrics {
                 mInitPartialScanFailureHistogram.increment(channelCount);
             }
         }
+    }
+
+    private int setScanTypeProto(int scanType) {
+        return switch(scanType) {
+            case WifiScanner.SCAN_TYPE_LOW_LATENCY ->
+                    WifiStatsLog.WIFI_PERIODIC_SCAN_REPORT__SCAN_TYPE__LOW_LATENCY;
+            case WifiScanner.SCAN_TYPE_LOW_POWER ->
+                    WifiStatsLog.WIFI_PERIODIC_SCAN_REPORT__SCAN_TYPE__LOW_POWER;
+            case WifiScanner.SCAN_TYPE_HIGH_ACCURACY ->
+                    WifiStatsLog.WIFI_PERIODIC_SCAN_REPORT__SCAN_TYPE__HIGH_ACCURACY;
+            default -> WifiStatsLog.WIFI_PERIODIC_SCAN_REPORT__SCAN_TYPE__UNKNOWN;
+        };
+    }
+
+    /**
+     * Call when WifiConnectivityManager triggers periodic scan.
+     * @param isWifiConnected is wifiState == WIFI_STATE_CONNECTED
+     * @param isFullBandScan is full band scan or not
+     * @param scanType @see ScanSettings#type
+     * @param scanIntervalMs the scheduled scan interval of current scanning attempt
+     */
+    public void reportWifiPeriodicScan(boolean isWifiConnected, boolean isFullBandScan,
+            int scanType, int scanIntervalMs) {
+            // Write metrics to statsd
+        WifiStatsLog.write(
+                WifiStatsLog.WIFI_PERIODIC_SCAN_REPORT,
+                isWifiConnected,
+                isFullBandScan,
+                setScanTypeProto(scanType),
+                scanIntervalMs);
     }
 
     /**

@@ -61,6 +61,7 @@ import static android.net.wifi.WifiManager.WIFI_FEATURE_WPA3_SAE;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_WPA3_SUITE_B;
 import static android.net.wifi.WifiManager.WIFI_FEATURE_WPA_PERSONAL;
 import static android.net.wifi.WifiManager.WpsCallback;
+import static android.net.wifi.WifiUsabilityStatsEntry.SCORER_TYPE_ML;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -202,6 +203,7 @@ public class WifiManagerTest {
     private static final TetheringManager.TetheringRequest TEST_TETHERING_REQUEST =
             new TetheringManager.TetheringRequest.Builder(TetheringManager.TETHERING_WIFI).build();
     private static final String TEST_INTERFACE_NAME = "test-wlan0";
+    private static final int TEST_INTERNAL_SCORE = 50;
 
     @Mock Context mContext;
     @Mock android.net.wifi.IWifiManager mWifiService;
@@ -230,6 +232,8 @@ public class WifiManagerTest {
     private ScanResultsCallback mScanResultsCallback;
     private CoexCallback mCoexCallback;
     private WifiManager.WifiStateChangedListener mWifiStateChangedListener;
+    private WifiManager.RestrictAutoJoinToSubIdCallback
+            mRestrictAutoJoinToSubIdCallback;
     private SubsystemRestartTrackingCallback mRestartCallback;
     private int mRestartCallbackMethodRun = 0; // 1: restarting, 2: restarted
     private WifiActivityEnergyInfo mWifiActivityEnergyInfo;
@@ -330,6 +334,17 @@ public class WifiManagerTest {
             }
         };
         mWifiStateChangedListener = () -> mRunnable.run();
+        mRestrictAutoJoinToSubIdCallback = new WifiManager.RestrictAutoJoinToSubIdCallback() {
+            @Override
+            public void onRestrictionStarted(int subscriptionId) {
+                mRunnable.run();
+            }
+
+            @Override
+            public void onRestrictionStopped() {
+                mRunnable.run();
+            }
+        };
         if (SdkLevel.isAtLeastS()) {
             mCoexCallback = new CoexCallback() {
                 @Override
@@ -2539,6 +2554,42 @@ public class WifiManagerTest {
     }
 
     /**
+     * Verify client provided callback is being called to the right callback.
+     */
+    @Test
+    public void testAddRestrictAutoJoinToSubIdCallbackAndReceiveEvent() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
+        assertThrows(NullPointerException.class,
+                () -> mWifiManager.addRestrictAutoJoinToSubIdCallback(mExecutor, null));
+        assertThrows(NullPointerException.class,
+                () -> mWifiManager.addRestrictAutoJoinToSubIdCallback(
+                        null, mRestrictAutoJoinToSubIdCallback));
+
+
+        ArgumentCaptor<IRestrictAutoJoinToSubIdCallback.Stub> callbackCaptor =
+                ArgumentCaptor.forClass(IRestrictAutoJoinToSubIdCallback.Stub.class);
+        mWifiManager.addRestrictAutoJoinToSubIdCallback(new SynchronousExecutor(),
+                mRestrictAutoJoinToSubIdCallback);
+        verify(mWifiService).addRestrictAutoJoinToSubIdCallback(callbackCaptor.capture());
+        callbackCaptor.getValue().onRestrictionStarted(1);
+        verify(mRunnable).run();
+    }
+
+    /**
+     * Verify client removeRestrictAutoJoinToSubIdCallback.
+     */
+    @Test
+    public void testRemoveUnknownRestrictAutoJoinToSubIdCallback() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
+        assertThrows(NullPointerException.class,
+                () -> mWifiManager.removeRestrictAutoJoinToSubIdCallback(null));
+
+        mWifiManager.removeRestrictAutoJoinToSubIdCallback(
+                mRestrictAutoJoinToSubIdCallback);
+        verify(mWifiService, never()).removeRestrictAutoJoinToSubIdCallback(any());
+    }
+
+    /**
      * Verify the call to addOnWifiUsabilityStatsListener goes to WifiServiceImpl.
      */
     @Test
@@ -2586,7 +2637,7 @@ public class WifiManagerTest {
                         100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 1, 100, 10,
                         100, 27, contentionTimeStats, rateStats, radioStats, 101, true, true, true,
                         0, 10, 10, true, linkStats, 1, 0, 10, 20, 1, 2, 1, 1, 1, 1, false, 0,
-                        false, 100, 100, 1, 3, 1));
+                        false, 100, 100, 1, 3, 1, TEST_INTERNAL_SCORE, SCORER_TYPE_ML));
         verify(mOnWifiUsabilityStatsListener).onWifiUsabilityStats(anyInt(), anyBoolean(),
                 any(WifiUsabilityStatsEntry.class));
     }

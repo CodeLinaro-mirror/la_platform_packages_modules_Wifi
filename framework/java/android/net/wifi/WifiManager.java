@@ -25,6 +25,7 @@ import static android.Manifest.permission.NETWORK_SETTINGS;
 import static android.Manifest.permission.NETWORK_SETUP_WIZARD;
 import static android.Manifest.permission.READ_WIFI_CREDENTIAL;
 import static android.Manifest.permission.REQUEST_COMPANION_PROFILE_AUTOMOTIVE_PROJECTION;
+import static android.annotation.RestrictedForEnvironment.ENVIRONMENT_SDK_RUNTIME;
 
 import android.Manifest;
 import android.annotation.CallbackExecutor;
@@ -34,6 +35,7 @@ import android.annotation.IntRange;
 import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.annotation.RequiresPermission;
+import android.annotation.RestrictedForEnvironment;
 import android.annotation.SdkConstant;
 import android.annotation.SdkConstant.SdkConstantType;
 import android.annotation.StringDef;
@@ -150,6 +152,8 @@ import java.util.function.IntConsumer;
  * {@link android.net.ConnectivityManager}.
  * </p>
  */
+@RestrictedForEnvironment(
+        environments = ENVIRONMENT_SDK_RUNTIME, from = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 @SystemService(Context.WIFI_SERVICE)
 public class WifiManager {
 
@@ -13728,7 +13732,7 @@ public class WifiManager {
     }
 
     /**
-     * Query the list of {@link WifiConfiguration} with credentials.
+     * Returns the list of {@link WifiConfiguration} with credentials.
      *
      * <p> This API is similar to {@link #getPrivilegedConfiguredNetworks()}, but this new API
      * is the async version of it.
@@ -13747,7 +13751,7 @@ public class WifiManager {
     @SystemApi
     @RequiresPermission(allOf = {NEARBY_WIFI_DEVICES, READ_WIFI_CREDENTIAL})
     public void queryPrivilegedConfiguredNetworks(@NonNull @CallbackExecutor Executor executor,
-            @NonNull OutcomeReceiver<List<WifiConfiguration>, Error> resultsCallback) {
+            @NonNull OutcomeReceiver<List<WifiConfiguration>, Exception> resultsCallback) {
         if (!SdkLevel.isAtLeastT()) {
             throw new UnsupportedOperationException();
         }
@@ -13768,7 +13772,7 @@ public class WifiManager {
                                         if (result != null) {
                                             resultsCallback.onResult(result.getList());
                                         } else {
-                                            resultsCallback.onError(new Error(errorMsg));
+                                            resultsCallback.onError(new Exception(errorMsg));
                                         }
                                     });
                         }

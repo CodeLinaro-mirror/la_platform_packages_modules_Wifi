@@ -395,7 +395,7 @@ public class WifiConfigManager {
     /**
      * Whether the forground user is an admin user.
      */
-    private boolean mIsForegroundUserAdmin = false;
+    private boolean mIsCurrentUserAdmin = false;
     /**
      * Flag to indicate that the new user's store has not yet been read since user switch.
      * Initialize this flag to |true| to trigger a read on the first user unlock after
@@ -2106,7 +2106,7 @@ public class WifiConfigManager {
         }
 
         if (!canModifyNetwork(config, uid, packageName,
-                !mIsForegroundUserAdmin /* requireUserCheck */)) {
+                !mIsCurrentUserAdmin /* requireUserCheck */)) {
             Log.e(TAG, "UID " + uid + " does not have permission to delete configuration "
                     + config.getProfileKey());
             return false;
@@ -3585,9 +3585,11 @@ public class WifiConfigManager {
         Set<Integer> removedNetworkIds = clearInternalDataForUser(mCurrentUserId);
         mConfiguredNetworks.setNewUser(userId);
         mCurrentUserId = userId;
-        // New API in Android V
-        mIsForegroundUserAdmin = SdkLevel.isAtLeastV() && mUserManager.isForegroundUserAdmin();
-
+        if (Environment.isSdkNewerThanB() && mFeatureFlags.multiUserWifiEnhancement()) {
+            Context userContext = mContext.createContextAsUser(UserHandle.of(userId), 0);
+            UserManager userManager = userContext.getSystemService(UserManager.class);
+            mIsCurrentUserAdmin = userManager.isAdminUser();
+        }
         if (mUserManager.isUserUnlockingOrUnlocked(UserHandle.of(mCurrentUserId))) {
             handleUserUnlockOrSwitch(mCurrentUserId);
             // only handle the switching of unlocked users in {@link WifiCarrierInfoManager}.
@@ -3616,8 +3618,11 @@ public class WifiConfigManager {
             Log.e(TAG, "Ignore user unlock for non current user " + userId);
             return;
         }
-        // New API in Android V
-        mIsForegroundUserAdmin = SdkLevel.isAtLeastV() && mUserManager.isForegroundUserAdmin();
+        if (Environment.isSdkNewerThanB() && mFeatureFlags.multiUserWifiEnhancement()) {
+            Context userContext = mContext.createContextAsUser(UserHandle.of(userId), 0);
+            UserManager userManager = userContext.getSystemService(UserManager.class);
+            mIsCurrentUserAdmin = userManager.isAdminUser();
+        }
         if (mPendingStoreRead) {
             Log.w(TAG, "Ignore user unlock until store is read!");
             mDeferredUserUnlockRead = true;
@@ -4076,7 +4081,7 @@ public class WifiConfigManager {
         pw.println("WifiConfigManager - Log Begin ----");
         mLocalLog.dump(fd, pw, args);
         pw.println("WifiConfigManager - Log End ----");
-        pw.println("WifiConfigManager - mIsForegroundUserAdmin:" + mIsForegroundUserAdmin);
+        pw.println("WifiConfigManager - mIsCurrentUserAdmin:" + mIsCurrentUserAdmin);
         pw.println("WifiConfigManager - Configured networks Begin ----");
         for (WifiConfiguration network : getInternalConfiguredNetworks()) {
             pw.println(network);

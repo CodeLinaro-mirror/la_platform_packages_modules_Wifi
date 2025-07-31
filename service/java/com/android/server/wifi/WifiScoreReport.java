@@ -19,6 +19,7 @@ package com.android.server.wifi;
 import static android.net.wifi.WifiUsabilityStatsEntry.SCORER_TYPE_INVALID;
 
 import static com.android.server.wifi.ClientModeImpl.WIFI_WORK_SOURCE;
+import static com.android.server.wifi.Clock.INVALID_TIMESTAMP_MS;
 
 import android.annotation.Nullable;
 import android.content.Context;
@@ -72,7 +73,6 @@ public class WifiScoreReport {
     private static final int WIFI_CONNECTED_NETWORK_SCORER_IDENTIFIER = 0;
     private static final int INVALID_SESSION_ID = -1;
     private static final long MIN_TIME_TO_WAIT_BEFORE_BLOCKLIST_BSSID_MILLIS = 29000;
-    private static final long INVALID_WALL_CLOCK_MILLIS = -1;
     private static final int WIFI_SCORE_TO_TERMINATE_CONNECTION_BLOCKLIST_BSSID = -2;
 
     /**
@@ -109,8 +109,8 @@ public class WifiScoreReport {
     private final WifiBlocklistMonitor mWifiBlocklistMonitor;
     private final WifiScoreCard mWifiScoreCard;
     private final Context mContext;
-    private long mLastScoreBreachLowTimeMillis = INVALID_WALL_CLOCK_MILLIS;
-    private long mLastScoreBreachHighTimeMillis = INVALID_WALL_CLOCK_MILLIS;
+    private long mLastScoreBreachLowTimeMillis = INVALID_TIMESTAMP_MS;
+    private long mLastScoreBreachHighTimeMillis = INVALID_TIMESTAMP_MS;
 
     @VisibleForTesting
     VelocityBasedConnectedScore mVelocityBasedConnectedScore;
@@ -132,7 +132,7 @@ public class WifiScoreReport {
     private final ActiveModeWarden mActiveModeWarden;
     private final WifiConnectivityManager mWifiConnectivityManager;
     private final WifiConfigManager mWifiConfigManager;
-    private long mLastLowScoreScanTimestampMs = -1;
+    private long mLastLowScoreScanTimestampMs = INVALID_TIMESTAMP_MS;
     private WifiConfiguration mCurrentWifiConfiguration;
 
     /**
@@ -182,14 +182,14 @@ public class WifiScoreReport {
                     mLastScoreBreachLowTimeMillis = millis;
                 }
             } else {
-                mLastScoreBreachLowTimeMillis = INVALID_WALL_CLOCK_MILLIS;
+                mLastScoreBreachLowTimeMillis = INVALID_TIMESTAMP_MS;
             }
             if (score > ConnectedScore.WIFI_TRANSITION_SCORE) {
                 if (mLegacyIntScore <= ConnectedScore.WIFI_TRANSITION_SCORE) {
                     mLastScoreBreachHighTimeMillis = millis;
                 }
             } else {
-                mLastScoreBreachHighTimeMillis = INVALID_WALL_CLOCK_MILLIS;
+                mLastScoreBreachHighTimeMillis = INVALID_TIMESTAMP_MS;
             }
             mLegacyIntScore = score;
             reportNetworkScoreToConnectivityServiceIfNecessary();
@@ -410,7 +410,7 @@ public class WifiScoreReport {
                 /// Turn off hysteresis/dampening for shell commands.
                 && !mWifiConnectedNetworkScorerHolder.isShellCommandScorer()) {
             long millis = mClock.getWallClockMillis();
-            if (mLastScoreBreachLowTimeMillis != INVALID_WALL_CLOCK_MILLIS) {
+            if (mLastScoreBreachLowTimeMillis != INVALID_TIMESTAMP_MS) {
                 if (mWifiInfo.getRssi()
                         >= mDeviceConfigFacade.getRssiThresholdNotSendLowScoreToCsDbm()) {
                     Log.d(TAG, "Not reporting low score because RSSI is high "
@@ -424,7 +424,7 @@ public class WifiScoreReport {
                     return;
                 }
             }
-            if (mLastScoreBreachHighTimeMillis != INVALID_WALL_CLOCK_MILLIS
+            if (mLastScoreBreachHighTimeMillis != INVALID_TIMESTAMP_MS
                     && (millis - mLastScoreBreachHighTimeMillis)
                             < mDeviceConfigFacade.getMinConfirmationDurationSendHighScoreMs()) {
                 Log.d(TAG, "Not reporting high score because elapsed time is shorter than "
@@ -637,9 +637,9 @@ public class WifiScoreReport {
         if (mVelocityBasedConnectedScore != null) {
             mVelocityBasedConnectedScore.reset();
         }
-        mLastScoreBreachLowTimeMillis = INVALID_WALL_CLOCK_MILLIS;
-        mLastScoreBreachHighTimeMillis = INVALID_WALL_CLOCK_MILLIS;
-        mLastLowScoreScanTimestampMs = -1;
+        mLastScoreBreachLowTimeMillis = INVALID_TIMESTAMP_MS;
+        mLastScoreBreachHighTimeMillis = INVALID_TIMESTAMP_MS;
+        mLastLowScoreScanTimestampMs = INVALID_TIMESTAMP_MS;
         if (mVerboseLoggingEnabled) Log.d(TAG, "reset");
     }
 
@@ -666,15 +666,14 @@ public class WifiScoreReport {
         }
 
         long millis = mClock.getWallClockMillis();
-        ConnectedScoreResult scoreResult =
-                mVelocityBasedConnectedScore.generateScoreResult(mWifiInfo, null, millis);
+        ConnectedScoreResult scoreResult = mVelocityBasedConnectedScore.generateScoreResult(
+                mWifiInfo, null, millis, isPrimary());
         int score = scoreResult.score();
         int adjustScore = scoreResult.adjustedScore();
 
-        final int transitionScore = isPrimary() ? ConnectedScore.WIFI_TRANSITION_SCORE
-                : ConnectedScore.WIFI_SECONDARY_TRANSITION_SCORE;
-        mAospScorerPredictionStatusForEvaluation = convertToPredictionStatusForEvaluation(
-                adjustScore >= transitionScore);
+        mAospScorerPredictionStatusForEvaluation =
+                convertToPredictionStatusForEvaluation(scoreResult.isWifiUsable());
+
         // Bypass AOSP scorer if Wifi connected network scorer is set
         if (mWifiConnectedNetworkScorerHolder != null && !mIsExternalScorerDryRun) {
             return adjustScore;
@@ -695,7 +694,7 @@ public class WifiScoreReport {
     }
 
     private boolean enoughTimePassedSinceLastLowConnectedScoreScan() {
-        return mLastLowScoreScanTimestampMs == -1
+        return mLastLowScoreScanTimestampMs == INVALID_TIMESTAMP_MS
                 || mClock.getElapsedSinceBootMillis() - mLastLowScoreScanTimestampMs
                 > (mWifiGlobals.getWifiLowConnectedScoreScanPeriodSeconds() * 1000);
     }
@@ -771,8 +770,7 @@ public class WifiScoreReport {
             }
             return false;
         }
-        long millis = mClock.getWallClockMillis();
-        long deltaMillis = millis - mLastKnownNudCheckTimeMillis;
+        long deltaMillis = mClock.getWallClockMillis() - mLastKnownNudCheckTimeMillis;
         // Don't ever ask back-to-back - allow at least 5 seconds
         // for the previous one to finish.
         if (deltaMillis < NUD_THROTTLE_MILLIS) {
@@ -791,6 +789,7 @@ public class WifiScoreReport {
         }
         // nextNudBreach is the bar the score needs to cross before we ask for NUD
         double nextNudBreach = ConnectedScore.WIFI_TRANSITION_SCORE;
+        double quotient = deltaMillis / TIME_CONSTANT_MILLIS;
         if (mWifiConnectedNetworkScorerHolder == null) {
             // nud is between 1 and 10 at this point
             double deltaLevel = 11 - nud;
@@ -798,8 +797,8 @@ public class WifiScoreReport {
             // that starts down from there and decays exponentially back up to the steady-state
             // bar. If 5 time constants have passed, we are 99% of the way there, so skip the math.
             if (mLastKnownNudCheckScore < ConnectedScore.WIFI_TRANSITION_SCORE
-                    && deltaMillis < 5.0 * TIME_CONSTANT_MILLIS) {
-                double a = Math.exp(-deltaMillis / TIME_CONSTANT_MILLIS);
+                    && quotient < 5.0) {
+                double a = Math.exp(-quotient);
                 nextNudBreach =
                         a * (mLastKnownNudCheckScore - deltaLevel) + (1.0 - a) * nextNudBreach;
             }
@@ -1094,8 +1093,8 @@ public class WifiScoreReport {
         mWifiInfoNoReset.setBSSID(mWifiInfo.getBSSID());
         mWifiInfoNoReset.setSSID(mWifiInfo.getWifiSsid());
         mWifiInfoNoReset.setRssi(mWifiInfo.getRssi());
-        mLastScoreBreachLowTimeMillis = INVALID_WALL_CLOCK_MILLIS;
-        mLastScoreBreachHighTimeMillis = INVALID_WALL_CLOCK_MILLIS;
+        mLastScoreBreachLowTimeMillis = INVALID_TIMESTAMP_MS;
+        mLastScoreBreachHighTimeMillis = INVALID_TIMESTAMP_MS;
     }
 
     /**
@@ -1110,14 +1109,14 @@ public class WifiScoreReport {
 
         long millis = mClock.getWallClockMillis();
         // Blocklist the current BSS
-        if ((mLastScoreBreachLowTimeMillis != INVALID_WALL_CLOCK_MILLIS)
+        if ((mLastScoreBreachLowTimeMillis != INVALID_TIMESTAMP_MS)
                 && ((millis - mLastScoreBreachLowTimeMillis)
                         >= MIN_TIME_TO_WAIT_BEFORE_BLOCKLIST_BSSID_MILLIS)) {
             mWifiBlocklistMonitor.handleBssidConnectionFailure(mWifiInfo.getBSSID(),
                     mCurrentWifiConfiguration,
                     WifiBlocklistMonitor.REASON_FRAMEWORK_DISCONNECT_CONNECTED_SCORE,
                     mWifiInfo.getRssi());
-            mLastScoreBreachLowTimeMillis = INVALID_WALL_CLOCK_MILLIS;
+            mLastScoreBreachLowTimeMillis = INVALID_TIMESTAMP_MS;
         }
     }
 
@@ -1244,7 +1243,6 @@ public class WifiScoreReport {
     /** Called when the owner {@link ConcreteClientModeManager}'s role changes. */
     public void onRoleChanged(@Nullable ClientRole role) {
         mCurrentRole = role;
-        if (mVelocityBasedConnectedScore != null) mVelocityBasedConnectedScore.onRoleChanged(role);
         sendNetworkScore();
     }
 

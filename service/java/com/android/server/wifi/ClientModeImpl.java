@@ -7060,7 +7060,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         mWifiCarrierInfoManager.isMobileDataEnabled(),
                         mWifiGlobals.getPollRssiIntervalMillis(),
                         mWifiScoreReport.getAospScorerPredictionStatusForEvaluation(),
-                        mWifiScoreReport.getExternalScorerPredictionStatusForEvaluation());
+                        mWifiScoreReport.getExternalScorerPredictionStatusForEvaluation(),
+                        mWifiScoreReport.isExternalScorerActive());
                 mWifiScoreReport.clearScorerPredictionStatusForEvaluation();
             }
             // Send the update score to network agent.

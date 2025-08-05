@@ -4701,7 +4701,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         // race with, say, bringup code over in tethering.
         mIpClientCallbacks.awaitShutdown();
         mIpClientCallbacks = null;
-        mIpClient = null;
+        setIpClientManager(null);
     }
 
     // Always use "arg1" to take the current IpClient callbacks index to check if the callbacks
@@ -4751,7 +4751,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         }
 
         private void continueEnterSetup(IpClientManager ipClientManager) {
-            mIpClient = ipClientManager;
+            setIpClientManager(ipClientManager);
             setupClientMode();
 
             if (!mIsScreenStateChangeReceiverRegistered) {
@@ -5824,7 +5824,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         transitionTo(mDisconnectedState);
                     }
                     if (state == SupplicantState.COMPLETED) {
-                        mWifiScoreReport.noteIpCheck();
+                        mWifiScoreReport.noteNudCheck();
                     }
                     break;
                 }
@@ -7071,13 +7071,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mWifiMetrics.updateWifiUsabilityStatsEntries(mInterfaceName, mWifiInfo, stats, oneshot,
                     statusDataStall, internalScore, internalScorerType);
 
-            if (mWifiScoreReport.shouldCheckIpLayer()) {
-                if (mIpClient != null) {
-                    mIpClient.confirmConfiguration();
-                }
-                mWifiScoreReport.noteIpCheck();
-            }
-
             mLastLinkLayerStats = stats;
             return stats;
         }
@@ -7148,7 +7141,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             switch(message.what) {
                 case CMD_IPCLIENT_CREATED: {
                     if (!isFromCurrentIpClientCallbacks(message)) break;
-                    mIpClient = (IpClientManager) message.obj;
+                    setIpClientManager((IpClientManager) message.obj);
                     setMulticastFilter(true);
                     transitionTo(mL3ProvisioningState);
                     break;
@@ -9052,5 +9045,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             }
         }
         mWifiBlocklistMonitor.updateAndGetBssidBlocklistForSsids(Set.of(configuration.SSID));
+    }
+
+    private void setIpClientManager(IpClientManager ipClientManager) {
+        mIpClient = ipClientManager;
+        mWifiScoreReport.setIpClientManager(ipClientManager);
     }
 }

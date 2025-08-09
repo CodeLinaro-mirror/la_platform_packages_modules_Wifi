@@ -7620,18 +7620,18 @@ public class WifiServiceImpl extends BaseWifiService {
         Objects.requireNonNull(binder, "binder cannot be null");
         Objects.requireNonNull(listener, "listener cannot be null");
 
-        if (!mApplicationQosPolicyRequestHandler.isFeatureEnabled()) {
-            Log.i(TAG, "addQosPolicies is disabled on this device");
-            rejectAllQosPolicies(policyParamsList, listener);
-            return;
-        }
-
         // Only downlink policies are currently supported.
         if (policyParamsList.size() == 0
                 || policyParamsList.size() > WifiManager.getMaxNumberOfPoliciesPerQosRequest()
                 || !policyIdsAreUnique(policyParamsList)
                 || !policiesHaveDirection(policyParamsList, QosPolicyParams.DIRECTION_DOWNLINK)) {
             throw new IllegalArgumentException("policyParamsList is invalid");
+        }
+
+        if (!mApplicationQosPolicyRequestHandler.isFeatureEnabled()) {
+            Log.i(TAG, "addQosPolicies is disabled on this device");
+            rejectAllQosPolicies(policyParamsList, listener);
+            return;
         }
 
         mWifiThreadRunner.post(() -> {

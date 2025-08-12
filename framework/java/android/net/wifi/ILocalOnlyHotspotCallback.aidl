@@ -25,6 +25,7 @@ import android.net.wifi.SoftApConfiguration;
  */
 oneway interface ILocalOnlyHotspotCallback {
     void onHotspotStarted(in SoftApConfiguration config);
+    void onHotspotStartedWithType(in int mLohsType, in SoftApConfiguration config);
     void onHotspotStopped();
     void onHotspotFailed(int reason);
 }

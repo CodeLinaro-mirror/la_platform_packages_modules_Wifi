@@ -397,6 +397,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     private final WifiSettingsConfigStore mSettingsConfigStore;
     private final WifiResourceCache mResourceCache;
     private boolean mIsUsdSupported = false;
+    private int mDeviceMobilityState = WifiManager.DEVICE_MOBILITY_STATE_UNKNOWN;
 
     /**
      * Callback for use with LocalOnlyHotspot to unregister requesting applications upon death.
@@ -4536,6 +4537,28 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                                 + "user when DISALLOW_CONFIG_WIFI user restriction is set").flush();
                 return -1;
             }
+            if (android.multiuser.Flags.userRestrictionConfigWifiSharedPrivate()) {
+                if (config.shared) {
+                    if (mUserManager.hasUserRestrictionForUser(
+                            UserManager.DISALLOW_CONFIG_WIFI_SHARED,
+                            UserHandle.of(mWifiPermissionsUtil.getCurrentUser()))) {
+                        mLog.info("addOrUpdateNetwork not allowed for a shared config for the user"
+                                + " when DISALLOW_CONFIG_WIFI_SHARED restriction is set")
+                                .flush();
+                        return -1;
+                    }
+                } else {
+                    // handle private network case
+                    if (mUserManager.hasUserRestrictionForUser(
+                            UserManager.DISALLOW_CONFIG_WIFI_PRIVATE,
+                            UserHandle.of(mWifiPermissionsUtil.getCurrentUser()))) {
+                        mLog.info("addOrUpdateNetwork not allowed for a private config for the user"
+                                + " when DISALLOW_CONFIG_WIFI_PRIVATE restriction is set")
+                                .flush();
+                        return -1;
+                    }
+                }
+            }
             if (SdkLevel.isAtLeastT() && mUserManager.hasUserRestrictionForUser(
                     UserManager.DISALLOW_ADD_WIFI_CONFIG,
                     UserHandle.getUserHandleForUid(callingUid))) {
@@ -7119,6 +7142,11 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         }
         // Post operation to handler thread
         mWifiThreadRunner.post(() -> {
+            if (state == mDeviceMobilityState) {
+                // Ignore repeated mobility state updates
+                return;
+            }
+            mDeviceMobilityState = state;
             mWifiConnectivityManager.setDeviceMobilityState(state);
             mWifiHealthMonitor.setDeviceMobilityState(state);
             mWifiDataStall.setDeviceMobilityState(state);
@@ -7685,8 +7713,18 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         }
         mLastCallerInfoManager.put(WifiManager.API_FORGET, Process.myTid(),
                 uid, Binder.getCallingPid(), "<unknown>", true);
+        boolean isUserRestrictionConfigWifiShared =
+                android.multiuser.Flags.userRestrictionConfigWifiSharedPrivate()
+                && mUserManager.hasUserRestrictionForUser(UserManager.DISALLOW_CONFIG_WIFI_SHARED,
+                        UserHandle.of(mWifiPermissionsUtil.getCurrentUser()));
         mWifiThreadRunner.post(() -> {
             WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(netId);
+            if (isUserRestrictionConfigWifiShared && config.shared) {
+                mLog.info("forget not allowed for a shared config for the user"
+                        + " when DISALLOW_CONFIG_WIFI_SHARED restriction is set")
+                        .flush();
+                return;
+            }
             boolean success = mWifiConfigManager.removeNetwork(netId, uid, null);
             ActionListenerWrapper wrapper = new ActionListenerWrapper(callback);
             if (success) {

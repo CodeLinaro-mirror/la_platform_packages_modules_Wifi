@@ -46,6 +46,7 @@ import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 
 /**
@@ -74,6 +75,7 @@ public class WifiAwareDiscoverySessionState {
     private AwarePairingConfig mPairingConfig;
     private boolean mIsSuspendable;
     private boolean mIsSuspended;
+    private final HashSet<Integer> mPairedPeerIds = new HashSet<>();
 
     static class PeerInfo {
         PeerInfo(int instanceId, byte[] mac, PeerHandle peerHandle) {
@@ -156,6 +158,10 @@ public class WifiAwareDiscoverySessionState {
 
     public boolean isSessionSuspended() {
         return mIsSuspended;
+    }
+
+    public boolean isPeerPaired(int peerId) {
+        return mPairedPeerIds.contains(peerId);
     }
 
     /**
@@ -636,6 +642,7 @@ public class WifiAwareDiscoverySessionState {
         if (peerId == 0) {
             return;
         }
+        mPairedPeerIds.remove(peerId);
 
         try {
             mCallback.onMatchExpired(peerId);
@@ -690,6 +697,9 @@ public class WifiAwareDiscoverySessionState {
             }
         } catch (RemoteException e) {
             Log.w(TAG, "onPairingConfirmReceived: RemoteException (FYI): " + e);
+        }
+        if (accept) {
+            mPairedPeerIds.add(peerId);
         }
     }
 

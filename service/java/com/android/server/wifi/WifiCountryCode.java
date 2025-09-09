@@ -718,7 +718,8 @@ public class WifiCountryCode {
                     SoftApModeConfiguration modeConfig = sm.getSoftApModeConfiguration();
                     SoftApModeConfiguration newModeConfig = new SoftApModeConfiguration(
                             modeConfig.getTargetMode(), modeConfig.getSoftApConfiguration(),
-                            modeConfig.getCapability(), country, modeConfig.getTetheringRequest());
+                            modeConfig.getCapability(), country, modeConfig.getTetheringRequest(),
+                            modeConfig.getLohsType());
                     mActiveModeWarden.stopSoftAp(modeConfig.getTargetMode());
                     mActiveModeWarden.startSoftAp(newModeConfig, sm.getRequestorWs());
                 } else {

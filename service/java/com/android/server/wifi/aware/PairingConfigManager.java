@@ -43,7 +43,9 @@ public class PairingConfigManager {
     private static final String TAG = "AwarePairingManager";
 
     private static final int NIK_SIZE_IN_BYTE = 16;
-    private static final int TAG_SIZE_IN_BYTE = 8;
+    public static final int TAG_SIZE_IN_BYTE = 8;
+    // NIR byte array
+    public static final byte[] NIR = {'N', 'I', 'R'};
 
     /**
      * Store the NPKSA from the NAN Pairing confirmation
@@ -200,5 +202,15 @@ public class PairingConfigManager {
             return Collections.emptyList();
         }
         return new ArrayList<>(aliasSet);
+    }
+
+    /**
+     * Reset all the caches
+     */
+    public void reset() {
+        mPackageNameToNikMap.clear();
+        mPerAppPairedAliasMap.clear();
+        mAliasToNikMap.clear();
+        mAliasToSecurityInfoMap.clear();
     }
 }

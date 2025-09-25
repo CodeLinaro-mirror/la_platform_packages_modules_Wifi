@@ -40,11 +40,13 @@ MAX_DISTANCE_MM = 'max_distance_mm'
 PAIRING_CONFIG = 'pairing_config'
 AWARE_NETWORK_INFO_CLASS_NAME = 'android.net.wifi.aware.WifiAwareNetworkInfo'
 TTL_SEC = 'TtlSec'
-INSTANTMODE_ENABLE = 'InstantModeEnabled'
+INSTANT_MODE = 'instant_mode'
 FEATURE_WIFI_AWARE = 'feature:android.hardware.wifi.aware'
 DISCOVERY_KEY_RANGING_ENABLED = 'ranging_enabled'
 DISCOVERY_KEY_MIN_DISTANCE_MM = 'MinDistanceMm'
 DISCOVERY_KEY_MAX_DISTANCE_MM = 'MaxDistanceMm'
+INSTANT_MODE_BAND_5 = '5G'
+INSTANT_MODE_BAND_24 = '2.4G'
 
 
 # onServiceLost reason code
@@ -241,6 +243,9 @@ class WifiAwareSnippetParams(enum.StrEnum):
     PAIRING_REQUEST_ID = 'pairingRequestId'
     BOOTSTRAPPING_METHOD = 'bootstrappingMethod'
     PEER_ID = 'peerId'
+    PAIRED_SETUP_ENABLED = 'pairingSetupEnabled'
+    PAIRED_CACHE_ENABLED = 'pairingCacheEnabled'
+    PAIRED_VERIFICATION_ENABLED = 'pairingVerificationEnabled'
 
 
 @enum.unique
@@ -325,6 +330,7 @@ class SubscribeConfig:
     pairing_config: AwarePairingConfig | None = None
     terminate_notification_enabled: bool = True
     service_name: str = WifiAwareTestConstants.SERVICE_NAME
+    instant_mode: str | None = None
 
     def to_dict(
         self,
@@ -334,6 +340,10 @@ class SubscribeConfig:
         result['service_specific_info'] = self.service_specific_info.decode(
             'utf-8'
         )
+        if self.instant_mode is None:
+            del result[INSTANT_MODE]
+        else:
+            result[INSTANT_MODE] = self.instant_mode
 
         if self.match_filter is None:
             del result['match_filter']
@@ -373,6 +383,7 @@ class PublishConfig:
     terminate_notification_enabled: bool = True
     pairing_config: AwarePairingConfig | None = None
     service_name: str = WifiAwareTestConstants.SERVICE_NAME
+    instant_mode: str | None = None
 
     def to_dict(
         self,
@@ -389,6 +400,11 @@ class PublishConfig:
             result['match_filter'] = [
                 mf.decode('utf-8') for mf in self.match_filter
             ]
+
+        if self.instant_mode is None:
+            del result[INSTANT_MODE]
+        else:
+            result[INSTANT_MODE] = self.instant_mode
 
         if self.pairing_config is None:
             del result['pairing_config']
@@ -513,6 +529,11 @@ class Characteristics(enum.IntEnum):
     """
 
     WIFI_AWARE_CIPHER_SUITE_NCS_SK_128 = 1
+    WIFI_AWARE_CIPHER_SUITE_NCS_SK_256 = 2
+    WIFI_AWARE_CIPHER_SUITE_NCS_PK_128 = 4
+    WIFI_AWARE_CIPHER_SUITE_NCS_PK_256 = 8
+    WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128 = 16
+    WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_256 = 32
 
 
 @dataclasses.dataclass(frozen=False)

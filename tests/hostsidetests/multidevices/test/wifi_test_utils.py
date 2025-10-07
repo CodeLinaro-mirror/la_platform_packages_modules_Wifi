@@ -51,12 +51,9 @@ def skip_if_not_meet_min_sdk_level(
 ):
     """Skips current test if the Android SDK level does not meet requirement."""
     sdk_level = ad.build_info.get(
-        android_device.BuildInfoConstants.BUILD_VERSION_SDK.build_info_key,
-        None
-    )
+        android_device.BuildInfoConstants.BUILD_VERSION_SDK.build_info_key, None)
     asserts.skip_if(
-        sdk_level is None, f'{ad}. Cannot get Android SDK level for device.'
-    )
+        sdk_level is None, f'{ad}. Cannot get Android SDK level for device.')
     sdk_level = int(sdk_level)
     asserts.skip_if(
         sdk_level < min_sdk_level,
@@ -65,3 +62,10 @@ def skip_if_not_meet_min_sdk_level(
             f'sdk level {min_sdk_level} for this test case.'
         ),
     )
+
+def skip_if_tv_device(
+    ad: android_device.AndroidDevice,
+):
+    """Skips current test if the device is a TV."""
+    characteristics = (ad.adb.shell('getprop ro.build.characteristics').decode().strip())
+    asserts.skip_if('tv' in characteristics, f'{ad}. This test is not for TV devices.')

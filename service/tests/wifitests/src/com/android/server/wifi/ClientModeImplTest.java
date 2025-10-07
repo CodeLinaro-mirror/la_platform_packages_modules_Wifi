@@ -177,7 +177,6 @@ import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.ClientMode.LinkProbeCallback;
 import com.android.server.wifi.ClientModeManagerBroadcastQueue.QueuedBroadcast;
 import com.android.server.wifi.WifiNative.ConnectionCapabilities;
-import com.android.server.wifi.WifiScoreCard.PerBssid;
 import com.android.server.wifi.WifiScoreCard.PerNetwork;
 import com.android.server.wifi.b2b.WifiRoamingModeManager;
 import com.android.server.wifi.hotspot2.NetworkDetail;
@@ -539,7 +538,6 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Mock WifiNative mWifiNative;
     @Mock WifiScoreCard mWifiScoreCard;
     @Mock PerNetwork mPerNetwork;
-    @Mock PerBssid mPerBssid;
     @Mock WifiScoreCard.NetworkConnectionStats mPerNetworkRecentStats;
     @Mock WifiHealthMonitor mWifiHealthMonitor;
     @Mock WifiTrafficPoller mWifiTrafficPoller;
@@ -801,7 +799,6 @@ public class ClientModeImplTest extends WifiBaseTest {
                 .thenReturn(WifiHealthMonitor.REASON_NO_FAILURE);
         when(mPerNetwork.getRecentStats()).thenReturn(mPerNetworkRecentStats);
         when(mWifiScoreCard.lookupNetwork(any())).thenReturn(mPerNetwork);
-        when(mWifiScoreCard.lookupBssid(any(), any())).thenReturn(mPerBssid);
         when(mThroughputPredictor.predictMaxTxThroughput(any())).thenReturn(90);
         when(mThroughputPredictor.predictMaxRxThroughput(any())).thenReturn(80);
         when(mWifiInjector.getWifiRoamingModeManager()).thenReturn(mWifiRoamingModeManager);
@@ -6259,7 +6256,7 @@ public class ClientModeImplTest extends WifiBaseTest {
                 .thenReturn(WifiIsUnusableEvent.TYPE_UNKNOWN);
         mCmi.sendMessage(ClientModeImpl.CMD_RSSI_POLL, 1);
         mLooper.dispatchAll();
-        verify(mWifiMetrics).updateWifiUsabilityStatsEntries(any(), any(), eq(stats), eq(false),
+        verify(mWifiMetrics).buildStatsEntry(any(), any(), eq(stats), eq(false),
                 anyInt());
 
         when(mWifiDataStall.checkDataStallAndThroughputSufficiency(any(), any(), any(), any(),
@@ -6268,7 +6265,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mClock.getElapsedSinceBootMillis()).thenReturn(10L);
         mCmi.sendMessage(ClientModeImpl.CMD_RSSI_POLL, 1);
         mLooper.dispatchAll();
-        verify(mWifiMetrics, times(2)).updateWifiUsabilityStatsEntries(any(), any(), eq(stats),
+        verify(mWifiMetrics, times(2)).buildStatsEntry(any(), any(), eq(stats),
                 eq(false), anyInt());
     }
 
@@ -6856,15 +6853,12 @@ public class ClientModeImplTest extends WifiBaseTest {
     }
 
     /**
-     * Verify that the current network is permanently disabled when
-     * NETWORK_STATUS_UNWANTED_DISABLE_AUTOJOIN is received and percent internet availability is
-     * less than the threshold.
+     * Permanently disable network due to no internet if network never has internet validated
      */
     @Test
-    public void testLowPrababilityInternetPermanentlyDisableNetwork() throws Exception {
+    public void testNetworkStatusUnwantedDisableAutojoinDisableNetworkPermanent() throws Exception {
+        mConnectedNetwork.getNetworkSelectionStatus().setHasEverValidatedInternetAccess(false);
         connect();
-        when(mPerBssid.estimatePercentInternetAvailability()).thenReturn(
-                ClientModeImpl.PROBABILITY_WITH_INTERNET_TO_PERMANENTLY_DISABLE_NETWORK - 1);
         mCmi.sendMessage(CMD_UNWANTED_NETWORK,
                 ClientModeImpl.NETWORK_STATUS_UNWANTED_DISABLE_AUTOJOIN);
         mLooper.dispatchAll();
@@ -6874,15 +6868,12 @@ public class ClientModeImplTest extends WifiBaseTest {
     }
 
     /**
-     * Verify that the current network is temporarily disabled when
-     * NETWORK_STATUS_UNWANTED_DISABLE_AUTOJOIN is received and percent internet availability is
-     * over the threshold.
+     * Temporarily disable network due to no internet if network had internet validated
      */
     @Test
-    public void testHighProbabilityInternetTemporarilyDisableNetwork() throws Exception {
+    public void testNetworkStatusUnwantedDisableAutojoinDisableNetworkTemporary() throws Exception {
+        mConnectedNetwork.getNetworkSelectionStatus().setHasEverValidatedInternetAccess(true);
         connect();
-        when(mPerBssid.estimatePercentInternetAvailability()).thenReturn(
-                ClientModeImpl.PROBABILITY_WITH_INTERNET_TO_PERMANENTLY_DISABLE_NETWORK);
         mCmi.sendMessage(CMD_UNWANTED_NETWORK,
                 ClientModeImpl.NETWORK_STATUS_UNWANTED_DISABLE_AUTOJOIN);
         mLooper.dispatchAll();
@@ -8151,12 +8142,41 @@ public class ClientModeImplTest extends WifiBaseTest {
         triggerConnect();
         Log.i(TAG, "Triggering Connect done");
 
+        // should not trigger disconnect on short watchdog timeout
+        mLooper.moveTimeForward(ClientModeImpl.CONNECTING_WATCHDOG_SHORT_TIMEOUT_MS);
+        mLooper.dispatchAll();
+        verify(mWifiMetrics, never()).logStaEvent(eq(WIFI_IFACE_NAME),
+                eq(StaEvent.TYPE_FRAMEWORK_DISCONNECT),
+                eq(StaEvent.DISCONNECT_CONNECT_WATCHDOG_TIMER));
+
         // Simulate watchdog timeout and ensure we retuned to disconnected state.
         mLooper.moveTimeForward(ClientModeImpl.CONNECTING_WATCHDOG_TIMEOUT_MS + 5L);
         mLooper.dispatchAll();
         verify(mWifiMetrics).logStaEvent(eq(WIFI_IFACE_NAME),
                 eq(StaEvent.TYPE_FRAMEWORK_DISCONNECT),
                 eq(StaEvent.DISCONNECT_CONNECT_WATCHDOG_TIMER));
+        if (SdkLevel.isAtLeastS()) {
+            verify(mWifiConfigManager).setRecentFailureAssociationStatus(anyInt(),
+                    eq(WifiConfiguration.RECENT_FAILURE_NETWORK_NOT_FOUND));
+        }
+    }
+
+    @Test
+    public void testConnectionWatchdogShortTimeout() throws Exception {
+        // mock network to be from network specifier
+        mConnectedNetwork.fromWifiNetworkSpecifier = true;
+        triggerConnect();
+
+        // should trigger disconnect on the short watchdog timeout
+        mLooper.moveTimeForward(ClientModeImpl.CONNECTING_WATCHDOG_SHORT_TIMEOUT_MS);
+        mLooper.dispatchAll();
+        verify(mWifiMetrics).logStaEvent(eq(WIFI_IFACE_NAME),
+                eq(StaEvent.TYPE_FRAMEWORK_DISCONNECT),
+                eq(StaEvent.DISCONNECT_CONNECT_WATCHDOG_TIMER));
+        if (SdkLevel.isAtLeastS()) {
+            verify(mWifiConfigManager).setRecentFailureAssociationStatus(anyInt(),
+                    eq(WifiConfiguration.RECENT_FAILURE_NETWORK_NOT_FOUND));
+        }
     }
 
     @Test
@@ -10471,6 +10491,17 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mWifiNative.getConnectionMloLinksInfo(WIFI_IFACE_NAME)).thenReturn(info);
     }
 
+    private void reconfigureMloLinksInfoDynamicUpdate() {
+        mConnectionCapabilities.wifiStandard = ScanResult.WIFI_STANDARD_11BE;
+        WifiNative.ConnectionMloLinksInfo info = new WifiNative.ConnectionMloLinksInfo();
+        info.links = new WifiNative.ConnectionMloLink[2];
+        info.links[0] = new WifiNative.ConnectionMloLink(TEST_MLO_LINK_ID, TEST_MLO_LINK_ADDR,
+                TEST_AP_MLD_MAC_ADDRESS, (byte) 0xFF, (byte) 0xFF, 2437);
+        info.links[1] = new WifiNative.ConnectionMloLink(TEST_MLO_LINK_ID_1, TEST_MLO_LINK_ADDR_1,
+                TEST_AP_MLD_MAC_ADDRESS, (byte) 0xFF, (byte) 0xFF, 5160);
+        when(mWifiNative.getConnectionMloLinksInfo(WIFI_IFACE_NAME)).thenReturn(info);
+    }
+
     @Test
     public void verifyMloLinkChangeTidToLinkMapping() throws Exception {
         // Initialize
@@ -10516,6 +10547,17 @@ public class ClientModeImplTest extends WifiBaseTest {
         assertEquals(2, mWifiInfo.getAffiliatedMloLinks().size());
         assertEquals(1, mWifiInfo.getAssociatedMloLinks().size());
 
+        //Link Addition. Make sure added link is ASSOCIATED.
+        reconfigureMloLinksInfoDynamicUpdate();
+        mCmi.sendMessage(WifiMonitor.MLO_LINKS_INFO_CHANGED,
+                WifiMonitor.MloLinkInfoChangeReason.MULTI_LINK_DYNAMIC_RECONFIG);
+        mLooper.dispatchAll();
+        links = mWifiInfo.getAffiliatedMloLinks();
+        assertEquals(MloLink.MLO_LINK_STATE_ACTIVE, links.get(0).getState());
+        assertEquals(MloLink.MLO_LINK_STATE_ACTIVE, links.get(1).getState());
+
+        assertEquals(2, mWifiInfo.getAffiliatedMloLinks().size());
+        assertEquals(2, mWifiInfo.getAssociatedMloLinks().size());
     }
 
     @Test

@@ -69,6 +69,7 @@ import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.proto.WifiStatsLog;
 import com.android.server.wifi.scanner.WifiScannerInternal;
 import com.android.server.wifi.util.WifiPermissionsUtil;
+import com.android.wifi.flags.Flags;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
@@ -452,10 +453,13 @@ public class WifiConnectivityManager {
         List<WifiCandidates.Candidate> secondaryCmmCandidates;
         if (mMultiInternetManager.isStaConcurrencyForMultiInternetMultiApAllowed()) {
             if (primaryCcm.isMlo()) {
-                // An MLO connection can have links in multiple bands. So pick any candidates other
-                // than affiliated BSSID's. Accordingly, firmware will adjust multi-links.
+                // For an MLO connection, select candidate BSSIDs that are not affiliated or the
+                // primary link's BSSID, as the primary's BSSID may differ from its link MAC
+                // address.
                 secondaryCmmCandidates = candidates.stream()
-                        .filter(c -> !primaryCcm.isAffiliatedLinkBssid(c.getKey().bssid))
+                        .filter(c -> !primaryCcm.isAffiliatedLinkBssid(c.getKey().bssid)
+                                && !TextUtils.equals(
+                                c.getKey().bssid.toString(), primaryCcm.getConnectedBssid()))
                         .collect(Collectors.toList());
             } else {
                 // A BSSID can only exist in one band, so when evaluating candidates, only those
@@ -691,9 +695,14 @@ public class WifiConnectivityManager {
                 mOemPaidConnectionAllowed, mOemPrivateConnectionAllowed,
                 mRestrictedConnectionAllowedUids, skipSufficiencyCheck,
                 mAutojoinDisallowedSecurityTypes);
-        // Filter candidates before caching to avoid reconnecting on failure
-        candidates = filterDelayedCarrierSelectionCandidates(candidates, listenerName,
-                isFullScan);
+        // Filter carrier candidates before caching to avoid reconnecting on failure. The mobility
+        // based logic will run by default if the delay-based overlay is empty.
+        if (mDelayedSelectionCarrierIds.isEmpty()) {
+            candidates = filterCarrierCandidatesWhileInMotion(candidates);
+        } else {
+            candidates = filterDelayedCarrierSelectionCandidates(candidates, listenerName,
+                    isFullScan);
+        }
         mLatestCandidates = candidates;
         mLatestCandidatesTimestampMs = mClock.getElapsedSinceBootMillis();
 
@@ -924,6 +933,34 @@ public class WifiConnectivityManager {
         }
         mWifiMetrics.incrementNumHighMovementConnectionSkipped();
         return null;
+    }
+
+    private List<WifiCandidates.Candidate> filterCarrierCandidatesWhileInMotion(
+            List<WifiCandidates.Candidate> candidates) {
+        boolean deviceIsMoving = mDeviceMobilityState == WifiManager.DEVICE_MOBILITY_STATE_LOW_MVMT
+                || mDeviceMobilityState == WifiManager.DEVICE_MOBILITY_STATE_HIGH_MVMT;
+        if (!Flags.filterCarrierNetworksWhileInMotion() || !deviceIsMoving) {
+            return candidates;
+        }
+        if (candidates == null || candidates.isEmpty()) {
+            return candidates;
+        }
+
+        int numCarrierCandidates = 0;
+        List<WifiCandidates.Candidate> filteredCandidates = new ArrayList<>();
+        for (WifiCandidates.Candidate candidate : candidates) {
+            // Carrier networks are associated with a valid carrier ID
+            WifiConfiguration configuration =
+                    mConfigManager.getConfiguredNetwork(candidate.getNetworkConfigId());
+            if (configuration != null && !configuration.carrierMerged
+                    && configuration.carrierId != TelephonyManager.UNKNOWN_CARRIER_ID) {
+                numCarrierCandidates++;
+            } else {
+                filteredCandidates.add(candidate);
+            }
+        }
+        Log.i(TAG, "Filtered " + numCarrierCandidates + " carrier candidates while in motion");
+        return filteredCandidates;
     }
 
     /**
@@ -1966,10 +2003,7 @@ public class WifiConnectivityManager {
         // {@link android.net.wifi.WifiManager#WIFI_FEATURE_CONTROL_ROAMING} or the
         // candidate configuration contains a specified BSSID, or the feature to set target BSSID
         // is enabled.
-        if (mConnectivityHelper.isFirmwareRoamingSupported()
-                && !mWifiGlobals.isNetworkSelectionSetTargetBssid()
-                && (targetNetwork.BSSID == null
-                || targetNetwork.BSSID.equals(ClientModeImpl.SUPPLICANT_BSSID_ANY))) {
+        if (shouldUseBssidAny(targetNetwork)) {
             targetBssid = ClientModeImpl.SUPPLICANT_BSSID_ANY;
         }
         localLog("connectToNetwork(" + clientModeManager + "): Connect to "
@@ -2647,6 +2681,10 @@ public class WifiConnectivityManager {
             } else {
                 mWifiMetrics.enterDeviceMobilityState(newState);
             }
+        }
+        if (mScreenOn && newState == WifiManager.DEVICE_MOBILITY_STATE_STATIONARY
+                && Flags.scanOptimizationWithMobilityChange()) {
+            startConnectivityScan(false);
         }
     }
 
@@ -3416,8 +3454,14 @@ public class WifiConnectivityManager {
                 mWifiBlocklistMonitor.blockBssidForDurationMs(bssid, configuration,
                         TEMP_BSSID_BLOCK_DURATION,
                         WifiBlocklistMonitor.REASON_FRAMEWORK_DISCONNECT_FAST_RECONNECT, 0);
-                triggerConnectToNetworkUsingCmm(clientModeManager, candidate,
-                        ClientModeImpl.SUPPLICANT_BSSID_ANY);
+                ScanResult scanResult = candidate.getNetworkSelectionStatus()
+                        .getCandidate();
+                String targetBssid = scanResult == null ? ClientModeImpl.SUPPLICANT_BSSID_ANY
+                        : scanResult.BSSID;
+                if (shouldUseBssidAny(candidate)) {
+                    targetBssid = ClientModeImpl.SUPPLICANT_BSSID_ANY;
+                }
+                triggerConnectToNetworkUsingCmm(clientModeManager, candidate, targetBssid);
                 // since using primary manager to connect, stop any existing managers in the
                 // secondary transient role since they are no longer needed.
                 mActiveModeWarden.stopAllClientModeManagersInRole(
@@ -3428,6 +3472,13 @@ public class WifiConnectivityManager {
                     + bssid);
             mLatestCandidates = null;
         }
+    }
+
+    private boolean shouldUseBssidAny(WifiConfiguration targetNetwork) {
+        return mConnectivityHelper.isFirmwareRoamingSupported()
+                && !mWifiGlobals.isNetworkSelectionSetTargetBssid()
+                && (targetNetwork.BSSID == null
+                || targetNetwork.BSSID.equals(ClientModeImpl.SUPPLICANT_BSSID_ANY));
     }
 
     /**

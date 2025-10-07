@@ -126,6 +126,7 @@ import android.net.wifi.IOnWifiDriverCountryCodeChangedListener;
 import android.net.wifi.IOnWifiUsabilityStatsListener;
 import android.net.wifi.IPnoScanResultsCallback;
 import android.net.wifi.IPrivilegedConfiguredNetworksListener;
+import android.net.wifi.IRestrictAutoJoinToSubIdCallback;
 import android.net.wifi.IScanResultsCallback;
 import android.net.wifi.ISoftApCallback;
 import android.net.wifi.IStringListener;
@@ -224,6 +225,7 @@ import com.android.server.wifi.coex.CoexManager;
 import com.android.server.wifi.entitlement.PseudonymInfo;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.hotspot2.PasspointProvider;
+import com.android.server.wifi.nl80211.Nl80211Native;
 import com.android.server.wifi.proto.WifiStatsLog;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.UserActionEvent;
 import com.android.server.wifi.util.ActionListenerWrapper;
@@ -366,6 +368,9 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     private final RemoteCallbackList<IWifiVerboseLoggingStatusChangedListener>
             mRegisteredWifiLoggingStatusListeners = new RemoteCallbackList<>();
 
+    private final RemoteCallbackList<IRestrictAutoJoinToSubIdCallback>
+            mRestrictAutoJoinToSubIdCallbacks = new RemoteCallbackList<>();
+
     private final FrameworkFacade mFrameworkFacade;
 
     private final WifiPermissionsUtil mWifiPermissionsUtil;
@@ -392,6 +397,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     private final WifiSettingsConfigStore mSettingsConfigStore;
     private final WifiResourceCache mResourceCache;
     private boolean mIsUsdSupported = false;
+    private int mDeviceMobilityState = WifiManager.DEVICE_MOBILITY_STATE_UNKNOWN;
 
     /**
      * Callback for use with LocalOnlyHotspot to unregister requesting applications upon death.
@@ -565,6 +571,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     private final AfcManager mAfcManager;
     private final TwtManager mTwtManager;
     private final OpenNetworkNotifier mOpenNetworkNotifier;
+    private final Nl80211Native mNl80211Native;
 
     /**
      * The wrapper of SoftApCallback is used in WifiService internally.
@@ -767,6 +774,38 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         mWifiThreadRunner = mWifiInjector.getWifiThreadRunner();
         mWifiHandlerThread = mWifiInjector.getWifiHandlerThread();
         mWifiConfigManager = mWifiInjector.getWifiConfigManager();
+        mWifiConfigManager.setRestrictAutoJoinToSubIdCallback(
+                new WifiConfigManager.OnRestrictAutoJoinToSubIdCallback() {
+                    @Override
+                    public void onRestrictionStarted(int subscriptionId) {
+                        int itemCount = mRestrictAutoJoinToSubIdCallbacks.beginBroadcast();
+                        for (int i = 0; i < itemCount; i++) {
+                            try {
+                                mRestrictAutoJoinToSubIdCallbacks.getBroadcastItem(i)
+                                        .onRestrictionStarted(subscriptionId);
+                            } catch (RemoteException e) {
+                                Log.e(TAG, "IRestrictAutoJoinToSubIdCallback.onRestrictionStarted:"
+                                        + " remote exception -- " + e);
+                            }
+                        }
+                        mRestrictAutoJoinToSubIdCallbacks.finishBroadcast();
+                    }
+
+                    @Override
+                    public void onRestrictionStopped() {
+                        int itemCount = mRestrictAutoJoinToSubIdCallbacks.beginBroadcast();
+                        for (int i = 0; i < itemCount; i++) {
+                            try {
+                                mRestrictAutoJoinToSubIdCallbacks.getBroadcastItem(i)
+                                        .onRestrictionStopped();
+                            } catch (RemoteException e) {
+                                Log.e(TAG, "IRestrictAutoJoinToSubIdCallback.onRestrictionStopped:"
+                                        + " remote exception -- " + e);
+                            }
+                        }
+                        mRestrictAutoJoinToSubIdCallbacks.finishBroadcast();
+                    }
+                });
         mHalDeviceManager = mWifiInjector.getHalDeviceManager();
         mWifiBlocklistMonitor = mWifiInjector.getWifiBlocklistMonitor();
         mPasspointManager = mWifiInjector.getPasspointManager();
@@ -798,6 +837,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         mAfcManager = mWifiInjector.getAfcManager();
         mTwtManager = mWifiInjector.getTwtManager();
         mWepNetworkUsageController = mWifiInjector.getWepNetworkUsageController();
+        mNl80211Native = mWifiInjector.getNl80211Native();
         if (Environment.isSdkAtLeastB()) {
             mIsUsdSupported = mContext.getResources().getBoolean(
                     mContext.getResources().getIdentifier("config_deviceSupportsWifiUsd", "bool",
@@ -843,7 +883,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                         },
                         new Handler(mWifiHandlerThread.getLooper()));
             }
-            mContext.registerReceiver(
+            registerBroadcastReceiver(
                     new BroadcastReceiver() {
                         @Override
                         public void onReceive(Context context, Intent intent) {
@@ -859,7 +899,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                     null,
                     new Handler(mWifiHandlerThread.getLooper()));
 
-            mContext.registerReceiver(
+            registerBroadcastReceiver(
                     new BroadcastReceiver() {
                         @Override
                         public void onReceive(Context context, Intent intent) {
@@ -875,7 +915,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                     null,
                     new Handler(mWifiHandlerThread.getLooper()));
 
-            mContext.registerReceiver(
+            registerBroadcastReceiver(
                     new BroadcastReceiver() {
                         private int mLastSubId = SubscriptionManager.INVALID_SUBSCRIPTION_ID;
                         @Override
@@ -894,7 +934,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                     null,
                     new Handler(mWifiHandlerThread.getLooper()));
 
-            mContext.registerReceiver(
+            registerBroadcastReceiver(
                     new BroadcastReceiver() {
                         @Override
                         public void onReceive(Context context, Intent intent) {
@@ -908,7 +948,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                     null,
                     new Handler(mWifiHandlerThread.getLooper()));
 
-            mContext.registerReceiver(
+            registerBroadcastReceiver(
                     new BroadcastReceiver() {
                         @Override
                         public void onReceive(Context context, Intent intent) {
@@ -922,7 +962,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                     new Handler(mWifiHandlerThread.getLooper()));
 
             if (SdkLevel.isAtLeastT()) {
-                mContext.registerReceiver(
+                registerBroadcastReceiver(
                         new BroadcastReceiver() {
                             @Override
                             public void onReceive(Context context, Intent intent) {
@@ -946,8 +986,19 @@ public class WifiServiceImpl extends IWifiManager.Stub {
             mActiveModeWarden.start();
             registerForCarrierConfigChange();
             mWifiInjector.getAdaptiveConnectivityEnabledSettingObserver().initialize();
+            mWifiInjector.getNl80211Native().initialize();
             mIsWifiServiceStarted = true;
         }, TAG + "#checkAndStartWifi");
+    }
+
+    private void registerBroadcastReceiver(@Nullable BroadcastReceiver receiver,
+            IntentFilter filter, @Nullable String broadcastPermission,
+            @Nullable Handler scheduler) {
+        if (mFeatureFlags.monitorIntentForAllUsers()) {
+            mContext.registerReceiverForAllUsers(receiver, filter, broadcastPermission, scheduler);
+        } else {
+            mContext.registerReceiver(receiver, filter, broadcastPermission, scheduler);
+        }
     }
 
     private void setPulledAtomCallbacks() {
@@ -1027,7 +1078,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
             intentFilter.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
             intentFilter.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
             intentFilter.addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED);
-            mContext.registerReceiver(
+            registerBroadcastReceiver(
                     new BroadcastReceiver() {
                         @Override
                         public void onReceive(Context context, Intent intent) {
@@ -1072,7 +1123,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                     intentFilter,
                     null,
                     new Handler(mWifiHandlerThread.getLooper()));
-            mContext.registerReceiver(
+            registerBroadcastReceiver(
                     new BroadcastReceiver() {
                         @Override
                         public void onReceive(Context context, Intent intent) {
@@ -1080,7 +1131,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                                 handleShutDown();
                             }
                         }},
-                    new IntentFilter(Intent.ACTION_SHUTDOWN));
+                    new IntentFilter(Intent.ACTION_SHUTDOWN), null, null);
             mMemoryStoreImpl.start();
             mPasspointManager.initializeProvisioner(
                     mWifiInjector.getPasspointProvisionerHandlerThread().getLooper());
@@ -4486,6 +4537,28 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                                 + "user when DISALLOW_CONFIG_WIFI user restriction is set").flush();
                 return -1;
             }
+            if (android.multiuser.Flags.userRestrictionConfigWifiSharedPrivate()) {
+                if (config.shared) {
+                    if (mUserManager.hasUserRestrictionForUser(
+                            UserManager.DISALLOW_CONFIG_WIFI_SHARED,
+                            UserHandle.of(mWifiPermissionsUtil.getCurrentUser()))) {
+                        mLog.info("addOrUpdateNetwork not allowed for a shared config for the user"
+                                + " when DISALLOW_CONFIG_WIFI_SHARED restriction is set")
+                                .flush();
+                        return -1;
+                    }
+                } else {
+                    // handle private network case
+                    if (mUserManager.hasUserRestrictionForUser(
+                            UserManager.DISALLOW_CONFIG_WIFI_PRIVATE,
+                            UserHandle.of(mWifiPermissionsUtil.getCurrentUser()))) {
+                        mLog.info("addOrUpdateNetwork not allowed for a private config for the user"
+                                + " when DISALLOW_CONFIG_WIFI_PRIVATE restriction is set")
+                                .flush();
+                        return -1;
+                    }
+                }
+            }
             if (SdkLevel.isAtLeastT() && mUserManager.hasUserRestrictionForUser(
                     UserManager.DISALLOW_ADD_WIFI_CONFIG,
                     UserHandle.getUserHandleForUid(callingUid))) {
@@ -4815,6 +4888,68 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         mWifiThreadRunner.post(() ->
                 mWifiConfigManager.stopRestrictingAutoJoinToSubscriptionId(),
                 TAG + "#stopRestrictingAutoJoinToSubscriptionId");
+    }
+
+    /**
+     * See {@link WifiManager#addRestrictAutoJoinToSubIdCallback(Executor,
+     * WifiManager.RestrictAutoJoinToSubIdCallback)}
+     */
+    public void addRestrictAutoJoinToSubIdCallback(
+            @NonNull IRestrictAutoJoinToSubIdCallback callback) {
+        if (!isSettingsOrSuw(Binder.getCallingPid(), Binder.getCallingUid())) {
+            throw new SecurityException(TAG + ": Permission denied");
+        }
+        if (!SdkLevel.isAtLeastS()) {
+            throw new UnsupportedOperationException();
+        }
+        Objects.requireNonNull(callback);
+        if (mVerboseLoggingEnabled) {
+            mLog.info("addAutoJoinRestrictionSubIdChangedListener uid=%")
+                    .c(Binder.getCallingUid()).flush();
+        }
+        mWifiThreadRunner.post(() -> {
+            mRestrictAutoJoinToSubIdCallbacks.register(callback);
+            // Send the initial value
+            if (mWifiConfigManager.isAutoJoinRestrictedToSubId()) {
+                try {
+                    callback.onRestrictionStarted(
+                            mWifiConfigManager.getAutoJoinRestrictionSubId());
+                } catch (RemoteException e) {
+                    Log.e(TAG, "addRestrictAutoJoinToSubIdCallback: remote exception -- "
+                            + e);
+                }
+            } else {
+                try {
+                    callback.onRestrictionStopped();
+                } catch (RemoteException e) {
+                    Log.e(TAG, "addRestrictAutoJoinToSubIdCallback: remote exception -- "
+                            + e);
+                }
+            }
+        });
+    }
+
+    /**
+     * See {@link WifiManager#removeRestrictAutoJoinToSubIdCallback(
+     *WifiManager.RestrictAutoJoinToSubIdCallback)}
+     */
+    public void removeRestrictAutoJoinToSubIdCallback(
+            @NonNull IRestrictAutoJoinToSubIdCallback callback) {
+        if (!isSettingsOrSuw(Binder.getCallingPid(), Binder.getCallingUid())) {
+            throw new SecurityException(TAG + ": Permission denied");
+        }
+        if (!SdkLevel.isAtLeastS()) {
+            throw new UnsupportedOperationException();
+        }
+        enforceAccessPermission();
+        Objects.requireNonNull(callback);
+        if (mVerboseLoggingEnabled) {
+            mLog.info("removeAutoJoinRestrictionSubIdChangedListener uid=%")
+                    .c(Binder.getCallingUid()).flush();
+        }
+        mWifiThreadRunner.post(() -> {
+            mRestrictAutoJoinToSubIdCallbacks.unregister(callback);
+        });
     }
 
     /**
@@ -5998,7 +6133,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         intentFilter.addAction(Intent.ACTION_PACKAGE_CHANGED);
         intentFilter.addAction(Intent.ACTION_PACKAGE_REMOVED);
         intentFilter.addDataScheme("package");
-        mContext.registerReceiver(
+        registerBroadcastReceiver(
                 new BroadcastReceiver() {
                     @Override
                     public void onReceive(Context context, Intent intent) {
@@ -6043,7 +6178,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     private void registerForCarrierConfigChange() {
         IntentFilter filter = new IntentFilter();
         filter.addAction(CarrierConfigManager.ACTION_CARRIER_CONFIG_CHANGED);
-        mContext.registerReceiver(
+        registerBroadcastReceiver(
                 new BroadcastReceiver() {
                     @Override
                     public void onReceive(Context context, Intent intent) {
@@ -6143,6 +6278,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                 pw.println("SupportedFeatures: " + getSupportedFeaturesString());
                 pw.println("SettingsStore:");
                 mSettingsStore.dump(fd, pw, args);
+                mWifiInjector.getWifiDeviceStateChangeManager().dump(fd, pw, args);
                 mActiveModeWarden.dump(fd, pw, args);
                 mMakeBeforeBreakManager.dump(fd, pw, args);
                 pw.println();
@@ -7006,6 +7142,11 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         }
         // Post operation to handler thread
         mWifiThreadRunner.post(() -> {
+            if (state == mDeviceMobilityState) {
+                // Ignore repeated mobility state updates
+                return;
+            }
+            mDeviceMobilityState = state;
             mWifiConnectivityManager.setDeviceMobilityState(state);
             mWifiHealthMonitor.setDeviceMobilityState(state);
             mWifiDataStall.setDeviceMobilityState(state);
@@ -7572,8 +7713,18 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         }
         mLastCallerInfoManager.put(WifiManager.API_FORGET, Process.myTid(),
                 uid, Binder.getCallingPid(), "<unknown>", true);
+        boolean isUserRestrictionConfigWifiShared =
+                android.multiuser.Flags.userRestrictionConfigWifiSharedPrivate()
+                && mUserManager.hasUserRestrictionForUser(UserManager.DISALLOW_CONFIG_WIFI_SHARED,
+                        UserHandle.of(mWifiPermissionsUtil.getCurrentUser()));
         mWifiThreadRunner.post(() -> {
             WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(netId);
+            if (isUserRestrictionConfigWifiShared && config.shared) {
+                mLog.info("forget not allowed for a shared config for the user"
+                        + " when DISALLOW_CONFIG_WIFI_SHARED restriction is set")
+                        .flush();
+                return;
+            }
             boolean success = mWifiConfigManager.removeNetwork(netId, uid, null);
             ActionListenerWrapper wrapper = new ActionListenerWrapper(callback);
             if (success) {
@@ -9694,5 +9845,27 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                 Log.e(TAG, e.getMessage(), e);
             }
         }, TAG + "#isOpenNetworkNotifierEnabled");
+    }
+
+    /** See {@link WifiManager#getSupportedInterfaceNames(Executor, Consumer)} */
+    @Override
+    public void getSupportedInterfaceNames(@NonNull IListListener listener) {
+        if (!Environment.isSdkNewerThanB()) {
+            throw new UnsupportedOperationException();
+        }
+        Objects.requireNonNull(listener, "listener cannot be null");
+        int uid = Binder.getCallingUid();
+        if (!mWifiPermissionsUtil.checkManageWifiInterfacesPermission(uid)) {
+            throw new SecurityException("Uid=" + uid + " is not allowed to manage wifi interfaces");
+        }
+        mWifiThreadRunner.post(
+                () -> {
+                    try {
+                        List<String> interfaceNames = mNl80211Native.getInterfaceNames();
+                        listener.onResult(interfaceNames);
+                    } catch (RemoteException e) {
+                        Log.e(TAG, e.getMessage(), e);
+                    }
+                }, TAG + "#getSupportedInterfaceNames");
     }
 }

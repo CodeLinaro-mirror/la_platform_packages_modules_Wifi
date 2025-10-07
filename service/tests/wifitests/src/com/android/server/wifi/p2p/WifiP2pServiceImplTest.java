@@ -1642,11 +1642,17 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                     WifiP2pManager.FEATURE_WIFI_DIRECT_R2);
             when(mFeatureFlags.wifiDirectR2()).thenReturn(true);
         }
+        if (Environment.isSdkNewerThanB()) {
+            when(mFeatureFlags.externalApproverSupportForWfdr2PasswordBasedBootstrapping())
+                    .thenReturn(true);
+        }
     }
 
     @After
     public void cleanUp() throws Exception {
-        mStaticMockSession.finishMocking();
+        if (mStaticMockSession != null) {
+            mStaticMockSession.finishMocking();
+        }
     }
 
     /**
@@ -8012,7 +8018,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     }
 
     @Test
-    public void testP2pInfoIsClearedWhenP2pIsDisabledDurningNegotiation() throws Exception {
+    public void testP2pInfoIsClearedWhenP2pIsDisabledDuringNegotiation() throws Exception {
         forceP2pEnabled(mClient1);
         WifiP2pGroup group = new WifiP2pGroup();
         group.setNetworkId(WifiP2pGroup.NETWORK_ID_PERSISTENT);
@@ -8021,6 +8027,16 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         group.setIsGroupOwner(true);
         group.setInterface(IFACE_NAME_P2P);
         sendGroupStartedMsg(group);
+
+        // 2 connection changed events:
+        // * Enter Enabled state
+        // * Enter Group Connecting state
+        if (SdkLevel.isAtLeastT()) {
+            verify(mContext, times(2)).sendBroadcastWithMultiplePermissions(
+                    argThat(new WifiP2pServiceImplTest
+                            .P2pConnectionChangedIntentMatcherForNetworkState(CONNECTING)), any());
+            verify(mP2pListener).onGroupCreating();
+        }
 
         // P2P group is formed, the internal group data are filled.
         // The tether request is not done yet, so it stays at GroupNegotiationState.
@@ -8034,11 +8050,31 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         sendP2pStateMachineMessage(WifiP2pMonitor.SUP_DISCONNECTION_EVENT);
         mLooper.dispatchAll();
 
+        verify(mContext).sendBroadcastWithMultiplePermissions(
+                argThat(new WifiP2pServiceImplTest
+                        .P2pConnectionChangedIntentMatcherForNetworkState(FAILED)), any());
+        if (SdkLevel.isAtLeastT()) {
+            verify(mContext, atLeastOnce()).sendBroadcast(
+                    argThat(new WifiP2pServiceImplTest
+                            .P2pConnectionChangedIntentMatcherForNetworkState(FAILED)), any(),
+                    any());
+            verify(mP2pListener).onGroupCreationFailed(
+                    eq(WifiP2pManager.GROUP_CREATION_FAILURE_REASON_GROUP_REMOVED));
+        }
+
         // p2p info should be cleared.
         sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_CONNECTION_INFO);
         verify(mClientHandler, times(2)).sendMessage(mMessageCaptor.capture());
         assertEquals(WifiP2pManager.RESPONSE_CONNECTION_INFO, mMessageCaptor.getValue().what);
         assertFalse(((WifiP2pInfo) mMessageCaptor.getValue().obj).groupFormed);
+
+        // The state of network should be set to IDLE
+        sendSimpleMsg(mClientMessenger, WifiP2pManager.REQUEST_NETWORK_INFO);
+        verify(mClientHandler, times(3)).sendMessage(mMessageCaptor.capture());
+        assertEquals(WifiP2pManager.RESPONSE_NETWORK_INFO, mMessageCaptor.getValue().what);
+        assertEquals(NetworkInfo.DetailedState.IDLE,
+                ((NetworkInfo) mMessageCaptor.getValue().obj).getDetailedState());
+
     }
 
     @Test
@@ -9632,38 +9668,6 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     }
 
     /**
-     * Test setConnectionRequestResult on initiating device with response as "defer show password"
-     * to service for pairing bootstrapping method: Display passphrase.
-     */
-    @Test
-    public void testDeferShowPasswordToFrameworkOnInitiatorSuccess()
-            throws Exception {
-        assumeTrue(Environment.isSdkNewerThanB());
-        Binder binder = new Binder();
-        when(mFeatureFlags.externalApproverSupportForWfdr2PasswordBasedBootstrapping())
-                .thenReturn(true);
-
-        verifyExternalApproverConnectionRequestMessageOnInitiator(binder,
-                MacAddress.fromString(mTestWifiP2pV2Device.deviceAddress),
-                WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_SHOW_PASSPHRASE,
-                WifiP2pPairingBootstrappingConfig.PAIRING_BOOTSTRAPPING_METHOD_DISPLAY_PASSPHRASE,
-                null, WifiP2pManager.EXTERNAL_APPROVER_PIN_OR_PASSWORD_GENERATED,
-                WifiP2pManager.CREDENTIAL_TYPE_PASSWORD);
-
-        /*
-         * If the app defers showing the password to the `WifiP2pService`, the service is expected
-         * to display a dialog with the sent invitation and the required password.
-         */
-        sendSetConnectionRequestResultMsg(mClientMessenger,
-                MacAddress.fromString(mTestWifiP2pV2Device.deviceAddress),
-                WifiP2pManager.CONNECTION_REQUEST_DEFER_SHOW_PASSWORD_TO_SERVICE, binder);
-        verify(mWifiNative, never()).p2pConnect(any(), anyBoolean());
-        verify(mWifiDialogManager).createP2pInvitationSentDialog(
-                any(), eq(null), any(),
-                eq(Display.DEFAULT_DISPLAY));
-    }
-
-    /**
      * Verifies that setConnectionRequestResult on an initiating device correctly handles a
      * "defer show PIN" response. This ensures the "Display Passphrase" pairing method
      * works and maintains backward compatibility with older applications.
@@ -9672,8 +9676,6 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     public void testDeferShowPinToFrameworkOnInitiatorSuccessWorksForPasswordBootstrapping()
             throws Exception {
         assumeTrue(Environment.isSdkNewerThanB());
-        when(mFeatureFlags.externalApproverSupportForWfdr2PasswordBasedBootstrapping())
-                .thenReturn(true);
         Binder binder = new Binder();
 
         verifyExternalApproverConnectionRequestMessageOnInitiator(binder,
@@ -9814,8 +9816,6 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
             throws Exception {
         assumeTrue(Environment.isSdkNewerThanB());
         Binder binder = new Binder();
-        when(mFeatureFlags.externalApproverSupportForWfdr2PasswordBasedBootstrapping())
-                .thenReturn(true);
         when(mWifiPermissionsUtil.isTargetSdkLessThan(anyString(), eq(37),
                 anyInt())).thenReturn(false);
         verifyExternalApproverConnectionRequestMessageOnInitiator(binder,
@@ -9824,6 +9824,18 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
                 WifiP2pPairingBootstrappingConfig.PAIRING_BOOTSTRAPPING_METHOD_DISPLAY_PASSPHRASE,
                 "password", WifiP2pManager.EXTERNAL_APPROVER_PIN_OR_PASSWORD_GENERATED,
                 WifiP2pManager.CREDENTIAL_TYPE_PASSWORD);
+
+        /*
+         * If the app defers showing the password to the `WifiP2pService`, the service is expected
+         * to display a dialog with the sent invitation and the required password.
+         */
+        sendSetConnectionRequestResultMsg(mClientMessenger,
+                MacAddress.fromString(mTestWifiP2pV2Device.deviceAddress),
+                WifiP2pManager.CONNECTION_REQUEST_DEFER_SHOW_PASSWORD_TO_SERVICE, binder);
+        verify(mWifiNative, never()).p2pConnect(any(), anyBoolean());
+        verify(mWifiDialogManager).createP2pInvitationSentDialog(
+                any(), eq(null), any(),
+                eq(Display.DEFAULT_DISPLAY));
     }
 
     /**
@@ -9835,8 +9847,6 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
             throws Exception {
         assumeTrue(Environment.isSdkNewerThanB());
         Binder binder = new Binder();
-        when(mFeatureFlags.externalApproverSupportForWfdr2PasswordBasedBootstrapping())
-                .thenReturn(true);
         when(mWifiPermissionsUtil.isTargetSdkLessThan(anyString(), eq(37),
                 anyInt())).thenReturn(true);
         verifyExternalApproverConnectionRequestMessageOnInitiator(binder,

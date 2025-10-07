@@ -153,7 +153,6 @@ import com.android.server.wifi.util.WaitingState;
 import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.server.wifi.util.WifiPermissionsWrapper;
 import com.android.wifi.flags.FeatureFlags;
-import com.android.wifi.flags.Flags;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
@@ -3027,6 +3026,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             @Override
             public void enterImpl() {
                 mWifiInjector.getWifiP2pConnection().setP2pInDisabledState(true);
+                mDetailedState = NetworkInfo.DetailedState.IDLE;
             }
 
             @Override
@@ -5155,6 +5155,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         break;
                     case DISABLE_P2P:
                         mWifiP2pMetrics.endConnectionEvent(P2pConnectionEvent.CLF_GROUP_REMOVED);
+                        resetP2pGroupInformationAndNotifyGroupCreationFailure(
+                                WifiP2pManager.GROUP_CREATION_FAILURE_REASON_GROUP_REMOVED);
                         //remaining p2p disabling works will be handled in its parent states
                     default:
                         return NOT_HANDLED;
@@ -6441,7 +6443,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                     pinOrPassword = pin;
                 } else {
                     pinOrPassword = password;
-                    if (Flags.externalApproverSupportForWfdr2PasswordBasedBootstrapping()
+                    if (mFeatureFlags.externalApproverSupportForWfdr2PasswordBasedBootstrapping()
                             && checkExternalApproverCallerTargetSdkNewerThanB(entry.getMessage())) {
                         credentialType = WifiP2pManager.CREDENTIAL_TYPE_PASSWORD;
                     }
@@ -6842,7 +6844,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         private boolean isWifiDirect2Enabled() {
             if (Environment.isSdkAtLeastB()
                     && isFeatureSupported(WifiP2pManager.FEATURE_WIFI_DIRECT_R2)
-                    && Flags.wifiDirectR2()) {
+                    && mFeatureFlags.wifiDirectR2()) {
                 return true;
             }
             return false;
@@ -7842,6 +7844,15 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             return true;
         }
 
+        private void resetP2pGroupInformationAndNotifyGroupCreationFailure(
+                @WifiP2pManager.GroupCreationFailureReason int reason) {
+            resetWifiP2pInfo();
+            mGroup = null;
+            mDetailedState = NetworkInfo.DetailedState.FAILED;
+            onGroupCreationFailed(reason);
+            sendP2pConnectionChangedBroadcast();
+        }
+
         private void handleGroupCreationFailure(
                 @WifiP2pManager.GroupCreationFailureReason int reason) {
             // A group is formed, but the tethering request is not proceed.
@@ -7850,12 +7861,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 // that reuse the main p2p interface for a created group.
                 mWifiNative.setP2pGroupIdle(mGroup.getInterface(), 0);
                 mWifiNative.p2pGroupRemove(mGroup.getInterface());
-                mGroup = null;
             }
-            resetWifiP2pInfo();
-            mDetailedState = NetworkInfo.DetailedState.FAILED;
-            onGroupCreationFailed(reason);
-            sendP2pConnectionChangedBroadcast();
+            resetP2pGroupInformationAndNotifyGroupCreationFailure(reason);
 
             // Remove only the peer we failed to connect to so that other devices discovered
             // that have not timed out still remain in list for connection
@@ -8860,7 +8867,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 return true;
             } else if ((WifiP2pManager.CONNECTION_REQUEST_DEFER_SHOW_PIN_TO_SERVICE
                             == message.arg1
-                    || (Flags.externalApproverSupportForWfdr2PasswordBasedBootstrapping()
+                    || (mFeatureFlags.externalApproverSupportForWfdr2PasswordBasedBootstrapping()
                     && WifiP2pManager.CONNECTION_REQUEST_DEFER_SHOW_PASSWORD_TO_SERVICE
                     == message.arg1))
                     && WifiP2pManager.ExternalApproverRequestListener.REQUEST_TYPE_NEGOTIATION
@@ -8940,7 +8947,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             // the application again.
             if ((WifiP2pManager.CONNECTION_REQUEST_DEFER_SHOW_PIN_TO_SERVICE
                     == message.arg1
-                    || (Flags.externalApproverSupportForWfdr2PasswordBasedBootstrapping()
+                    || (mFeatureFlags.externalApproverSupportForWfdr2PasswordBasedBootstrapping()
                     && WifiP2pManager.CONNECTION_REQUEST_DEFER_SHOW_PASSWORD_TO_SERVICE
                     == message.arg1))
                     && isConfigForBootstrappingMethodDisplayPinOrPassphrase(mSavedPeerConfig)) {

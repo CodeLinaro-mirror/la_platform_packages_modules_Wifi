@@ -36,6 +36,7 @@ import com.google.android.mobly.snippet.rpc.Rpc;
 import com.google.android.mobly.snippet.util.Log;
 
 import org.json.JSONException;
+import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -187,6 +188,10 @@ public class ConnectivityManagerSnippet implements Snippet {
             event.getData().putParcelable(EVENT_KEY_NETWORK, network);
             EventCache.getInstance().postEvent(event);
         }
+
+        public NetworkCapabilities getNetworkCapabilities() {
+            return mNetworkCapabilities;
+        }
     }
 
     private Enumeration<InetAddress> getInetAddrsForInterface(String ifaceName) {
@@ -258,6 +263,53 @@ public class ConnectivityManagerSnippet implements Snippet {
     }
 
     /**
+     * Retrieves the NetworkCapabilities object from a specific NetworkCallback
+     *
+     * @param callbackId A unique identifierof the network request.
+     * @return A JsonObject caontaining the serialized NetworkCapabilities.
+     * @throws ConnectivityManagerSnippetException
+     */
+    @Rpc(description = "Retrieves the NetworkCapabilities for a given NetworkCallback")
+    public JSONObject connectivityGetNetworkCapabilities(String callbackId)
+            throws ConnectivityManagerSnippetException, JSONException {
+        NetworkCallback callback = mNetworkCallBacks.get(callbackId);
+        if (callback == null) {
+            throw new ConnectivityManagerSnippetException("Not Fund NetworkCallback:" + callbackId);
+        }
+        NetworkCapabilities networkCapabilities = callback.getNetworkCapabilities();
+        if (networkCapabilities == null) {
+            throw new ConnectivityManagerSnippetException(
+                    "NetworkCapabilities is null for NetworkCallback:" + callbackId);
+        }
+        return WifiAwareSnippetConverter.serializeNetworkCapabilities(networkCapabilities);
+    }
+
+    /**
+     * Checks if a specific capability exists in a NetworkCallback's NetworkCapabilities.
+     *
+     * @param callbackId A unique identifier of the network request.
+     * @param capability The integer value of the capability to check
+     * @return True if the Network has the specified capability, false otherwise.
+     * @throws ConnectivityManagerSnippetException If the NetworkCallback or NetworkCapabilities are
+     * not found.
+     */
+    @Rpc(description = "Checks if a specific capability exists in a NetworkCallback")
+    public boolean connectivityHasCapability(String callbackId, int capability)
+            throws ConnectivityManagerSnippetException {
+        NetworkCallback callback = mNetworkCallBacks.get(callbackId);
+        if (callback == null) {
+            throw new ConnectivityManagerSnippetException("NetworkCallback not found for ID:"
+                    + callbackId);
+        }
+        NetworkCapabilities networkCapabilities = callback.getNetworkCapabilities();
+        if (networkCapabilities == null) {
+            throw new ConnectivityManagerSnippetException(
+                    "NetworkCapabilities is null for NetworkCallback:" + callbackId);
+        }
+        return networkCapabilities.hasCapability(capability);
+    }
+
+    /**
      * Requests a network with the specified network request and sets a callback for network events.
      *
      * @param callBackId A unique identifier assigned automatically by Mobly. This is used as the
@@ -275,6 +327,21 @@ public class ConnectivityManagerSnippet implements Snippet {
         NetworkCallback callback = new NetworkCallback(callBackId);
         mNetworkCallBacks.put(requestNetWorkId, callback);
         mConnectivityManager.requestNetwork(request, callback, requestNetworkTimeoutMs);
+    }
+
+    /**
+     * Registers a Connectivity.NetworkCallback to listen for network events.
+     *
+     * @param callbackId A unique identifier of the network request.
+     * @param request The NetworkRequest object that specifies the desired network
+     *     characteristics.
+     */
+    @AsyncRpc(description = "Registers a network callback")
+    public void connectivityRegisterNetworkCallback(String callbackId, NetworkRequest request) {
+        Log.v("Register network with request: " + request.toString());
+        NetworkCallback callback = new NetworkCallback(callbackId);
+        mConnectivityManager.registerNetworkCallback(request, callback);
+        mNetworkCallBacks.put(callbackId, callback);
     }
 
     /**

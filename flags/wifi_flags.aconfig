@@ -470,3 +470,17 @@ flag {
     description: "Add new API to set discovery channel for pairing"
     bug: "438011300"
 }
+
+flag {
+    name: "wifi_aware_supplicant_solution"
+    namespace: "wifi"
+    description: "Use the supplicant solution for wifi aware"
+    bug: "448421897"
+}
+flag {
+    name: "last_caller_26q2"
+    is_exported: true
+    namespace: "wifi"
+    description: "Add new reason codes for last caller tracking"
+    bug: "448479152"
+}

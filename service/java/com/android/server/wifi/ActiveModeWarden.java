@@ -166,6 +166,7 @@ public class ActiveModeWarden {
      */
     private int mCurrentUserId = UserHandle.SYSTEM.getIdentifier();
     private boolean mIsHandlingUserSwitchOrStop = false;
+    private boolean mIsPendingUserUnlock = false;
     private boolean mIsMultiplePrimaryBugreportTaken = false;
     private boolean mIsShuttingdown = false;
     private boolean mVerboseLoggingEnabled = false;
@@ -778,14 +779,14 @@ public class ActiveModeWarden {
                 R.bool.config_wifi_turn_off_during_emergency_call);
         if (mFeatureFlags.monitorIntentForAllUsers()) {
             mContext.registerReceiverForAllUsers(airplaneChangedReceiver,
-                    new IntentFilter(Intent.ACTION_AIRPLANE_MODE_CHANGED), null, mHandler);
+                    new IntentFilter(Intent.ACTION_AIRPLANE_MODE_CHANGED), null, null);
             mContext.registerReceiverForAllUsers(emergencyCallbackModeChangedReceiver,
                     new IntentFilter(TelephonyManager.ACTION_EMERGENCY_CALLBACK_MODE_CHANGED),
-                    null, mHandler);
+                    null, null);
             if (trackEmergencyCallState) {
                 mContext.registerReceiverForAllUsers(emergencyCallStateChangedReceiver,
                         new IntentFilter(TelephonyManager.ACTION_EMERGENCY_CALL_STATE_CHANGED),
-                        null, mHandler);
+                        null, null);
             }
         } else {
             mContext.registerReceiver(airplaneChangedReceiver,
@@ -919,7 +920,14 @@ public class ActiveModeWarden {
             return;
         }
         mCurrentUserId = userId;
+        mIsPendingUserUnlock = true;
         mWifiController.sendMessage(WifiController.CMD_USER_SWITCH);
+        // When switch to HSU, the system won't sent unlock since it is always in unlock status.
+        // Send UNLOCK to make sure wifi can be restored.
+        if (mUserManager.isUserUnlockingOrUnlocked(UserHandle.of(mCurrentUserId))) {
+            mIsPendingUserUnlock = false;
+            mWifiController.sendMessage(WifiController.CMD_USER_UNLOCK);
+        }
     }
 
     /** User is stop. */
@@ -937,7 +945,10 @@ public class ActiveModeWarden {
             Log.e(TAG, "Ignore user unlock for non current user " + userId);
             return;
         }
-        mWifiController.sendMessage(WifiController.CMD_USER_UNLOCK);
+        if (mIsPendingUserUnlock) {
+            mIsPendingUserUnlock = false;
+            mWifiController.sendMessage(WifiController.CMD_USER_UNLOCK);
+        }
     }
 
     /**

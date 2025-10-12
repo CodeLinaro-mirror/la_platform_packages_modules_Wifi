@@ -1643,7 +1643,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
             verify(mContext).registerReceiverForAllUsers(
                     bcastRxCaptor.capture(),
                     argThat(filter -> filter.hasAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)),
-                    eq(null), any(Handler.class));
+                    eq(null), eq(null));
         } else {
             verify(mContext).registerReceiver(
                     bcastRxCaptor.capture(),
@@ -1934,7 +1934,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                 bcastRxCaptor.capture(),
                 argThat(filter ->
                         filter.hasAction(TelephonyManager.ACTION_EMERGENCY_CALLBACK_MODE_CHANGED)),
-                        eq(null), any(Handler.class));
+                        eq(null), eq(null));
         mEmergencyCallbackModeChangedBr = bcastRxCaptor.getValue();
         when(mSettingsStore.isScanAlwaysAvailable()).thenReturn(false);
         enableWifi();
@@ -2194,7 +2194,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                 bcastRxCaptor.capture(),
                 argThat(filter ->
                         filter.hasAction(TelephonyManager.ACTION_EMERGENCY_CALL_STATE_CHANGED)),
-                        eq(null), any(Handler.class));
+                        eq(null), eq(null));
         mEmergencyCallStateChangedBr = bcastRxCaptor.getValue();
         assertInDisabledState();
 
@@ -6074,6 +6074,24 @@ public class ActiveModeWardenTest extends WifiBaseTest {
     public void testUserUnlockComingBeforeCmmStop() throws Exception {
         enterClientModeActiveState();
         assertInEnabledState();
+        assertWifiShutDown(
+                () -> {
+                    // Switch user
+                    mActiveModeWarden.handleUserSwitch(10);
+                    mActiveModeWarden.handleUserUnlock(10);
+                    mLooper.dispatchAll();
+                });
+        // Trigger client mode stop succeeded.
+        mClientListener.onStopped(mClientModeManager);
+        mLooper.dispatchAll();
+        assertInEnabledState();
+    }
+
+    @Test
+    public void testUserSwitchWithUserUnlocked() throws Exception {
+        enterClientModeActiveState();
+        assertInEnabledState();
+        when(mUserManager.isUserUnlockingOrUnlocked(any())).thenReturn(true);
         assertWifiShutDown(
                 () -> {
                     // Switch user

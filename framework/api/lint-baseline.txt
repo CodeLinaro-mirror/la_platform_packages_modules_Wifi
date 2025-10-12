@@ -13,6 +13,12 @@ GenericException: android.net.wifi.WifiManager.WifiLock#finalize():
     Methods must not throw generic exceptions (`java.lang.Throwable`)
 
 
+InvalidHideDocTag: /src/out/soong/.temp/sbox/6f41d8e43fde044c977f9655bb7065381d0cdd6d/frameworks/libs/modules-utils/java/android/annotation/Hide.java:
+    Invalid @hide syntax, it is ignored as it must be a block tag
+InvalidHideDocTag: /src/out/soong/.temp/sbox/6f41d8e43fde044c977f9655bb7065381d0cdd6d/packages/modules/Wifi/framework/java/android/net/wifi/WifiManager.java:
+    Invalid @hide syntax, it is ignored as it must be a block tag
+
+
 RequiresPermission: android.net.wifi.WifiConfiguration#setMacRandomizationSetting(int):
     Method 'setMacRandomizationSetting' documentation mentions permissions without declaring @RequiresPermission
 RequiresPermission: android.net.wifi.WifiInfo#getMacAddress():
@@ -81,6 +87,10 @@ RequiresPermission: android.net.wifi.p2p.WifiP2pManager#startPeerDiscovery(andro
     Method 'startPeerDiscovery' documentation mentions permissions already declared by @RequiresPermission
 RequiresPermission: android.net.wifi.rtt.WifiRttManager#startRanging(android.net.wifi.rtt.RangingRequest, java.util.concurrent.Executor, android.net.wifi.rtt.RangingResultCallback):
     Method 'startRanging' documentation mentions permissions already declared by @RequiresPermission
+
+
+UnflaggedApi: android.net.wifi.WifiManager#getCapabilities(String):
+    New API must be flagged with @FlaggedApi: method android.net.wifi.WifiManager.getCapabilities(String)
 
 
 VisiblySynchronized: android.net.wifi.WifiManager.WifiLock#finalize():

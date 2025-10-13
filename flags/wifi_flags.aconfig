@@ -72,17 +72,6 @@ flag {
 }
 
 flag {
-    name: "voip_detection_bugfix"
-    namespace: "wifi"
-    description: "Detect VoIP over Wifi and execute optimization"
-    bug: "295885471"
-    is_fixed_read_only: true
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
-}
-
-flag {
     name: "get_bssid_blocklist_api"
     is_exported: true
     namespace: "wifi"
@@ -137,17 +126,6 @@ flag {
     description: "Wi-Fi Alliance RSN Overriding feature"
     bug: "348669010"
     is_fixed_read_only: true
-}
-
-flag {
-    name: "new_uri_parsing_for_escape_character"
-    namespace: "wifi"
-    description: "New parsing logic for Zxing uri format which support escape character"
-    bug: "342706482"
-    is_fixed_read_only: true
-    metadata {
-        purpose: PURPOSE_BUGFIX
-    }
 }
 
 flag {
@@ -446,6 +424,14 @@ flag {
     namespace: "wifi"
     description: "Add new API to set/get ingress and egress distances"
     bug: "399423727"
+}
+
+flag {
+    name: "local_only_disconnect_reason"
+    is_exported: true
+    namespace: "wifi"
+    description: "Add new API to get local-only connection disconnect reason"
+    bug: "440270888"
 }
 
 flag {

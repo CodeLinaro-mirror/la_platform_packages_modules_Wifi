@@ -928,6 +928,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testSetWifiEnabledMetricsPrivilegedApp() throws Exception {
+        when(mFeatureFlags.localOnlyDisconnectReason()).thenReturn(true);
         when(mContext.checkPermission(eq(android.Manifest.permission.NETWORK_SETTINGS),
                 anyInt(), anyInt())).thenReturn(PackageManager.PERMISSION_GRANTED);
         when(mWifiPermissionsUtil.checkNetworkSettingsPermission(anyInt())).thenReturn(true);
@@ -938,8 +939,11 @@ public class WifiServiceImplTest extends WifiBaseTest {
         InOrder inorder = inOrder(mWifiMetrics);
         assertTrue(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, true));
         mLooper.dispatchAll();
+        verify(mWifiNetworkFactory, never()).onDisconnectionExpected(anyInt(), anyBoolean());
         assertTrue(mWifiServiceImpl.setWifiEnabled(TEST_PACKAGE_NAME, false));
         mLooper.dispatchAll();
+        verify(mWifiNetworkFactory).onDisconnectionExpected(
+                WifiManager.STATUS_LOCAL_ONLY_DISCONNECTION_DISABLE_WIFI, true);
         verify(mWifiConnectivityManager).setAutoJoinEnabledExternal(true, false);
         inorder.verify(mWifiMetrics).logUserActionEvent(UserActionEvent.EVENT_TOGGLE_WIFI_ON);
         inorder.verify(mWifiMetrics).incrementNumWifiToggles(eq(true), eq(true));
@@ -6330,7 +6334,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 .noteOp(AppOpsManager.OPSTR_CHANGE_WIFI_STATE, Process.myUid(), TEST_PACKAGE_NAME);
         assertTrue(mWifiServiceImpl.disconnect(TEST_PACKAGE_NAME));
         mLooper.dispatchAll();
-        verify(mClientModeManager).disconnect();
+        verify(mClientModeManager).disconnect(Process.myUid());
         verify(mLastCallerInfoManager).put(eq(WifiManager.API_DISCONNECT), anyInt(), anyInt(),
                 anyInt(), eq(TEST_PACKAGE_NAME), anyBoolean());
     }
@@ -6345,6 +6349,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
         verifyCheckChangePermission(TEST_PACKAGE_NAME);
         verify(mClientModeManager, never()).disconnect();
+        verify(mClientModeManager, never()).disconnect(anyInt());
     }
 
     /**
@@ -6363,6 +6368,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         }
         verifyCheckChangePermission(TEST_PACKAGE_NAME);
         verify(mClientModeManager, never()).disconnect();
+        verify(mClientModeManager, never()).disconnect(anyInt());
         verify(mLastCallerInfoManager, never()).put(eq(WifiManager.API_DISCONNECT), anyInt(),
                 anyInt(), anyInt(), any(), anyBoolean());
     }

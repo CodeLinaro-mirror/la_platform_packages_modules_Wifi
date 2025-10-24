@@ -33,6 +33,7 @@ import android.net.wifi.SoftApCapability;
 import android.net.wifi.SoftApConfiguration;
 import android.net.wifi.SoftApInfo;
 import android.net.wifi.SupplicantState;
+import android.net.wifi.WifiAvailableChannel;
 import android.net.wifi.WifiClient;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiInfo;
@@ -40,6 +41,7 @@ import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiScanner.ScanData;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -61,6 +63,7 @@ import com.google.android.mobly.snippet.event.SnippetEvent;
 import com.google.android.mobly.snippet.rpc.AsyncRpc;
 import com.google.android.mobly.snippet.rpc.Rpc;
 import com.google.snippet.wifi.aware.WifiAwareJsonDeserializer;
+import com.google.snippet.wifi.aware.WifiAwareSnippetConverter;
 import com.google.snippet.wifi.softap.WifiSapJsonDeserializer;
 
 import org.json.JSONArray;
@@ -105,6 +108,7 @@ public class WifiManagerSnippet extends WifiShellPermissionSnippet implements Sn
     private WifiManager.SuggestionConnectionStatusListener mSuggestionConnectionStatusListener;
     private WifiManager.SuggestionUserApprovalStatusListener mSuggestionUserApprovalStatusListener;
     private BroadcastReceiver mNetworkSuggestionPostConnectionReceiver;
+    private volatile boolean mIsScanResultAvailable = false;
 
 
     /**
@@ -912,6 +916,24 @@ public class WifiManagerSnippet extends WifiShellPermissionSnippet implements Sn
     }
 
     /**
+     * Enables/disables Wi-Fi scan throttling.
+     */
+    @Rpc(description = "Enable/disable wifi scan throttling.")
+    public void wifiSetScanThrottleState(boolean enabled) {
+        ShellIdentityUtils.invokeWithShellPermissions(
+                () -> mWifiManager.setScanThrottleEnabled(enabled));
+    }
+
+    /**
+     * Gets Wi-Fi scan throttling state.
+     */
+    @Rpc(description = "Get Wi-Fi scan throttle state.")
+    public boolean wifiIsScanThrottleEnabled() {
+        return ShellIdentityUtils.invokeWithShellPermissions(
+            () -> mWifiManager.isScanThrottleEnabled());
+    }
+
+    /**
      * Scan listener passed to WiFiScanner APIs.
      *
      * <p>With different types of events triggered when executing WiFiScanner APIs, corresponding
@@ -1094,4 +1116,85 @@ public class WifiManagerSnippet extends WifiShellPermissionSnippet implements Sn
     public void wifiToggleDisable() throws InterruptedException, WifiManagerSnippetException {
         wifiToggleState(false);
     }
+
+    /** Start scan, wait for scan to complete, and return results. */
+    @Rpc(
+            description =
+                "Start scan, wait for scan to complete, and return results, which is a list of "
+                + "serialized WifiScanResult objects.")
+    public JSONArray wifiScanAndGetResultsWithShellPermission()
+            throws InterruptedException, JSONException, WifiManagerSnippetException {
+        WifiScanReceiver receiver = new WifiScanReceiver();
+        mContext.registerReceiver(
+                receiver, new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION));
+
+        try {
+            mIsScanResultAvailable = false;
+            if (!executeWithShellPermission(() -> mWifiManager.startScan())) {
+                throw new WifiManagerSnippetException("Failed to initiate Wi-Fi scan.", null);
+            }
+            if (!Utils.waitUntil(() -> mIsScanResultAvailable, 2 * 60)) {
+                throw new WifiManagerSnippetException(
+                    "Failed to get scan results after 2min, timeout!", null);
+            }
+
+            JSONArray results = new JSONArray();
+            for (ScanResult result : mWifiManager.getScanResults()) {
+                results.put(WifiAwareSnippetConverter.serializeScanResult(result));
+            }
+            return results;
+        } finally {
+            mContext.unregisterReceiver(receiver);
+        }
+    }
+
+    private class WifiScanReceiver extends BroadcastReceiver {
+        @Override
+        public void onReceive(Context c, Intent intent) {
+            String action = intent.getAction();
+            if (!action.equals(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION)) return;
+            if (!intent.getBooleanExtra(WifiManager.EXTRA_RESULTS_UPDATED, false)) return;
+            mIsScanResultAvailable = true;
+        }
+    }
+
+    /**
+     * Gets the list of usable Wi-Fi channels for a given band and operating mode.
+     *
+     * @param band The Wi-Fi band to query, e.g., {@link SoftApConfiguration#BAND_2GHZ}.
+     * @return A list of usable channel frequencies in MHz, or an empty list on failure or if
+     *         unsupported.
+     */
+    @Rpc(description = "Gets usable Wi-Fi channels for a given band and mode.")
+    public List<Integer> wifiGetUsableChannels(int band, int mode) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            Log.w(TAG, "getUsableChannels requires Android S (API 31) or higher.");
+            return new ArrayList<>();
+        }
+        if (mWifiManager == null) {
+            Log.e(TAG, "WifiManager service not available.");
+            return new ArrayList<>();
+        }
+
+        try {
+            Log.i(TAG, "WifiManager getUsableChannels available.");
+            List<WifiAvailableChannel> channelObjects = mWifiManager.getUsableChannels(
+                            band, mode);
+            if (channelObjects == null) {
+                return  new ArrayList<>();
+            }
+            List<Integer> channelFrequencies = new ArrayList<>();
+            for (WifiAvailableChannel channel : channelObjects) {
+                channelFrequencies.add(channel.getFrequencyMhz());
+            }
+            return channelFrequencies;
+        } catch (SecurityException e) {
+            Log.e(TAG, "Permission denial for getUsableChannels.", e);
+            return new ArrayList<>();
+        } catch (Exception e) {
+            Log.e(TAG, "Error calling getUsableChannels.", e);
+            return new ArrayList<>();
+        }
+    }
+
 }

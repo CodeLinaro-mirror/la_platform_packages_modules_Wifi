@@ -642,7 +642,6 @@ package android.net.wifi {
     field public static final int RECENT_FAILURE_OCE_RSSI_BASED_ASSOCIATION_REJECTION = 1010; // 0x3f2
     field public static final int RECENT_FAILURE_POOR_CHANNEL_CONDITIONS = 1003; // 0x3eb
     field public static final int RECENT_FAILURE_REFUSED_TEMPORARILY = 1002; // 0x3ea
-    field public boolean allowAutojoin;
     field public int carrierId;
     field public boolean carrierMerged;
     field public String creatorName;
@@ -661,7 +660,6 @@ package android.net.wifi {
     field public int numScorerOverride;
     field public int numScorerOverrideAndSwitchedNetwork;
     field public boolean requirePmf;
-    field public boolean shared;
     field public int subscriptionId;
     field public boolean useExternalScores;
   }
@@ -783,7 +781,7 @@ package android.net.wifi {
     method @RequiresPermission(anyOf={android.Manifest.permission.NETWORK_SETTINGS, android.Manifest.permission.NETWORK_SETUP_WIZARD, android.Manifest.permission.NETWORK_STACK}) public void forget(int, @Nullable android.net.wifi.WifiManager.ActionListener);
     method @NonNull @RequiresPermission(anyOf={android.Manifest.permission.NETWORK_SETTINGS, android.Manifest.permission.NETWORK_SETUP_WIZARD}) public java.util.List<android.util.Pair<android.net.wifi.WifiConfiguration,java.util.Map<java.lang.Integer,java.util.List<android.net.wifi.ScanResult>>>> getAllMatchingWifiConfigs(@NonNull java.util.List<android.net.wifi.ScanResult>);
     method @FlaggedApi("com.android.wifi.flags.autojoin_restriction_security_types_api") @RequiresPermission(anyOf={android.Manifest.permission.NETWORK_SETTINGS, android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION}) public void getAutojoinDisallowedSecurityTypes(@NonNull java.util.concurrent.Executor, @NonNull java.util.function.Consumer<int[]>);
-    method @FlaggedApi("android.security.aapm_api") @NonNull public java.util.List<android.security.advancedprotection.AdvancedProtectionFeature> getAvailableAdvancedProtectionFeatures();
+    method @NonNull public java.util.List<android.security.advancedprotection.AdvancedProtectionFeature> getAvailableAdvancedProtectionFeatures();
     method @FlaggedApi("com.android.wifi.flags.get_bssid_blocklist_api") @RequiresPermission(anyOf={android.Manifest.permission.NETWORK_SETTINGS, android.Manifest.permission.NETWORK_SETUP_WIZARD}) public void getBssidBlocklist(@NonNull java.util.List<android.net.wifi.WifiSsid>, @NonNull java.util.concurrent.Executor, @NonNull java.util.function.Consumer<java.util.List<android.net.MacAddress>>);
     method @Nullable @RequiresPermission(anyOf={android.Manifest.permission.NETWORK_SETTINGS, android.Manifest.permission.ACCESS_COARSE_LOCATION}) public String getCountryCode();
     method @Nullable @RequiresPermission(anyOf={android.Manifest.permission.NETWORK_SETTINGS, android.Manifest.permission.NETWORK_SETUP_WIZARD}) public android.net.Network getCurrentNetwork();

@@ -5515,15 +5515,10 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     + discoverySessionId);
             return;
         }
-        if (data.second.getMatchedBootstrappingMethod(method) != 0) {
-            respondToBootstrappingRequest(data.first.getClientId(), data.second.getSessionId(),
-                    data.second.getPeerIdOrAddIfNew(peerId, peerDiscMacAddr), bootstrappingId,
-                    true, method, serviceSpecificInfo);
-        } else {
-            respondToBootstrappingRequest(data.first.getClientId(), data.second.getSessionId(),
-                    data.second.getPeerIdOrAddIfNew(peerId, peerDiscMacAddr), bootstrappingId,
-                    false, method, serviceSpecificInfo);
-        }
+        int responseMethod = data.second.getMatchedBootstrappingMethod(method);
+        respondToBootstrappingRequest(data.first.getClientId(), data.second.getSessionId(),
+                data.second.getPeerIdOrAddIfNew(peerId, peerDiscMacAddr), bootstrappingId,
+                responseMethod != 0, responseMethod, serviceSpecificInfo);
     }
 
     private boolean onBootStrappingConfirmReceivedLocal(int id, int reason, int responseCode,
@@ -5536,7 +5531,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         if (responseCode == NAN_BOOTSTRAPPING_COMEBACK && comeBackDelay > 0) {
             if (!info.mIsComeBackFollowUp) {
                 initiateBootStrappingSetupRequest(info.mClientId, info.mSessionId, info.mPeerId,
-                        info.mMethod, comeBackDelay * 1000L, cookie, info.mSsi);
+                        info.mMethod, comeBackDelay * 1024 / 1000, cookie, info.mSsi);
                 return true;
             }
             Log.e(TAG, "onBootStrappingConfirmReceivedLocal come back event on a"

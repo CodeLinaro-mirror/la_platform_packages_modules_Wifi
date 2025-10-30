@@ -1733,6 +1733,18 @@ public class WifiNetworkFactory extends NetworkFactory {
         mRegisteredCallbacks.finishBroadcast();
     }
 
+    /**
+     * Get the name of the connected app.
+     */
+    public @NonNull String getConnectedAppName() {
+        if (mConnectedSpecificNetworkRequestSpecifier == null
+                || mConnectedSpecificNetworkRequest == null) {
+            return "";
+        }
+        return getAppName(mConnectedSpecificNetworkRequest.getRequestorPackageName(),
+                mConnectedSpecificNetworkRequest.getRequestorUid()).toString();
+    }
+
     private @NonNull CharSequence getAppName(@NonNull String packageName, int uid) {
         ApplicationInfo applicationInfo = null;
         try {
@@ -2152,6 +2164,22 @@ public class WifiNetworkFactory extends NetworkFactory {
         }
         return config.getProfileKey().equals(
                 mConnectedSpecificNetworkRequestSpecifier.wifiConfiguration.getProfileKey());
+    }
+
+    /**
+     * Get whether there are disconnection status listeners registered for the currently connected
+     * network.
+     * @return true if there are disconnection status listeners registered
+     */
+    public boolean connectedNetworkHasDisconnectListenerRegistered() {
+        if (mConnectedSpecificNetworkRequest == null
+                || mConnectedSpecificNetworkRequestSpecifier == null) {
+            return false;
+        }
+        RemoteCallbackList<ILocalOnlyDisconnectionStatusListener> listenersTracker =
+                mLocalOnlyDisconnectionStatusListenerPerApp.get(
+                        mConnectedSpecificNetworkRequest.getRequestorPackageName());
+        return listenersTracker != null && listenersTracker.getRegisteredCallbackCount() != 0;
     }
 
     /**

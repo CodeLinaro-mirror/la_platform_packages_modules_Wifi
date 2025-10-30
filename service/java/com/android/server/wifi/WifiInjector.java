@@ -52,6 +52,7 @@ import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.build.SdkLevel;
+import com.android.server.wifi.aware.PairingConfigManager;
 import com.android.server.wifi.aware.WifiAwareMetrics;
 import com.android.server.wifi.coex.CoexManager;
 import com.android.server.wifi.hotspot2.PasspointManager;
@@ -254,6 +255,7 @@ public class WifiInjector {
     @NonNull private final WifiDialogManager mWifiDialogManager;
     @NonNull private final SsidTranslator mSsidTranslator;
     @NonNull private final ApplicationQosPolicyRequestHandler mApplicationQosPolicyRequestHandler;
+    private final PairingConfigManager mPairingConfigManager;
 
     public WifiInjector(WifiContext context) {
         if (context == null) {
@@ -368,6 +370,7 @@ public class WifiInjector {
         mWifiCarrierInfoManager = new WifiCarrierInfoManager(makeTelephonyManager(),
                 subscriptionManager, this, mFrameworkFacade, mContext,
                 mWifiConfigStore, wifiHandler, mWifiMetrics, mClock, mWifiPseudonymManager);
+        mPairingConfigManager = new PairingConfigManager(this);
         String l2KeySeed = Secure.getString(mContext.getContentResolver(), Secure.ANDROID_ID);
         mWifiScoreCard = new WifiScoreCard(mClock, l2KeySeed, mDeviceConfigFacade,
                 mContext, mWifiGlobals);
@@ -1228,5 +1231,15 @@ public class WifiInjector {
     @NonNull
     public ApplicationQosPolicyRequestHandler getApplicationQosPolicyRequestHandler() {
         return mApplicationQosPolicyRequestHandler;
+    }
+
+    @NonNull
+    public WifiConfigStore getWifiConfigStore() {
+        return mWifiConfigStore;
+    }
+
+    @NonNull
+    public PairingConfigManager getPairingConfigManager() {
+        return mPairingConfigManager;
     }
 }

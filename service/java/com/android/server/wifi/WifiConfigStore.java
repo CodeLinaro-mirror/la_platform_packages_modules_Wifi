@@ -103,12 +103,18 @@ public class WifiConfigStore {
      */
     public static final int STORE_FILE_USER_SOFTAP = 4;
 
+    /**
+     * Config store file for Aware user store file.
+     */
+    public static final int STORE_FILE_USER_AWARE = 5;
+
     @IntDef(prefix = { "STORE_FILE_" }, value = {
             STORE_FILE_SHARED_GENERAL,
             STORE_FILE_SHARED_SOFTAP,
             STORE_FILE_USER_GENERAL,
             STORE_FILE_USER_NETWORK_SUGGESTIONS,
-            STORE_FILE_USER_SOFTAP
+            STORE_FILE_USER_SOFTAP,
+            STORE_FILE_USER_AWARE
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface StoreFileId { }
@@ -168,6 +174,12 @@ public class WifiConfigStore {
      * Config store file name for SoftAp store file.
      */
     private static final String STORE_FILE_NAME_SOFTAP = "WifiConfigStoreSoftAp.xml";
+
+    /**
+     * Config store file name for Aware user store file.
+     */
+    private static final String STORE_FILE_NAME_USER_AWARE = "WifiConfigStoreAware.xml";
+
     /**
      * Config store file name for general user store file.
      */
@@ -187,6 +199,7 @@ public class WifiConfigStore {
                 put(STORE_FILE_USER_GENERAL, STORE_FILE_NAME_USER_GENERAL);
                 put(STORE_FILE_USER_NETWORK_SUGGESTIONS, STORE_FILE_NAME_USER_NETWORK_SUGGESTIONS);
                 put(STORE_FILE_USER_SOFTAP, STORE_FILE_NAME_SOFTAP);
+                put(STORE_FILE_USER_AWARE, STORE_FILE_NAME_USER_AWARE);
             }};
     /**
      * Handler instance to post alarm timeouts to
@@ -208,8 +221,8 @@ public class WifiConfigStore {
     private final List<StoreFile> mSharedStores;
     /**
      * User specific store file instances. There are 3 user store files:
-     * {@link #STORE_FILE_USER_GENERAL}, {@link #STORE_FILE_USER_NETWORK_SUGGESTIONS}, and
-     * {@link #STORE_FILE_USER_SOFTAP}.
+     * {@link #STORE_FILE_USER_GENERAL}, {@link #STORE_FILE_USER_NETWORK_SUGGESTIONS},
+     * {@link #STORE_FILE_USER_SOFTAP} and {@link #STORE_FILE_USER_AWARE}.
      */
     private List<StoreFile> mUserStores;
     /**
@@ -371,6 +384,7 @@ public class WifiConfigStore {
         List<Integer> userFiles = new ArrayList<>(
                 List.of(STORE_FILE_USER_GENERAL, STORE_FILE_USER_NETWORK_SUGGESTIONS));
         userFiles.add(STORE_FILE_USER_SOFTAP);
+	userFiles.add(STORE_FILE_USER_AWARE);
         return createFiles(
                 Environment.getWifiUserDirectory(userId),
                 userFiles,

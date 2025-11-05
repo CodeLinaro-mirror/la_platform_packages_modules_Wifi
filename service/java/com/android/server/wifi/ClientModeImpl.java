@@ -222,6 +222,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     @VisibleForTesting public static final long CONNECTING_WATCHDOG_TIMEOUT_MS = 30_000; // 30 secs.
     @VisibleForTesting public static final long CONNECTING_WATCHDOG_SHORT_TIMEOUT_MS = 8_000;
     public static final int PROVISIONING_TIMEOUT_FILS_CONNECTION_MS = 36_000; // 36 secs.
+    private static final float LINK_SPEED_UPDATE_THRESHOLD = 0.20f;
     @VisibleForTesting
     public static final String ARP_TABLE_PATH = "/proc/net/arp";
     private final WifiDeviceStateChangeManager mWifiDeviceStateChangeManager;
@@ -2954,6 +2955,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         int newFrequency = pollResults.getFrequency();
         int newRxLinkSpeed = pollResults.getRxLinkSpeed();
         boolean updateNetworkCapabilities = false;
+        float previousTxSpeed = mWifiInfo.getTxLinkSpeedMbps();
+        float previousRxSpeed = mWifiInfo.getRxLinkSpeedMbps();
 
         if (mVerboseLoggingEnabled) {
             logd("updateLinkLayerStatsRssiSpeedFrequencyCapabilities rssi=" + newRssi
@@ -2975,14 +2978,21 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
          * set Tx link speed only if it is valid
          */
         if (newTxLinkSpeed > 0) {
-            mWifiInfo.setLinkSpeed(newTxLinkSpeed);
-            mWifiInfo.setTxLinkSpeedMbps(newTxLinkSpeed);
+            if (shouldSendLinkSpeedUpdate(newTxLinkSpeed, previousTxSpeed)) {
+                updateNetworkCapabilities = true;
+                mWifiInfo.setLinkSpeed(newTxLinkSpeed);
+                mWifiInfo.setTxLinkSpeedMbps(newTxLinkSpeed);
+            }
+
         }
         /*
          * set Rx link speed only if it is valid
          */
         if (newRxLinkSpeed > 0) {
-            mWifiInfo.setRxLinkSpeedMbps(newRxLinkSpeed);
+            if (shouldSendLinkSpeedUpdate(newRxLinkSpeed, previousRxSpeed)) {
+                updateNetworkCapabilities = true;
+                mWifiInfo.setRxLinkSpeedMbps(newRxLinkSpeed);
+            }
         }
         if (newFrequency > 0) {
             if (mWifiInfo.getFrequency() != newFrequency) {
@@ -3027,6 +3037,26 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mWifiMetrics.handlePollResult(mInterfaceName, mWifiInfo);
         updateCurrentConnectionInfo();
         return stats;
+    }
+
+    /**
+     * Checks if the new speed has changed by the threshold compared
+     * to the currently reported baseline speed. Handles non-positive baselines safely.
+     * @param newSpeed The latest speed polled from the hardware.
+     * @param previousSpeed The speed value currently stored in mWifiInfo (the baseline).
+     * @return true if an update should be sent, false otherwise.
+     */
+    private boolean shouldSendLinkSpeedUpdate(float newSpeed, float previousSpeed) {
+        // 1. Handle non-positive baselines (-1, 0) to prevent crash/incorrect math.
+        if (previousSpeed <= 0) {
+            return newSpeed > 0;
+        }
+
+        // 2. Perform safe, throttled calculation (since previousSpeed > 0)
+        float ratio = newSpeed / previousSpeed;
+        float fraction = Math.abs(1.0f - ratio);
+
+        return fraction >= LINK_SPEED_UPDATE_THRESHOLD;
     }
 
     // Update the link bandwidth. Also update network capabilities if the link bandwidth changes
@@ -3723,10 +3753,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             stopDhcpSetup();
         }
 
-        if (com.android.wifi.flags.Flags.localOnlyDisconnectReason()
-                && mNetworkFactory.isConnectedToConfig(getConnectedWifiConfigurationInternal())) {
-            mNetworkFactory.onDisconnectionExpected(
-                    WifiManager.STATUS_LOCAL_ONLY_DISCONNECTION_UNKNOWN, false);
+        if (mNetworkFactory.isConnectedToConfig(getConnectedWifiConfigurationInternal())) {
+            mNetworkFactory.teardownForConnectedNetwork();
+            if (com.android.wifi.flags.Flags.localOnlyDisconnectReason()) {
+                mNetworkFactory.onDisconnectionExpected(
+                        WifiManager.STATUS_LOCAL_ONLY_DISCONNECTION_UNKNOWN, false);
+            }
         }
         // The current network has already disconnected somehow. Any pending user dialog is now
         // obsolete and should be cleared.

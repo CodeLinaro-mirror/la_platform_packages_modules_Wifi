@@ -728,6 +728,23 @@ public class WifiConnectivityManager {
                     candidatesPartitioned.getOrDefault(false, Collections.emptyList());
             List<WifiCandidates.Candidate> secondaryCmmCandidates =
                     candidatesPartitioned.getOrDefault(true, Collections.emptyList());
+            // As customer required, oem paid/private network for secondary STA should have different
+            // band with primary connected STA, add check if primary STA had connected, the candidates
+            // for secondary STA should avoid to in same band as primary STA.
+            if (mContext.getResources().getBoolean(
+                    R.bool.config_wifiAllowConnectPolicyForDualStation)) {
+                final ConcreteClientModeManager primaryCcm = mActiveModeWarden
+                        .getPrimaryClientModeManagerNullable();
+                if (primaryCcm != null && primaryCcm.isConnected()) {
+                    Log.d(TAG, "Filter out the candidates for secondary STA which band type same as first STA connected");
+                    final WifiInfo primaryInfo = primaryCcm.getConnectionInfo();
+                    final int primaryBandType = ScanResult.toBandType(primaryInfo.getFrequency());
+                    secondaryCmmCandidates = secondaryCmmCandidates.stream()
+                            .filter(c -> ScanResult.toBandType(c.getFrequency()) != primaryBandType)
+                            .collect(Collectors.toList());
+                }
+            }
+
             // Some oem paid/private suggestions found, use secondary cmm flow.
             if (!secondaryCmmCandidates.isEmpty()) {
                 handleCandidatesFromScanResultsUsingSecondaryCmmIfAvailable(
@@ -3733,5 +3750,58 @@ public class WifiConnectivityManager {
         mWifiBlocklistMonitor.dump(fd, pw, args);
         mExternalPnoScanRequestManager.dump(fd, pw, args);
         mConnectivityHelper.dump(fd, pw, args);
+    }
+
+    /**
+     * Disconnect secondary STA if a, primary STA is going to connect with AP that is
+     * on same band with secondary STA or both stations are already on same band.
+     */
+    public boolean disconnectSecondaryClientIfNecessary(WifiConfiguration targetNetwork) {
+        boolean needDisconnect = false;
+        ScanResult primaryCmmCandidate = null;
+        WifiInfo primaryInfo;
+        WifiInfo secondaryInfo;
+        //5G band and 6G band belong to one band type
+        int primaryBandType;
+        int secondaryBandType;
+        if (!mContext.getResources().getBoolean(
+                R.bool.config_wifiAllowConnectPolicyForDualStation))
+            return needDisconnect;
+
+        // If secondary connection is not oem paid/private, return false
+        if (!((mOemPaidConnectionAllowed || mOemPrivateConnectionAllowed)
+                && mActiveModeWarden.isStaStaConcurrencySupportedForRestrictedConnections()))
+            return needDisconnect;
+
+        final ConcreteClientModeManager primaryCcm = mActiveModeWarden
+                .getPrimaryClientModeManagerNullable();
+        final ConcreteClientModeManager secondaryCcm = mActiveModeWarden
+                .getClientModeManagerInRole(ROLE_CLIENT_SECONDARY_LONG_LIVED);
+
+        if (targetNetwork != null)
+            primaryCmmCandidate = targetNetwork.getNetworkSelectionStatus().getCandidate();
+
+        if (primaryCmmCandidate != null && secondaryCcm != null && secondaryCcm.isConnected()) {
+            secondaryInfo = secondaryCcm.getConnectionInfo();
+            secondaryBandType = ScanResult.toBandType(secondaryInfo.getFrequency());
+            if(primaryCmmCandidate.getBandType() == secondaryBandType) {
+                needDisconnect = true;
+                secondaryCcm.disconnect();
+            }
+        }
+
+        if (targetNetwork == null && primaryCcm.isConnected()
+                && secondaryCcm != null && secondaryCcm.isConnected()) {
+            primaryInfo = primaryCcm.getConnectionInfo();
+            primaryBandType = ScanResult.toBandType(primaryInfo.getFrequency());
+
+            secondaryInfo = secondaryCcm.getConnectionInfo();
+            secondaryBandType = ScanResult.toBandType(secondaryInfo.getFrequency());
+            if(primaryBandType == secondaryBandType) {
+                needDisconnect = true;
+                secondaryCcm.disconnect();
+            }
+        }
+        return needDisconnect;
     }
 }

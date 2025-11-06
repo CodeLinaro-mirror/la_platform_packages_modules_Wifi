@@ -1501,6 +1501,12 @@ public class WifiConfiguration implements Parcelable {
     public boolean allowAutojoin = true;
 
     /**
+     * If true, auto-join is allowed for this network when advanced protection is enabled.
+     * Default true.
+     */
+    private boolean mAllowedAutoJoinInAdvancedProtection = true;
+
+    /**
      * Wi-Fi7 is enabled by user for this network.
      * Default true.
      */
@@ -3708,6 +3714,8 @@ public class WifiConfiguration implements Parcelable {
         if (updateIdentifier != null) sbuf.append(" updateIdentifier=").append(updateIdentifier);
         sbuf.append(" lcuid=").append(lastConnectUid);
         sbuf.append(" allowAutojoin=").append(allowAutojoin);
+        sbuf.append(" mAllowedAutoJoinInAdvancedProtection=")
+                .append(mAllowedAutoJoinInAdvancedProtection);
         sbuf.append(" noInternetAccessExpected=").append(noInternetAccessExpected);
         sbuf.append(" mostRecentlyConnected=").append(isMostRecentlyConnected);
 
@@ -4177,6 +4185,7 @@ public class WifiConfiguration implements Parcelable {
             numScorerOverrideAndSwitchedNetwork = source.numScorerOverrideAndSwitchedNetwork;
             numAssociation = source.numAssociation;
             allowAutojoin = source.allowAutojoin;
+            mAllowedAutoJoinInAdvancedProtection = source.mAllowedAutoJoinInAdvancedProtection;
             numNoInternetAccessReports = source.numNoInternetAccessReports;
             noInternetAccessExpected = source.noInternetAccessExpected;
             shared = source.shared;
@@ -4322,6 +4331,7 @@ public class WifiConfiguration implements Parcelable {
         dest.writeBoolean(mIsAllowedToUpdateByOtherUsers);
         dest.writeInt(persistentMacRandomizationSeed);
         dest.writeInt(mCreatorUserId);
+        dest.writeBoolean(mAllowedAutoJoinInAdvancedProtection);
     }
 
     /**
@@ -4454,6 +4464,7 @@ public class WifiConfiguration implements Parcelable {
                     config.mIsAllowedToUpdateByOtherUsers = in.readBoolean();
                     config.persistentMacRandomizationSeed = in.readInt();
                     config.mCreatorUserId = in.readInt();
+                    config.mAllowedAutoJoinInAdvancedProtection = in.readBoolean();
                     return config;
                 }
 
@@ -4904,5 +4915,30 @@ public class WifiConfiguration implements Parcelable {
     public @UserIdInt int getCreatorUserId() {
         // TODO: b/449013275 Add Environment.isSdkNewerThanB())
         return getCreatorUserIdInternal();
+    }
+
+    /**
+     * Sets whether auto-join is allowed for this network when advanced protection is enabled.
+     *
+     * @param enabled {@code true} to allow, {@code false} to disallow.
+     *
+     * @hide
+     */
+    @FlaggedApi(android.security.Flags.FLAG_AAPM_FEATURE_DISABLE_INSECURE_WIFI_AUTOJOIN)
+    @SystemApi
+    public void setAutoJoinInAdvancedProtectionModeEnabled(boolean enabled) {
+        mAllowedAutoJoinInAdvancedProtection = enabled;
+    }
+
+    /**
+     * Returns whether auto-join is allowed for this network when advanced protection is enabled.
+     *
+     * @return {@code true} if allowed, {@code false} otherwise.
+     * @hide
+     */
+    @FlaggedApi(android.security.Flags.FLAG_AAPM_FEATURE_DISABLE_INSECURE_WIFI_AUTOJOIN)
+    @SystemApi
+    public boolean isAutoJoinInAdvancedProtectionModeEnabled() {
+        return mAllowedAutoJoinInAdvancedProtection;
     }
 }

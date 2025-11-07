@@ -11161,6 +11161,17 @@ public class WifiManager {
                 int sessionId, int targetNetworkId, @NonNull String targetBssid) {
             // No-op.
         }
+
+        /**
+         * Called by framework to indicate an L3 data stall is suspected.
+         *
+         * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
+         *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
+         */
+        @FlaggedApi(Flags.FLAG_FEED_MORE_DATA_TO_EXTERNAL_SCORER)
+        default void onL3DataStallSuspected(int sessionId) {
+            // No-op.
+        }
     }
 
 
@@ -11374,6 +11385,15 @@ public class WifiManager {
             Binder.clearCallingIdentity();
             mExecutor.execute(() -> mScorer.onNetworkSwitchRejected(
                     sessionId, targetNetworkId, targetBssid));
+        }
+
+        @Override
+        public void onL3DataStallSuspected(int sessionId) {
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "WifiConnectedNetworkScorer: onDataStallSuspected(" + sessionId + ")");
+            }
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mScorer.onL3DataStallSuspected(sessionId));
         }
     }
 

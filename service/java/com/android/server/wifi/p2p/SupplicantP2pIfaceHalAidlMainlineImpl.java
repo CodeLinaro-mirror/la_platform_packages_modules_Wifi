@@ -14,15 +14,11 @@
  * limitations under the License.
  */
 
-package com.android.server.wifi;
+package com.android.server.wifi.p2p;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
-import android.content.Context;
-import android.content.pm.PackageManager;
-import android.net.wifi.util.BuildProperties;
-import android.net.wifi.util.Environment;
-import android.os.Handler;
+import android.net.wifi.WifiContext;
 import android.os.IBinder;
 import android.os.IBinder.DeathRecipient;
 import android.os.RemoteException;
@@ -31,29 +27,28 @@ import android.system.wifi.mainline_supplicant.IMainlineSupplicant;
 import android.util.Log;
 
 import com.android.internal.annotations.VisibleForTesting;
+import com.android.server.wifi.SupplicantStaIfaceHalAidlMainlineImpl;
+import com.android.server.wifi.WifiInjector;
 import com.android.server.wifi.mainline_supplicant.ServiceManagerWrapper;
-import com.android.wifi.flags.Flags;
-
-import java.io.PrintWriter;
 
 /**
- * Implementation of Supplicant STA Iface HAL using the mainline AIDL service.
+ * Implementation of Supplicant P2P Iface HAL using the mainline AIDL service.
  */
-public class SupplicantStaIfaceHalAidlMainlineImpl extends SupplicantStaIfaceHalAidlBase {
-    private static final String TAG = "SupplicantStaIfaceHalAidlMainlineImpl";
+public class SupplicantP2pIfaceHalAidlMainlineImpl extends SupplicantP2pIfaceHalAidlBase {
+    private static final String TAG = "SupplicantP2pIfaceHalAidlMainlineImpl";
     private static final String MAINLINE_SUPPLICANT_SERVICE_NAME = "wifi_mainline_supplicant";
 
+    private final WifiContext mWifiContext;
     private IMainlineSupplicant mIMainlineSupplicant;
     private final boolean mIsServiceAvailable;
     private SupplicantDeathRecipient mSupplicantDeathRecipient;
 
-    public SupplicantStaIfaceHalAidlMainlineImpl(Context context, WifiMonitor monitor,
-            Handler handler, Clock clock, WifiMetrics wifiMetrics, WifiGlobals wifiGlobals,
-            @NonNull SsidTranslator ssidTranslator, WifiInjector wifiInjector) {
-        super(context, monitor, handler, clock, wifiMetrics, wifiGlobals, ssidTranslator,
-                wifiInjector);
+    public SupplicantP2pIfaceHalAidlMainlineImpl(WifiP2pMonitor monitor, WifiInjector wifiInjector)
+    {
+        super(monitor, wifiInjector);
+        mWifiContext = wifiInjector.getContext();
+        mIsServiceAvailable = isServiceAvailableMockable(mWifiContext);
         mSupplicantDeathRecipient = new SupplicantDeathRecipient();
-        mIsServiceAvailable = isServiceAvailableMockable(context);
     }
 
     @Override
@@ -102,84 +97,41 @@ public class SupplicantStaIfaceHalAidlMainlineImpl extends SupplicantStaIfaceHal
         }
     }
 
-    private void supplicantServiceDiedHandler() {
+    @Override
+    protected void supplicantServiceDiedHandler() {
         synchronized (mLock) {
-            clearState();
-            if (mDeathEventHandler != null) {
-                mDeathEventHandler.onDeath();
-            }
+            super.supplicantServiceDiedHandler();
+            // Clear the mainline supplicant reference when the service dies.
+            mIMainlineSupplicant = null;
         }
     }
 
-    @Override
-    protected void clearState() {
-        synchronized (mLock) {
-            super.clearState();
-            mIMainlineSupplicant = null;
-        }
+    @VisibleForTesting
+    protected boolean isServiceAvailableMockable(WifiContext context) {
+        return SupplicantStaIfaceHalAidlMainlineImpl.isServiceAvailable(context);
     }
 
     @Override
     public boolean initialize() {
         synchronized (mLock) {
-            if (isInitializationComplete()) {
-                Log.i(TAG, "Service is already initialized, skipping initialize method");
-                return true;
-            }
-            if (mVerboseLoggingEnabled) {
-                Log.i(TAG, "Checking for IMainlineSupplicant service.");
-            }
-            mISupplicantStaIfaces.clear();
-            return mIsServiceAvailable;
-        }
-    }
-
-    @VisibleForTesting
-    protected boolean isServiceAvailableMockable(Context context) {
-        return isServiceAvailable(context);
-    }
-
-    /**
-     * Check whether the mainline supplicant service can be accessed.
-     */
-    public static boolean isServiceAvailable(Context context) {
-        // Requires an Android 17+ Selinux policy, a copy of the binary, and device support.
-        boolean isEnabledInOverlay = context.getResources().getBoolean(
-                        com.android.wifi.resources.R.bool.config_wifiMainlineSupplicantEnabled);
-        // TODO (b/421247744): Remove the user build check once ready to deploy to user devices.
-        BuildProperties buildProperties = BuildProperties.getInstance();
-        // TODO (b/421247744): Change the SDK check so that this only runs on Android 17+.
-        return isEnabledInOverlay && Environment.isSdkAtLeastB() && Flags.mainlineSupplicant()
-                && Environment.isMainlineSupplicantBinaryInWifiApex()
-                && !isUnsupportedDevice(context) && !buildProperties.isUserBuild();
-    }
-
-    private static boolean isUnsupportedDevice(Context context) {
-        // Avoid starting the process on resource-constrained devices.
-        PackageManager packageManager = context.getPackageManager();
-        return packageManager.hasSystemFeature(PackageManager.FEATURE_WATCH)
-                        || packageManager.hasSystemFeature(PackageManager.FEATURE_EMBEDDED)
-                        || packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
-                        || packageManager.hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE);
-    }
-
-    @Override
-    public boolean startDaemon() {
-        synchronized (mLock) {
-            final String methodStr = "startDaemon";
+            final String methodStr = "initialize";
             if (!mIsServiceAvailable) {
                 Log.e(TAG, "Service cannot be accessed.");
                 return false;
             }
+
             if (isInitializationComplete()) {
                 Log.i(TAG, "Service is already initialized, skipping " + methodStr);
                 return true;
             }
+            mInitializationStarted = true;
+            mISupplicantP2pIface = null;
+            mIMainlineSupplicant = null;
+            mISupplicant = null;
 
-            clearState();
             mIMainlineSupplicant = getNewServiceBinderMockable();
             if (mIMainlineSupplicant == null) {
-                Log.e(TAG, "Unable to retrieve binder from the ServiceManager");
+                Log.e(TAG, "Unable to retrieve binder from the ServiceManager.");
                 return false;
             }
 
@@ -194,10 +146,7 @@ public class SupplicantStaIfaceHalAidlMainlineImpl extends SupplicantStaIfaceHal
 
                 mWaitForDeathLatch = null;
                 mIMainlineSupplicant.asBinder()
-                        .linkToDeath(mSupplicantDeathRecipient, /* flags= */  0);
-                setLogLevel(mVerboseHalLoggingEnabled);
-                registerNonStandardCertCallback();
-
+                        .linkToDeath(mSupplicantDeathRecipient, /* flags= */ 0);
             } catch (RemoteException e) {
                 handleRemoteException(e, methodStr);
                 return false;
@@ -205,7 +154,6 @@ public class SupplicantStaIfaceHalAidlMainlineImpl extends SupplicantStaIfaceHal
                 handleServiceSpecificException(e, methodStr);
                 return false;
             }
-
             Log.i(TAG, "Service was started successfully");
             return true;
         }
@@ -223,16 +171,5 @@ public class SupplicantStaIfaceHalAidlMainlineImpl extends SupplicantStaIfaceHal
         synchronized (mLock) {
             return mIMainlineSupplicant != null && mISupplicant != null;
         }
-    }
-
-    /**
-     * Dump information about the internal state
-     *
-     * @param pw PrintWriter to write the dump to
-     */
-    public void dump(PrintWriter pw) {
-        pw.println("Dump of " + TAG);
-        pw.println("mIMainlineSupplicant: " + (mIMainlineSupplicant != null));
-        super.dump(pw);
     }
 }

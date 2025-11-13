@@ -11028,6 +11028,13 @@ public class WifiManager {
          */
         @RequiresApi(Build.VERSION_CODES.S)
         default void blocklistCurrentBssid(int sessionId) {}
+
+        /**
+         * Called by applications to unblocklist all BSSIDs that were blocked by the external
+         * scorer via {@link #blocklistCurrentBssid(int)}.
+         */
+        @FlaggedApi(Flags.FLAG_FEED_MORE_DATA_TO_EXTERNAL_SCORER)
+        default void unblockAllBssids() {}
     }
 
     /**
@@ -11091,6 +11098,15 @@ public class WifiManager {
             }
             try {
                 mScoreUpdateObserver.blocklistCurrentBssid(sessionId);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+
+        @Override
+        public void unblockAllBssids() {
+            try {
+                mScoreUpdateObserver.unblockAllBssids();
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }

@@ -357,6 +357,26 @@ public class WifiScoreReport {
                         mWifiInfoNoReset.getRssi());
             }
         }
+
+        @Override
+        public void unblockAllBssids() {
+            if (mWifiConnectedNetworkScorerHolder == null) {
+                Log.w(TAG, "Ignoring stale/invalid external input for unblocking all BSSIDs");
+                return;
+            }
+            if (mIsExternalScorerDryRun) {
+                return;
+            }
+            if (!mAdaptiveConnectivityEnabledSettingObserver.get()
+                    || !mWifiSettingsStore.isWifiScoringEnabled()) {
+                if (mVerboseLoggingEnabled) {
+                    Log.d(TAG, "Wifi scoring disabled - Cannot blocklist current BSSID");
+                }
+                return;
+            }
+            mWifiBlocklistMonitor.clearBssidBlocklistForReason(
+                    WifiBlocklistMonitor.REASON_FRAMEWORK_DISCONNECT_CONNECTED_SCORE);
+        }
     }
 
     /**
@@ -500,6 +520,16 @@ public class WifiScoreReport {
                 mScorer.onNetworkSwitchRejected(sessionId, targetNetworkId, targetBssid);
             } catch (RemoteException e) {
                 Log.e(TAG, "Unable to notify network switch rejected for Wifi connected network"
+                        + " scorer " + this, e);
+                revertToDefaultConnectedScorer();
+            }
+        }
+
+        public void onL3DataStallSuspected(int sessionId) {
+            try {
+                mScorer.onL3DataStallSuspected(sessionId);
+            } catch (RemoteException e) {
+                Log.e(TAG, "Unable to notify L3 data stall detected for Wifi connected network"
                         + " scorer " + this, e);
                 revertToDefaultConnectedScorer();
             }
@@ -967,6 +997,16 @@ public class WifiScoreReport {
         }
         mWifiConnectedNetworkScorerHolder.onNetworkSwitchRejected(
                 getCurrentSessionId(), targetNetworkId, targetBssid);
+    }
+
+    /**
+     * Notify the connected network scorer of a L3 data stall.
+     */
+    public void onL3DataStallSuspected() {
+        if (mWifiConnectedNetworkScorerHolder == null) {
+            return;
+        }
+        mWifiConnectedNetworkScorerHolder.onL3DataStallSuspected(getCurrentSessionId());
     }
 
     /**

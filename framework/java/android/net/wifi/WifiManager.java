@@ -8097,9 +8097,9 @@ public class WifiManager {
         void onRestrictionStarted(int subscriptionId);
 
         /**
-         * Called when the Wi-Fi auto-join restriction to subscription ID has stopped.
+         * Called when the Wi-Fi auto-join restriction to all subscription IDs have stopped.
          */
-        void onRestrictionStopped();
+        void onRestrictionsStopped();
     }
 
     /**
@@ -8128,11 +8128,11 @@ public class WifiManager {
         }
 
         @Override
-        public void onRestrictionStopped() {
+        public void onRestrictionsStopped() {
             Log.i(TAG, "RestrictAutoJoinToSubIdCallbackProxy:"
-                    + " onRestrictionStopped");
+                    + " onRestrictionsStopped");
             Binder.clearCallingIdentity();
-            mExecutor.execute(() -> mCallback.onRestrictionStopped());
+            mExecutor.execute(() -> mCallback.onRestrictionsStopped());
         }
     }
 
@@ -11028,6 +11028,27 @@ public class WifiManager {
          */
         @RequiresApi(Build.VERSION_CODES.S)
         default void blocklistCurrentBssid(int sessionId) {}
+
+        /**
+         * Called by applications to unblocklist all BSSIDs that were blocked by the external
+         * scorer via {@link #blocklistCurrentBssid(int)}.
+         */
+        @FlaggedApi(Flags.FLAG_FEED_MORE_DATA_TO_EXTERNAL_SCORER)
+        default void unblockAllBssids() {}
+
+        /**
+         * Called by applications to enable/disable pre-evaluation the next time the current Wi-Fi
+         * network is connected.
+         * During the pre-evaluation stage, the Wi-Fi network is restricted to privileged apps only.
+         * The external scorer app can test the Wi-Fi connection quality during the pre-evaluation
+         * stage to assess whether it meets the current requirement to become default network.
+         *
+         * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
+         *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
+         * @param enabled The boolean representing whether the pre-evaluation is enabled or not.
+         */
+        @FlaggedApi(Flags.FLAG_FEED_MORE_DATA_TO_EXTERNAL_SCORER)
+        default void setPreEvaluationEnabled(int sessionId, boolean enabled) {}
     }
 
     /**
@@ -11091,6 +11112,24 @@ public class WifiManager {
             }
             try {
                 mScoreUpdateObserver.blocklistCurrentBssid(sessionId);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+
+        @Override
+        public void unblockAllBssids() {
+            try {
+                mScoreUpdateObserver.unblockAllBssids();
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+
+        @Override
+        public void setPreEvaluationEnabled(int sessionId, boolean enabled) {
+            try {
+                mScoreUpdateObserver.setPreEvaluationEnabled(sessionId, enabled);
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }

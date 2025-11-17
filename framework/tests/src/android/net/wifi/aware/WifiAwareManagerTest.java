@@ -846,10 +846,12 @@ public class WifiAwareManagerTest {
         collector.checkThat("mTtlSec", subscribeConfig.mTtlSec, equalTo(0));
         collector.checkThat("mEnableTerminateNotification",
                 subscribeConfig.mEnableTerminateNotification, equalTo(true));
-        collector.checkThat("mMinDistanceCmSet", subscribeConfig.mMinDistanceMmSet, equalTo(false));
-        collector.checkThat("mMinDistanceMm", subscribeConfig.mMinDistanceMm, equalTo(0));
-        collector.checkThat("mMaxDistanceMmSet", subscribeConfig.mMaxDistanceMmSet, equalTo(false));
-        collector.checkThat("mMaxDistanceMm", subscribeConfig.mMaxDistanceMm, equalTo(0));
+        collector.checkThat("mMinDistanceCmSet", subscribeConfig.mEgressDistanceMmSet,
+                equalTo(false));
+        collector.checkThat("mMinDistanceMm", subscribeConfig.mEgressDistanceMm, equalTo(0));
+        collector.checkThat("mMaxDistanceMmSet", subscribeConfig.mIngressDistanceMmSet,
+                equalTo(false));
+        collector.checkThat("mMaxDistanceMm", subscribeConfig.mIngressDistanceMm, equalTo(0));
         collector.checkThat("mPeriodicRangingEnabled", subscribeConfig.mPeriodicRangingEnabled,
                 equalTo(false));
         if (SdkLevel.isAtLeastV()) {
@@ -878,8 +880,8 @@ public class WifiAwareManagerTest {
                         .setSubscribeType(subscribeType)
                         .setTtlSec(subscribeTtl)
                         .setTerminateNotificationEnabled(enableTerminateNotification)
-                        .setMinDistanceMm(minDistance)
-                        .setMaxDistanceMm(maxDistance)
+                        .setEgressDistanceMm(minDistance)
+                        .setIngressDistanceMm(maxDistance)
                         .setPeriodicRangingEnabled(true)
                         .setPeriodicRangingInterval(periodicRangingInterval);
         if (SdkLevel.isAtLeastV()) {
@@ -897,14 +899,75 @@ public class WifiAwareManagerTest {
         collector.checkThat("mTtlSec", subscribeTtl, equalTo(subscribeConfig.mTtlSec));
         collector.checkThat("mEnableTerminateNotification", enableTerminateNotification,
                 equalTo(subscribeConfig.mEnableTerminateNotification));
-        collector.checkThat("mMinDistanceMmSet", true, equalTo(subscribeConfig.mMinDistanceMmSet));
-        collector.checkThat("mMinDistanceMm", minDistance, equalTo(subscribeConfig.mMinDistanceMm));
-        collector.checkThat("mMaxDistanceMmSet", true, equalTo(subscribeConfig.mMaxDistanceMmSet));
-        collector.checkThat("mMaxDistanceMm", maxDistance, equalTo(subscribeConfig.mMaxDistanceMm));
+        collector.checkThat("mMinDistanceMmSet", true,
+                equalTo(subscribeConfig.mEgressDistanceMmSet));
+        collector.checkThat("mMinDistanceMm", minDistance,
+                equalTo(subscribeConfig.mEgressDistanceMm));
+        collector.checkThat("mMaxDistanceMmSet", true,
+                equalTo(subscribeConfig.mIngressDistanceMmSet));
+        collector.checkThat("mMaxDistanceMm", maxDistance,
+                equalTo(subscribeConfig.mIngressDistanceMm));
         collector.checkThat("mPeriodicRangingEnabled", true,
                 equalTo(subscribeConfig.mPeriodicRangingEnabled));
         collector.checkThat("mPeriodicRangingInterval", periodicRangingInterval,
                              equalTo(subscribeConfig.mPeriodicRangingInterval));
+        if (SdkLevel.isAtLeastV()) {
+            collector.checkThat("mVendorData", vendorData,
+                    equalTo(subscribeConfig.getVendorData()));
+        }
+    }
+
+    @Test
+    public void testSubscribeConfigBuilderWithIngressEgress() {
+        final String serviceName = "some_service_or_other";
+        final String serviceSpecificInfo = "long arbitrary string with some info";
+        final byte[] matchFilter = { 1, 16, 1, 22 };
+        final int subscribeType = SubscribeConfig.SUBSCRIBE_TYPE_PASSIVE;
+        final int subscribeTtl = 15;
+        final boolean enableTerminateNotification = false;
+        final int ingressDistance = 10;
+        final int egressDistance = 50;
+        final int periodicRangingInterval = SubscribeConfig.PERIODIC_RANGING_INTERVAL_512TU;
+        final List<OuiKeyedData> vendorData = OuiKeyedDataUtil.createTestOuiKeyedDataList(5);
+
+        SubscribeConfig.Builder subscribeConfigBuilder =
+                new SubscribeConfig.Builder().setServiceName(serviceName)
+                        .setServiceSpecificInfo(serviceSpecificInfo.getBytes()).setMatchFilter(
+                                new TlvBufferUtils.TlvIterable(0, 1, matchFilter).toList())
+                        .setSubscribeType(subscribeType)
+                        .setTtlSec(subscribeTtl)
+                        .setTerminateNotificationEnabled(enableTerminateNotification)
+                        .setIngressDistanceMm(ingressDistance)
+                        .setEgressDistanceMm(egressDistance)
+                        .setPeriodicRangingEnabled(true)
+                        .setPeriodicRangingInterval(periodicRangingInterval);
+        if (SdkLevel.isAtLeastV()) {
+            subscribeConfigBuilder.setVendorData(vendorData);
+        }
+        SubscribeConfig subscribeConfig = subscribeConfigBuilder.build();
+
+        collector.checkThat("mServiceName", serviceName.getBytes(),
+                equalTo(subscribeConfig.mServiceName));
+        collector.checkThat("mServiceSpecificInfo",
+                serviceSpecificInfo.getBytes(), equalTo(subscribeConfig.mServiceSpecificInfo));
+        collector.checkThat("mMatchFilter", matchFilter, equalTo(subscribeConfig.mMatchFilter));
+        collector.checkThat("mSubscribeType", subscribeType,
+                equalTo(subscribeConfig.mSubscribeType));
+        collector.checkThat("mTtlSec", subscribeTtl, equalTo(subscribeConfig.mTtlSec));
+        collector.checkThat("mEnableTerminateNotification", enableTerminateNotification,
+                equalTo(subscribeConfig.mEnableTerminateNotification));
+        collector.checkThat("mIngressDistanceMmSet", true,
+                equalTo(subscribeConfig.mIngressDistanceMmSet));
+        collector.checkThat("mIngressDistanceMm", ingressDistance,
+                equalTo(subscribeConfig.mIngressDistanceMm));
+        collector.checkThat("mEgressDistanceMmSet", true,
+                equalTo(subscribeConfig.mEgressDistanceMmSet));
+        collector.checkThat("mEgressDistanceMm", egressDistance,
+                equalTo(subscribeConfig.mEgressDistanceMm));
+        collector.checkThat("mPeriodicRangingEnabled", true,
+                equalTo(subscribeConfig.mPeriodicRangingEnabled));
+        collector.checkThat("mPeriodicRangingInterval", periodicRangingInterval,
+                equalTo(subscribeConfig.mPeriodicRangingInterval));
         if (SdkLevel.isAtLeastV()) {
             collector.checkThat("mVendorData", vendorData,
                     equalTo(subscribeConfig.getVendorData()));
@@ -930,8 +993,8 @@ public class WifiAwareManagerTest {
                         .setSubscribeType(subscribeType)
                         .setTtlSec(subscribeTtl)
                         .setTerminateNotificationEnabled(enableTerminateNotification)
-                        .setMinDistanceMm(minDistance)
-                        .setMaxDistanceMm(maxDistance);
+                        .setEgressDistanceMm(minDistance)
+                        .setIngressDistanceMm(maxDistance);
         if (SdkLevel.isAtLeastV()) {
             subscribeConfigBuilder.setVendorData(vendorData);
         }
@@ -2010,8 +2073,8 @@ public class WifiAwareManagerTest {
     public void testSubscribeConfigAssertValidMinDistanceGreaterThanMaxDistance() {
         SubscribeConfig config = new SubscribeConfig.Builder()
                 .setServiceName("TestService")
-                .setMinDistanceMm(1000)
-                .setMaxDistanceMm(100)
+                .setEgressDistanceMm(1000)
+                .setIngressDistanceMm(100)
                 .build();
         config.assertValid(mCharacteristics, true);
     }

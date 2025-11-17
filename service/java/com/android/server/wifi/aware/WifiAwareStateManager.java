@@ -417,6 +417,10 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
 
     private long mStartTime;
     private int mMaxNdpSessionLimit = 0;
+    /**
+     * Current logged in user ID.
+     */
+    private int mCurrentUserId = UserHandle.SYSTEM.getIdentifier();
 
     private static class PairingInfo {
         public final int mClientId;
@@ -4620,14 +4624,14 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             SubscribeConfig subscribeConfig = completedCommand.getData().getParcelable(
                     MESSAGE_BUNDLE_KEY_CONFIG);
             isRangingEnabled =
-                    subscribeConfig.mMinDistanceMmSet || subscribeConfig.mMaxDistanceMmSet
+                    subscribeConfig.mEgressDistanceMmSet || subscribeConfig.mIngressDistanceMmSet
                             || subscribeConfig.mPeriodicRangingEnabled;
             isSuspendable = SdkLevel.isAtLeastU() && subscribeConfig.isSuspendable();
-            if (subscribeConfig.mMinDistanceMmSet) {
-                minRange = subscribeConfig.mMinDistanceMm;
+            if (subscribeConfig.mEgressDistanceMmSet) {
+                minRange = subscribeConfig.mEgressDistanceMm;
             }
-            if (subscribeConfig.mMaxDistanceMmSet) {
-                maxRange = subscribeConfig.mMaxDistanceMm;
+            if (subscribeConfig.mIngressDistanceMmSet) {
+                maxRange = subscribeConfig.mIngressDistanceMm;
             }
             enableInstantMode = subscribeConfig.isInstantCommunicationModeEnabled();
             instantModeBand = subscribeConfig.getInstantCommunicationBand();
@@ -5936,5 +5940,52 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                 convertFrameworkHalCommandToEnum(command),
                 convertNanStatusCodeToWifiStatsLogEnum(state),
                 (int) (SystemClock.elapsedRealtime() - starTime));
+    }
+
+    /**
+     * Handle user switch event.
+     */
+    public void handleUserSwitch(int userId) {
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "Handling user switch for " + userId);
+        }
+        if (userId == mCurrentUserId) {
+            Log.w(TAG, "User already in foreground " + userId);
+            return;
+        }
+        mCurrentUserId = userId;
+        if (mFeatureFlags.multiUserWifiEnhancement()) {
+            mPairingConfigManager.reset();
+        }
+    }
+
+    /**
+     * Handle user unlock event.
+     */
+    public void handleUserUnlock(int userId) {
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "Handling user unlock for " + userId);
+        }
+        if (userId != mCurrentUserId) {
+            Log.e(TAG, "Ignore user unlock for non current user " + userId);
+            return;
+        }
+        // No specific action needed for the current user on unlock.
+    }
+
+    /**
+     * Handle user stop event.
+     */
+    public void handleUserStop(int userId) {
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "Handling user stop for " + userId);
+        }
+        if (userId != mCurrentUserId) {
+            Log.e(TAG, "Ignore user stop for non current user " + userId);
+            return;
+        }
+        if (mFeatureFlags.multiUserWifiEnhancement()) {
+            mPairingConfigManager.reset();
+        }
     }
 }

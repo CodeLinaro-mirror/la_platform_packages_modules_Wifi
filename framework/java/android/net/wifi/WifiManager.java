@@ -10739,10 +10739,10 @@ public class WifiManager {
                 }
                 ILocalOnlyDisconnectionStatusListener.Stub binderCallback =
                         new LocalOnlyDisconnectionStatusListenerProxy(executor, listener);
-                sLocalOnlyDisconnectionStatusListenerMap.put(System.identityHashCode(listener),
-                        binderCallback);
                 mService.addLocalOnlyDisconnectionStatusListener(binderCallback,
                         mContext.getOpPackageName());
+                sLocalOnlyDisconnectionStatusListenerMap.put(System.identityHashCode(listener),
+                        binderCallback);
             }
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
@@ -10970,8 +10970,7 @@ public class WifiManager {
     @SystemApi
     public interface ScoreUpdateObserver {
         /**
-         * Called by applications to indicate network status. For applications targeting
-         * {@link android.os.Build.VERSION_CODES#S} or above: The score is not used to take action
+         * Called by applications to indicate network status. The score is not used to take action
          * on network selection but for the purpose of Wifi metric collection only; Network
          * selection is influenced by inputs from
          * {@link ScoreUpdateObserver#notifyStatusUpdate(int, boolean)},
@@ -11004,7 +11003,6 @@ public class WifiManager {
          *                 may be sent to ConnectivityService and used for setting default network.
          *                 Populated by connected network scorer in applications.
          */
-        @RequiresApi(Build.VERSION_CODES.S)
         default void notifyStatusUpdate(int sessionId, boolean isUsable) {}
 
         /**
@@ -11016,7 +11014,6 @@ public class WifiManager {
          * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
          *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
          */
-        @RequiresApi(Build.VERSION_CODES.S)
         default void requestNudOperation(int sessionId) {}
 
         /**
@@ -11026,7 +11023,6 @@ public class WifiManager {
          * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
          *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
          */
-        @RequiresApi(Build.VERSION_CODES.S)
         default void blocklistCurrentBssid(int sessionId) {}
 
         /**

@@ -462,8 +462,8 @@ public class WifiInjector {
                         mContext,
                         mWifiKeyStore,
                         mWifiConfigStore,
-                        new NetworkListSharedStoreData(mContext),
-                        new NetworkListUserStoreData(mContext),
+                        new NetworkListSharedStoreData(mContext, mWifiPermissionsUtil),
+                        new NetworkListUserStoreData(mContext, mWifiPermissionsUtil),
                         new RandomizedMacStoreData(),
                         mLruConnectionTracker,
                         this,
@@ -544,7 +544,7 @@ public class WifiInjector {
                 mThroughputPredictor, mActiveModeWarden, mCmiMonitor, mWifiGlobals);
         mWifiMetrics.setWifiDataStall(mWifiDataStall);
         mNetworkPreEvaluationManager = new NetworkPreEvaluationManager(mClock, mWifiDataStall,
-                 mWifiHandler);
+                mWifiGlobals, mWifiHandler);
         mWifiMetrics.setWifiHealthMonitor(mWifiHealthMonitor);
         mWifiP2pConnection = new WifiP2pConnection(mContext, wifiLooper, mActiveModeWarden);
         mConnectHelper = new ConnectHelper(mActiveModeWarden, mWifiConfigManager);
@@ -1021,7 +1021,7 @@ public class WifiInjector {
      */
     public NetworkSuggestionStoreData makeNetworkSuggestionStoreData(
             NetworkSuggestionStoreData.DataSource dataSource) {
-        return new NetworkSuggestionStoreData(dataSource);
+        return new NetworkSuggestionStoreData(dataSource, mWifiPermissionsUtil);
     }
 
     /**

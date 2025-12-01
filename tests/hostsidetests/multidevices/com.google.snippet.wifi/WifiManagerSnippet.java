@@ -63,6 +63,7 @@ import com.android.wifi.flags.Flags;
 
 import com.google.android.mobly.snippet.Snippet;
 import com.google.android.mobly.snippet.bundled.utils.JsonDeserializer;
+import com.google.android.mobly.snippet.bundled.utils.JsonSerializer;
 import com.google.android.mobly.snippet.bundled.utils.Utils;
 import com.google.android.mobly.snippet.event.EventCache;
 import com.google.android.mobly.snippet.event.SnippetEvent;
@@ -108,6 +109,7 @@ public class WifiManagerSnippet extends WifiShellPermissionSnippet implements Sn
     private final ConnectivityManager mConnectivityManager;
     private final Handler mHandler;
     private final Object mLock = new Object();
+    private final JsonSerializer mJsonSerializer = new JsonSerializer();
     private WifiManagerSnippet.SnippetSoftApCallback mSoftApCallback;
     private WifiManager.LocalOnlyHotspotReservation mLocalOnlyHotspotReservation;
     private BroadcastReceiver mWifiStateReceiver;
@@ -839,12 +841,24 @@ public class WifiManagerSnippet extends WifiShellPermissionSnippet implements Sn
             // If location permission is denied, getConnectionInfo() might return a WifiInfo object
             // with UNKNOWN_SSID instead of throwing a SecurityException.
             if (wifiInfo != null && wifiInfo.getSSID().equals(WifiManager.UNKNOWN_SSID)) {
-                if (mContext.checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
-                        != PackageManager.PERMISSION_GRANTED) {
+                boolean hasFineLocation = mContext.checkSelfPermission(
+                        android.Manifest.permission.ACCESS_FINE_LOCATION)
+                        == PackageManager.PERMISSION_GRANTED;
+                boolean hasBackgroundLocation = mContext.checkSelfPermission(
+                        android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                        == PackageManager.PERMISSION_GRANTED;
+                if (!hasFineLocation) {
                     Log.e(TAG, "getConnectionInfo() returned UNKNOWN_SSID, "
-                            + "likely due to missing location permission.");
+                            + "likely due to missing ACCESS_FINE_LOCATION.");
                     return null;
                 }
+                if (!hasBackgroundLocation) {
+                    Log.w(TAG, "getConnectionInfo() returned UNKNOWN_SSID "
+                            + "even with ACCESS_FINE_LOCATION. Check if ACCESS_BACKGROUND_LOCATION "
+                            + " is missing for background operations (API 29+).");
+                    return null;
+                }
+
             }
             return wifiInfo;
         } catch (SecurityException e) {
@@ -1401,5 +1415,27 @@ public class WifiManagerSnippet extends WifiShellPermissionSnippet implements Sn
     @Rpc(description = "Clears the country code for the device.")
     public void clearOverrideWifiCountryCode() {
         executeWithShellPermission(() -> mWifiManager.clearOverrideCountryCode());
+    }
+
+    /**
+     * Gets the list of configured Wi-Fi networks, with each network serialized into a JSONObject.
+     *
+     * <p>This method requires shell permissions to retrieve the list of {@link WifiConfiguration}
+     * objects from the WifiManager.
+     *
+     * @return A list of {@link JSONObject}s, where each object represents a configured Wi-Fi
+     *         network based on the {@link WifiConfiguration} object.
+     * @throws JSONException if an error occurs during the serialization of a WifiConfiguration
+     *         object into a JSONObject.
+     */
+    @Rpc(description = "Get the list of configured Wi-Fi networks with permission,"
+                            + " each is a serialized WifiConfiguration object.")
+    public List<JSONObject> wifiGetConfiguredNetworklist() throws JSONException {
+        List<JSONObject> networks = new ArrayList<>();
+        for (WifiConfiguration config : executeWithShellPermission(
+                ()-> mWifiManager.getConfiguredNetworks())) {
+            networks.add(mJsonSerializer.toJson(config));
+        }
+        return networks;
     }
 }

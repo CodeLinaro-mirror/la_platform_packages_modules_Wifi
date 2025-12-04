@@ -108,7 +108,6 @@ import android.net.wifi.WifiSsid;
 import android.net.wifi.flags.Flags;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
-import android.net.wifi.nl80211.DeviceWiphyCapabilities;
 import android.net.wifi.util.ScanResultUtil;
 import android.os.BatteryStatsManager;
 import android.os.Build;
@@ -159,6 +158,7 @@ import com.android.server.wifi.hotspot2.IconEvent;
 import com.android.server.wifi.hotspot2.NetworkDetail;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.hotspot2.WnmData;
+import com.android.server.wifi.nl80211.DeviceWiphyCapabilities;
 import com.android.server.wifi.p2p.WifiP2pServiceImpl;
 import com.android.server.wifi.proto.WifiStatsLog;
 import com.android.server.wifi.proto.nano.WifiMetricsProto;
@@ -1549,6 +1549,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         }
                     }, mWifiThreadRunner).launchDialog();
         } else {
+            boolean isUserSelectedBeforeOverride = mIsUserSelected;
             if (mIsUserSelected && ATTRIBUTION_TAG_DISALLOW_CONNECT_CHOICE.equals(attributionTag)) {
                 mIsUserSelected = false;
                 logd("connectToUserSelectNetwork attributionTag override to disable user selected");
@@ -1567,6 +1568,13 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     // automatically connecting back to it.
                     mWifiConfigManager.userTemporarilyDisabledNetwork(config.SSID,
                             Process.WIFI_UID);
+                }
+                if (com.android.wifi.flags.Flags.localOnlyDisconnectReason()) {
+                    if (mNetworkFactory.isConnectedToConfig(config)) {
+                        mNetworkFactory.onDisconnectionExpected(
+                                WifiManager.STATUS_LOCAL_ONLY_DISCONNECTION_NEW_CONNECTION,
+                                isUserSelectedBeforeOverride);
+                    }
                 }
             }
             startConnectToNetwork(netId, uid, SUPPLICANT_BSSID_ANY);
@@ -1989,6 +1997,26 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mFrameworkDisconnectReasonOverride =
                 WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__DISCONNECT_GENERAL;
         sendMessage(CMD_DISCONNECT, StaEvent.DISCONNECT_GENERIC);
+    }
+
+    /**
+     * Special version of disconnect for handling API call of {@link WifiManager#disconnect()}
+     * @param uid calling app uid
+     */
+    public void disconnect(int uid) {
+        if (com.android.wifi.flags.Flags.localOnlyDisconnectReason()) {
+            boolean isUserTriggered = mWifiPermissionsUtil.checkNetworkSettingsPermission(uid)
+                    || mWifiPermissionsUtil.checkNetworkSetupWizardPermission(uid);
+            WifiConfiguration config = getConnectedWifiConfigurationInternal();
+            if (mNetworkFactory.isConnectedToConfig(config)) {
+                // TODO (b/449257685): Add dialog to ask for user confirmation if this is user
+                // triggered.
+                mNetworkFactory.onDisconnectionExpected(
+                        WifiManager.STATUS_LOCAL_ONLY_DISCONNECTION_DISCONNECT_API,
+                        isUserTriggered);
+            }
+        }
+        disconnect();
     }
 
     /**
@@ -3612,6 +3640,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             }
         } else {
             stopDhcpSetup();
+        }
+
+        if (com.android.wifi.flags.Flags.localOnlyDisconnectReason()
+                && mNetworkFactory.isConnectedToConfig(getConnectedWifiConfigurationInternal())) {
+            mNetworkFactory.onDisconnectionExpected(
+                    WifiManager.STATUS_LOCAL_ONLY_DISCONNECTION_UNKNOWN, false);
         }
 
         // DISASSOC_AP_BUSY could be received in both after L3 connection is successful or right

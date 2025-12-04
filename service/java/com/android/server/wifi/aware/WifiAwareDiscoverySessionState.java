@@ -562,16 +562,17 @@ public class WifiAwareDiscoverySessionState {
      *                      match indication).
      * @param method        proposed bootstrapping method
      * @param isComeBack    If the request is for a previous comeback response
+     * @param ssi           Service specific information
      * @return True if the request send succeed.
      */
     public boolean initiateBootstrapping(short transactionId,
-            int peerId, int method, byte[] cookie, boolean isComeBack) {
+            int peerId, int method, byte[] cookie, boolean isComeBack, byte[] ssi) {
         PeerInfo peerInfo = mPeerInfoByRequestorInstanceId.get(peerId);
         if (peerInfo == null) {
             Log.e(TAG, "initiateBootstrapping: attempting to send pairing request to an address"
                     + " which didn't match/contact us");
             try {
-                mCallback.onBootstrappingVerificationConfirmed(peerId, false, method);
+                mCallback.onBootstrappingVerificationConfirmed(peerId, false, method, null);
             } catch (RemoteException e) {
                 Log.e(TAG, "initiateBootstrapping: RemoteException=" + e);
             }
@@ -579,10 +580,10 @@ public class WifiAwareDiscoverySessionState {
         }
 
         boolean success = mWifiAwareNativeApi.initiateBootstrapping(transactionId,
-                peerInfo.mInstanceId, peerInfo.mMac, method, cookie, mPubSubId, isComeBack);
+                peerInfo.mInstanceId, peerInfo.mMac, method, cookie, mPubSubId, isComeBack, ssi);
         if (!success) {
             try {
-                mCallback.onBootstrappingVerificationConfirmed(peerId, false, method);
+                mCallback.onBootstrappingVerificationConfirmed(peerId, false, method, null);
             } catch (RemoteException e) {
                 Log.e(TAG, "initiateBootstrapping: RemoteException=" + e);
             }
@@ -769,7 +770,7 @@ public class WifiAwareDiscoverySessionState {
      */
     public void onBootStrappingConfirmReceived(int peerId, boolean accept, int method) {
         try {
-            mCallback.onBootstrappingVerificationConfirmed(peerId, accept, method);
+            mCallback.onBootstrappingVerificationConfirmed(peerId, accept, method, null);
         } catch (RemoteException e) {
             Log.w(TAG, "onBootStrappingConfirmReceived: RemoteException (FYI): " + e);
         }
@@ -778,10 +779,11 @@ public class WifiAwareDiscoverySessionState {
     /**
      * Event that response to bootstrapping request success
      */
-    public void onBootstrappingResponseConfirmed(int peerId, int method) {
+    public void onBootstrappingResponseConfirmed(int peerId, int method,
+            byte[] serviceSpecificInfo) {
         try {
             mCallback.onBootstrappingVerificationConfirmed(peerId, true,
-                    getMatchedBootstrappingMethod(method));
+                    getMatchedBootstrappingMethod(method), serviceSpecificInfo);
         } catch (RemoteException e) {
             Log.w(TAG, "onBootstrappingResponseConfirmed: RemoteException (FYI): " + e);
         }

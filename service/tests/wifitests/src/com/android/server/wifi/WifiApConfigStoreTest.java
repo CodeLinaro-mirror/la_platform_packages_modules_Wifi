@@ -31,6 +31,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 import static org.mockito.ArgumentMatchers.eq;
@@ -45,7 +46,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.withSettings;
 
-import android.app.ActivityManager;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.net.MacAddress;
@@ -67,6 +67,7 @@ import androidx.test.filters.SmallTest;
 
 import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import com.android.modules.utils.build.SdkLevel;
+import com.android.server.wifi.util.WifiPermissionsUtil;
 import com.android.wifi.flags.Flags;
 import com.android.wifi.resources.R;
 
@@ -130,6 +131,7 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
     @Mock private HalDeviceManager mHalDeviceManager;
     @Mock private WifiSettingsConfigStore mWifiSettingsConfigStore;
     @Mock private UserManager mUserManager;
+    @Mock WifiPermissionsUtil mWifiPermissionsUtil;
 
     private Random mRandom;
     private MockResourceCache mResources;
@@ -151,15 +153,15 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
         // static mocking
         mSession = ExtendedMockito.mockitoSession()
                 .mockStatic(Flags.class, withSettings().lenient())
-                .mockStatic(ActivityManager.class, withSettings().lenient())
                 .strictness(Strictness.LENIENT)
                 .startMocking();
         mMockApplInfo.targetSdkVersion = Build.VERSION_CODES.P;
-        when(ActivityManager.getCurrentUser()).thenReturn(TEST_USER_ID);
         when(mContext.getApplicationInfo()).thenReturn(mMockApplInfo);
         when(mWifiInjector.getUserManager()).thenReturn(mUserManager);
         when(mWifiInjector.getSettingsConfigStore()).thenReturn(mWifiSettingsConfigStore);
         when(mWifiInjector.getHalDeviceManager()).thenReturn(mHalDeviceManager);
+        when(mWifiInjector.getWifiPermissionsUtil()).thenReturn(mWifiPermissionsUtil);
+        when(mWifiPermissionsUtil.getCurrentUser()).thenReturn(TEST_USER_ID);
         // Default assume true for all old test cases.
         when(mHalDeviceManager.isConcurrencyComboLoadedFromDriver()).thenReturn(true);
         /* Setup expectations for Resources to return some default settings. */
@@ -1726,5 +1728,71 @@ public class WifiApConfigStoreTest extends WifiBaseTest {
         verifyDefaultApConfig(store.getApConfiguration(), TEST_DEFAULT_AP_SSID);
         mLooper.dispatchAll();
         verify(mWifiConfigManager).saveToStore();
+    }
+
+    @Test
+    public void testUserSwitchResetsUserSessionData() throws Exception {
+        assumeTrue(Environment.isSdkNewerThanB());
+        when(Flags.multiUserWifiEnhancement()).thenReturn(true);
+        final SoftApConfiguration expectedConfig = setupApConfig(
+                "ConfiguredAP",                   /* SSID */
+                "randomKey",                      /* preshared key */
+                SECURITY_TYPE_WPA2_PSK,           /* security type */
+                SoftApConfiguration.BAND_2GHZ,    /* AP band */
+                0,                                /* AP channel */
+                true                              /* Hidden SSID */);
+        WifiApConfigStore store = createWifiApConfigStore();
+        verify(mWifiInjector).makeUserSoftApStoreData(mDataStoreSource);
+
+        // Setup data for an existing user.
+        mDataStoreSource.fromDeserialized(expectedConfig);
+        assertEquals(expectedConfig.getPassphrase(),
+                store.getLastConfiguredTetheredApPassphraseSinceBoot());
+        verifyApConfig(expectedConfig, store.getApConfiguration());
+
+        // When switching to a new user, WifiConfigStore#handleUserSwitch will reset data for the
+        // old user before loading data for the new user. Note WifiApConfigStore#handleUserSwitch
+        // only updates the userId and is trivial for now, so it is not covered here.
+        mDataStoreSource.reset();
+        assertNull(store.getLastConfiguredTetheredApPassphraseSinceBoot());
+        assertFalse(mDataStoreSource.hasNewDataToSerialize());
+    }
+
+    @Test
+    public void testUserStopResetsUserSessionData() throws Exception {
+        assumeTrue(Environment.isSdkNewerThanB());
+        when(Flags.multiUserWifiEnhancement()).thenReturn(true);
+        final SoftApConfiguration expectedConfig = setupApConfig(
+                "ConfiguredAP",                   /* SSID */
+                "randomKey",                      /* preshared key */
+                SECURITY_TYPE_WPA2_PSK,           /* security type */
+                SoftApConfiguration.BAND_2GHZ,    /* AP band */
+                0,                                /* AP channel */
+                true                              /* Hidden SSID */);
+        WifiApConfigStore store = createWifiApConfigStore();
+        verify(mWifiInjector).makeUserSoftApStoreData(mDataStoreSource);
+
+        // Setup data for an existing user.
+        mDataStoreSource.fromDeserialized(expectedConfig);
+        store.handleUserSwitch(TEST_USER_ID);
+        // Re-add SoftApConfiguration so that mHasNewDataToSerialize updates to true for testing.
+        store.setApConfiguration(store.getApConfiguration());
+        assertEquals(expectedConfig.getPassphrase(),
+                store.getLastConfiguredTetheredApPassphraseSinceBoot());
+        assertTrue(mDataStoreSource.hasNewDataToSerialize());
+        verifyApConfig(expectedConfig, store.getApConfiguration());
+
+        // User-stop for a non-current user does nothing.
+        store.handleUserStop(TEST_USER_ID + 1);
+        assertEquals(expectedConfig.getPassphrase(),
+                store.getLastConfiguredTetheredApPassphraseSinceBoot());
+        assertTrue(mDataStoreSource.hasNewDataToSerialize());
+        verifyApConfig(expectedConfig, store.getApConfiguration());
+
+        // User-stop for the current user.
+        store.handleUserStop(TEST_USER_ID);
+        assertNull(store.getLastConfiguredTetheredApPassphraseSinceBoot());
+        assertFalse(mDataStoreSource.hasNewDataToSerialize());
+        verifyDefaultApConfig(store.getApConfiguration(), TEST_DEFAULT_AP_SSID);
     }
 }

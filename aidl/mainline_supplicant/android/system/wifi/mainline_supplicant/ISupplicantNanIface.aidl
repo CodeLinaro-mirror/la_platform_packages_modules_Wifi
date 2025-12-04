@@ -17,12 +17,17 @@
 package android.system.wifi.mainline_supplicant;
 
 import android.system.wifi.mainline_supplicant.ISupplicantNanIfaceEventCallback;
+import android.system.wifi.mainline_supplicant.NanConfigRequest;
+import android.system.wifi.mainline_supplicant.NanEnableRequest;
+import android.system.wifi.mainline_supplicant.NanPublishRequest;
+import android.system.wifi.mainline_supplicant.NanSubscribeRequest;
+import android.system.wifi.mainline_supplicant.NanTransmitFollowupRequest;
 
 /**
  * Interface used to represent a single NAN (Neighbour Aware Network) iface.
  *
- * References to "NAN Spec" are to the Wi-Fi Alliance "Wi-Fi Neighbor Awareness Networking
- * (NAN) Technical Specification".
+ * References to "NAN Spec" are to the Wi-Fi Alliance "Wi-Fi Neighbor Awareness Networking (NAN)
+ * Technical Specification".
  */
 interface ISupplicantNanIface {
     /**
@@ -30,9 +35,9 @@ interface ISupplicantNanIface {
      * register multiple callbacks, each of which must receive all events.
      *
      * @param callback An instance of the |ISupplicantNanIfaceEventCallback| AIDL interface
-     * object.
+     *        object.
      * @throws ServiceSpecificException with one of the following values:
-     *         |WifiStatusCode.ERROR_WIFI_IFACE_INVALID|
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|
      */
     void registerEventCallback(in ISupplicantNanIfaceEventCallback callback);
 
@@ -42,8 +47,156 @@ interface ISupplicantNanIface {
      *
      * @param cmdId Command Id to use for this invocation.
      * @throws ServiceSpecificException with one of the following values:
-     *         |WifiStatusCode.ERROR_WIFI_IFACE_INVALID|,
-     *         |WifiStatusCode.ERROR_UNKNOWN|
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
      */
     void getCapabilitiesRequest(in char cmdId);
+
+    /**
+     * Configures and activates NAN clustering (does not start a discovery session or set up
+     * data-interfaces or data-paths). Uses the |ISupplicantNanIface.configureRequest| method to
+     * change the configuration of an already enabled NAN interface.
+     * Asynchronous response is with
+     * |ISupplicantNanIfaceEventCallback.notifyEnableResponse|.
+     *
+     * @param cmdId Command Id to use for this invocation.
+     * @param msg1 Instance of |NanEnableRequest|.
+     * @param msg2 Instance of |NanConfigRequest|.
+     * @throws ServiceSpecificException with one of the following values:
+     *         |SupplicantStatusCode.FAILURE_UNSUPPORTED|,
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_ARGS_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
+     */
+    void enableRequest(in char cmdId, in NanEnableRequest msg1,
+                       in NanConfigRequest msg2);
+
+    /**
+     * Configures an existing NAN functionality (i.e. assumes |ISupplicantNanIface.enableRequest|
+     * already submitted and succeeded). Asynchronous response is with
+     * |ISupplicantNanIfaceEventCallback.notifyConfigResponse|.
+     *
+     * @param cmdId Command Id to use for this invocation.
+     * @param msg Instance of |NanConfigRequest|.
+     * @throws ServiceSpecificException with one of the following values:
+     *         |SupplicantStatusCode.FAILURE_UNSUPPORTED|,
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_ARGS_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
+     */
+    void configRequest(in char cmdId, in NanConfigRequest msg);
+
+    /**
+     * Disables NAN functionality.
+     * Asynchronous response is with |ISupplicantNanIfaceEventCallback.notifyDisableResponse|.
+     *
+     * @param cmdId Command Id to use for this invocation.
+     * @throws ServiceSpecificException with one of the following values:
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
+     */
+    void disableRequest(in char cmdId);
+
+    /**
+     * Creates a NAN Data Interface.
+     * Asynchronous response is with
+     * |ISupplicantNanIfaceEventCallback.notifyCreateDataInterfaceResponse|.
+     *
+     * @param cmdId Command Id to use for this invocation.
+     * @param ifaceName The name of the interface, e.g. "aware0".
+     * @throws ServiceSpecificException with one of the following values:
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
+     */
+    void createDataInterfaceRequest(in char cmdId, in String ifaceName);
+
+    /**
+     * Deletes a NAN Data Interface.
+     * Asynchronous response is with
+     * |ISupplicantNanIfaceEventCallback.notifyDeleteDataInterfaceResponse|.
+     *
+     * @param cmdId Command Id to use for this invocation.
+     * @param ifaceName The name of the interface, e.g. "aware0".
+     * @throws ServiceSpecificException with one of the following values:
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
+     */
+    void deleteDataInterfaceRequest(in char cmdId, in String ifaceName);
+
+    /**
+     * Gets the name of this iface.
+     *
+     * @return Name of this iface.
+     * @throws ServiceSpecificException with one of the following values:
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|
+     */
+    String getName();
+
+    /**
+     * Publish request to start advertising a discovery service.
+     * Asynchronous response is with
+     * |ISupplicantNanIfaceEventCallback.notifyStartPublishResponse|.
+     *
+     * @param cmdId Command Id to use for this invocation.
+     * @param msg Instance of |NanPublishRequest|.
+     * @throws ServiceSpecificException with one of the following values:
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_ARGS_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
+     */
+    void startPublishRequest(in char cmdId, in NanPublishRequest msg);
+
+    /**
+     * Subscribe request to start searching for a discovery service.
+     * Asynchronous response is with
+     * |ISupplicantNanIfaceEventCallback.notifyStartSubscribeResponse|.
+     *
+     * @param cmdId Command Id to use for this invocation.
+     * @param msg Instance of |NanSubscribeRequest|.
+     * @throws ServiceSpecificException with one of the following values:
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_ARGS_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
+     */
+    void startSubscribeRequest(in char cmdId, in NanSubscribeRequest msg);
+
+    /**
+     * Stop publishing a discovery service.
+     * Asynchronous response is with
+     * |ISupplicantNanIfaceEventCallback.notifyStopPublishResponse|.
+     *
+     * @param cmdId Command Id to use for this invocation.
+     * @param sessionId ID of the publish discovery session to be stopped.
+     * @throws ServiceSpecificException with one of the following values:
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
+     */
+    void stopPublishRequest(in char cmdId, in byte sessionId);
+
+    /**
+     * Stop subscribing to a discovery service.
+     * Asynchronous response is with
+     * |ISupplicantNanIfaceEventCallback.notifyStopSubscribeResponse|.
+     *
+     * @param cmdId Command Id to use for this invocation.
+     * @param sessionId ID of the subscribe discovery session to be stopped.
+     * @throws ServiceSpecificException with one of the following values:
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
+     */
+    void stopSubscribeRequest(in char cmdId, in byte sessionId);
+
+    /**
+     * NAN transmit follow up message request.
+     * Asynchronous response is with
+     * |ISupplicantNanIfaceEventCallback.notifyTransmitFollowupResponse|.
+     *
+     * @param cmdId Command Id to use for this invocation.
+     * @param msg Instance of |NanTransmitFollowupRequest|.
+     * @throws ServiceSpecificException with one of the following values:
+     *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_ARGS_INVALID|,
+     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
+     */
+    void transmitFollowupRequest(in char cmdId, in NanTransmitFollowupRequest msg);
 }

@@ -648,10 +648,10 @@ public class WifiInjector {
 
         mTwtManager = new TwtManager(this, mCmiMonitor, mWifiNative, mWifiHandler, mClock,
                 WifiTwtSession.MAX_TWT_SESSIONS, 1);
-        mBackupRestoreController = new BackupRestoreController(mWifiSettingsBackupRestore, mClock);
-        if (mFeatureFlags.voipDetectionBugfix() && SdkLevel.isAtLeastV()
-                && Flags.passCopiedCallStateList() && mContext.getResources().getBoolean(
-                R.bool.config_wifiVoipDetectionEnabled)) {
+        mBackupRestoreController =
+                new BackupRestoreController(mWifiSettingsBackupRestore, mClock);
+        if (SdkLevel.isAtLeastV() && Flags.passCopiedCallStateList()
+                && mContext.getResources().getBoolean(R.bool.config_wifiVoipDetectionEnabled)) {
             mWifiVoipDetector = new WifiVoipDetector(mContext, mWifiHandler, this,
                     mWifiCarrierInfoManager);
         } else {
@@ -727,6 +727,7 @@ public class WifiInjector {
         mMultiInternetWifiNetworkFactory.enableVerboseLogging(verboseEnabled);
         mWifiRoamingModeManager.enableVerboseLogging(verboseEnabled);
         mWifiHandler.enableVerboseLogging(verboseEnabled);
+        mWifiApConfigStore.enableVerboseLogging(verboseEnabled);
     }
 
     public UserManager getUserManager() {

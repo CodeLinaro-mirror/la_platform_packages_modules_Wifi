@@ -143,7 +143,6 @@ import android.net.wifi.WifiSsid;
 import android.net.wifi.flags.Flags;
 import android.net.wifi.hotspot2.IProvisioningCallback;
 import android.net.wifi.hotspot2.OsuProvider;
-import android.net.wifi.nl80211.DeviceWiphyCapabilities;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.net.wifi.util.ScanResultUtil;
 import android.os.BatteryStatsManager;
@@ -183,6 +182,7 @@ import com.android.server.wifi.hotspot2.NetworkDetail;
 import com.android.server.wifi.hotspot2.PasspointManager;
 import com.android.server.wifi.hotspot2.PasspointProvisioningTestUtil;
 import com.android.server.wifi.hotspot2.WnmData;
+import com.android.server.wifi.nl80211.DeviceWiphyCapabilities;
 import com.android.server.wifi.p2p.WifiP2pServiceImpl;
 import com.android.server.wifi.proto.nano.WifiMetricsProto;
 import com.android.server.wifi.proto.nano.WifiMetricsProto.StaEvent;
@@ -729,6 +729,7 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         // static mocking
         mSession = ExtendedMockito.mockitoSession().strictness(Strictness.LENIENT)
+                .mockStatic(com.android.wifi.flags.Flags.class, withSettings().lenient())
                 .mockStatic(WifiInjector.class, withSettings().lenient())
                 .spyStatic(MacAddress.class)
                 .startMocking();
@@ -6721,6 +6722,7 @@ public class ClientModeImplTest extends WifiBaseTest {
      */
     @Test
     public void verifyWifiInfoGetNetworkSpecifierPackageName() throws Exception {
+        when(com.android.wifi.flags.Flags.localOnlyDisconnectReason()).thenReturn(true);
         mConnectedNetwork.fromWifiNetworkSpecifier = true;
         mConnectedNetwork.ephemeral = true;
         mConnectedNetwork.trusted = true;
@@ -6737,6 +6739,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         verify(mWifiConfigManager, never()).userTemporarilyDisabledNetwork(
                 eq(mConnectedNetwork.SSID), anyInt());
         // Setup new manual connection to another network
+        when(mWifiNetworkFactory.isConnectedToConfig(mConnectedNetwork)).thenReturn(true);
         WifiConfiguration config = WifiConfigurationTestUtil.createPskSaeNetwork();
         config.networkId = TEST_NETWORK_ID;
         when(mWifiConfigManager.getConfiguredNetwork(TEST_NETWORK_ID)).thenReturn(config);
@@ -6753,6 +6756,15 @@ public class ClientModeImplTest extends WifiBaseTest {
         // blocklist
         verify(mWifiConfigManager).userTemporarilyDisabledNetwork(eq(mConnectedNetwork.SSID),
                 anyInt());
+        verify(mWifiNetworkFactory).onDisconnectionExpected(
+                WifiManager.STATUS_LOCAL_ONLY_DISCONNECTION_NEW_CONNECTION, true);
+
+        DisconnectEventInfo disconnectEventInfo =
+                new DisconnectEventInfo(TEST_SSID, TEST_BSSID_STR, 0, false);
+        mCmi.sendMessage(WifiMonitor.NETWORK_DISCONNECTION_EVENT, disconnectEventInfo);
+        mLooper.dispatchAll();
+        verify(mWifiNetworkFactory).onDisconnectionExpected(
+                WifiManager.STATUS_LOCAL_ONLY_DISCONNECTION_UNKNOWN, false);
     }
 
     /**
@@ -7736,6 +7748,41 @@ public class ClientModeImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         assertEquals(mWifiInfo.getSupplicantState(), SupplicantState.DISCONNECTED);
+    }
+
+    @Test
+    public void verifyDisconnectWithUid_FlagEnabled() {
+        when(com.android.wifi.flags.Flags.localOnlyDisconnectReason()).thenReturn(true);
+        // test user triggered disconnect
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(TEST_UID)).thenReturn(true);
+        when(mWifiNetworkFactory.isConnectedToConfig(any())).thenReturn(true);
+        mCmi.disconnect(TEST_UID);
+        verify(mWifiNetworkFactory).onDisconnectionExpected(
+                WifiManager.STATUS_LOCAL_ONLY_DISCONNECTION_DISCONNECT_API, true);
+
+        // test non user triggered disconnect
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(TEST_UID)).thenReturn(false);
+        when(mWifiPermissionsUtil.checkNetworkSetupWizardPermission(TEST_UID)).thenReturn(false);
+        mCmi.disconnect(TEST_UID);
+        verify(mWifiNetworkFactory).onDisconnectionExpected(
+                WifiManager.STATUS_LOCAL_ONLY_DISCONNECTION_DISCONNECT_API, false);
+    }
+
+    @Test
+    public void verifyDisconnectWithUid_FlagDisabled() {
+        when(com.android.wifi.flags.Flags.localOnlyDisconnectReason()).thenReturn(false);
+        // test user triggered disconnect; should not trigger onDisconnectionExpected since flag
+        // is disabled
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(TEST_UID)).thenReturn(true);
+        when(mWifiNetworkFactory.isConnectedToConfig(any())).thenReturn(true);
+        mCmi.disconnect(TEST_UID);
+        verify(mWifiNetworkFactory, never()).onDisconnectionExpected(anyInt(), anyBoolean());
+
+        // test non user triggered disconnect; should not trigger onDisconnectionExpected since
+        // flag is disabled
+        when(mWifiPermissionsUtil.checkNetworkSettingsPermission(TEST_UID)).thenReturn(false);
+        mCmi.disconnect(TEST_UID);
+        verify(mWifiNetworkFactory, never()).onDisconnectionExpected(anyInt(), anyBoolean());
     }
 
     @Test

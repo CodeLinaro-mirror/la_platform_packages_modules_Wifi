@@ -48,6 +48,7 @@ import android.app.admin.WifiSsidPolicy;
 import android.compat.annotation.ChangeId;
 import android.compat.annotation.EnabledAfter;
 import android.compat.annotation.UnsupportedAppUsage;
+import android.content.AttributionSource;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
@@ -2415,7 +2416,7 @@ public class WifiManager {
             Bundle extras = new Bundle();
             if (SdkLevel.isAtLeastS()) {
                 extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
+                        getAttributionSourceInternal());
             }
             ParceledListSlice<WifiConfiguration> parceledList =
                     mService.getPrivilegedConfiguredNetworks(mContext.getOpPackageName(),
@@ -2427,6 +2428,13 @@ public class WifiManager {
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.S)
+    private AttributionSource getAttributionSourceInternal() {
+        return SdkLevel.isAtLeastU()
+                ? mContext.createDeviceContext(Context.DEVICE_ID_DEFAULT).getAttributionSource()
+                : mContext.getAttributionSource();
     }
 
     /**
@@ -2461,7 +2469,7 @@ public class WifiManager {
             Bundle extras = new Bundle();
             if (SdkLevel.isAtLeastS()) {
                 extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
+                        getAttributionSourceInternal());
             }
             return mService.getPrivilegedConnectedNetwork(mContext.getOpPackageName(),
                     mContext.getAttributionTag(), extras);
@@ -3352,9 +3360,8 @@ public class WifiManager {
         Bundle extras = new Bundle();
         if (SdkLevel.isAtLeastS()) {
             extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                    mContext.getAttributionSource());
+                    getAttributionSourceInternal());
         }
-
         try {
             return mService.addOrUpdateNetwork(config, mContext.getOpPackageName(), extras);
         } catch (RemoteException e) {
@@ -4964,7 +4971,7 @@ public class WifiManager {
         try {
             Bundle extras = new Bundle();
             extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                    mContext.getAttributionSource());
+                    getAttributionSourceInternal());
             mService.getChannelData(new IListListener.Stub() {
                 @Override
                 public void onResult(List value) {
@@ -6379,7 +6386,7 @@ public class WifiManager {
                 Bundle extras = new Bundle();
                 if (SdkLevel.isAtLeastS()) {
                     extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                            mContext.getAttributionSource());
+                            getAttributionSourceInternal());
                 }
                 int returnCode = mService.startLocalOnlyHotspot(proxy, packageName, featureId,
                         config, extras, isCalledFromSystemApi);
@@ -6490,7 +6497,7 @@ public class WifiManager {
                         binderCallback);
                 Bundle extras = new Bundle();
                 extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
+                        getAttributionSourceInternal());
                 mService.registerLocalOnlyHotspotSoftApCallback(binderCallback, extras);
             }
         } catch (RemoteException e) {
@@ -6527,7 +6534,7 @@ public class WifiManager {
                 }
                 Bundle extras = new Bundle();
                 extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
+                        getAttributionSourceInternal());
                 mService.unregisterLocalOnlyHotspotSoftApCallback(
                         sLocalOnlyHotspotSoftApCallbackMap.get(callbackIdentifier), extras);
                 sLocalOnlyHotspotSoftApCallbackMap.remove(callbackIdentifier);
@@ -7870,7 +7877,7 @@ public class WifiManager {
             Bundle extras = new Bundle();
             if (SdkLevel.isAtLeastS()) {
                 extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
+                        getAttributionSourceInternal());
             }
             mService.connect(config, networkId, listenerProxy, mContext.getOpPackageName(), extras);
         } catch (RemoteException e) {
@@ -8276,7 +8283,7 @@ public class WifiManager {
             Bundle extras = new Bundle();
             if (SdkLevel.isAtLeastS()) {
                 extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
+                        getAttributionSourceInternal());
             }
             mService.allowAutojoinGlobal(allowAutojoin, mContext.getOpPackageName(), extras);
         } catch (RemoteException e) {
@@ -8502,7 +8509,7 @@ public class WifiManager {
                         Bundle extras = new Bundle();
                         if (SdkLevel.isAtLeastS()) {
                             extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                                    mContext.getAttributionSource());
+                                    getAttributionSourceInternal());
                         }
                         mService.acquireWifiLock(mBinder, mLockType, mTag, mWorkSource,
                                 mContext.getOpPackageName(), extras);
@@ -8604,7 +8611,7 @@ public class WifiManager {
                         Bundle extras = new Bundle();
                         if (SdkLevel.isAtLeastS()) {
                             extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                                    mContext.getAttributionSource());
+                                    getAttributionSourceInternal());
                         }
                         mService.updateWifiLockWorkSource(mBinder, mWorkSource,
                                 mContext.getOpPackageName(), extras);
@@ -12026,10 +12033,8 @@ public class WifiManager {
         }
         try {
             Bundle extras = new Bundle();
-            if (SdkLevel.isAtLeastS()) {
-                extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
-            }
+            extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                    getAttributionSourceInternal());
             return mService.getUsableChannels(band, mode,
                     WifiAvailableChannel.FILTER_REGULATORY, mContext.getOpPackageName(), extras);
         } catch (RemoteException e) {
@@ -12080,10 +12085,8 @@ public class WifiManager {
         }
         try {
             Bundle extras = new Bundle();
-            if (SdkLevel.isAtLeastS()) {
-                extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
-            }
+            extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                    getAttributionSourceInternal());
             return mService.getUsableChannels(band, mode,
                     WifiAvailableChannel.getUsableFilter(), mContext.getOpPackageName(), extras);
         } catch (RemoteException e) {
@@ -13030,7 +13033,7 @@ public class WifiManager {
             Bundle extras = new Bundle();
             if (SdkLevel.isAtLeastS()) {
                 extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
+                        getAttributionSourceInternal());
             }
             mService.getMaxMloAssociationLinkCount(new IIntegerListener.Stub() {
                 @Override
@@ -13077,7 +13080,7 @@ public class WifiManager {
             Bundle extras = new Bundle();
             if (SdkLevel.isAtLeastS()) {
                 extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
+                        getAttributionSourceInternal());
             }
             mService.getMaxMloStrLinkCount(new IIntegerListener.Stub() {
                 @Override
@@ -13121,7 +13124,7 @@ public class WifiManager {
             Bundle extras = new Bundle();
             if (SdkLevel.isAtLeastS()) {
                 extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
+                        getAttributionSourceInternal());
             }
             mService.getSupportedSimultaneousBandCombinations(new IWifiBandsListener.Stub() {
                 @Override
@@ -13516,7 +13519,7 @@ public class WifiManager {
         try {
             Bundle extras = new Bundle();
             extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                    mContext.getAttributionSource());
+                    getAttributionSourceInternal());
             mService.getTwtCapabilities(
                     new ITwtCapabilitiesListener.Stub() {
                         @Override
@@ -13612,7 +13615,7 @@ public class WifiManager {
             ITwtCallback.Stub binderCallback = new TwtCallbackProxy(executor, callback);
             Bundle extras = new Bundle();
             extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                    mContext.getAttributionSource());
+                    getAttributionSourceInternal());
             mService.setupTwtSession(twtRequest, binderCallback, extras);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
@@ -13646,10 +13649,8 @@ public class WifiManager {
         }
         try {
             Bundle extras = new Bundle();
-            if (SdkLevel.isAtLeastS()) {
-                extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
-            }
+            extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                    getAttributionSourceInternal());
             mService.getStatsTwtSession(sessionId,
                     new ITwtStatsListener.Stub() {
                         @Override
@@ -13683,10 +13684,8 @@ public class WifiManager {
         }
         try {
             Bundle extras = new Bundle();
-            if (SdkLevel.isAtLeastS()) {
-                extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
-            }
+            extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                    getAttributionSourceInternal());
             mService.teardownTwtSession(sessionId, extras);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
@@ -13810,7 +13809,7 @@ public class WifiManager {
         try {
             Bundle extras = new Bundle();
             extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                    mContext.getAttributionSource());
+                    getAttributionSourceInternal());
             int restrictionBitmap = 0;
             for (int securityType : restrictions) {
                 restrictionBitmap |= 0x1 << securityType;
@@ -13848,7 +13847,7 @@ public class WifiManager {
         try {
             Bundle extras = new Bundle();
             extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                    mContext.getAttributionSource());
+                    getAttributionSourceInternal());
             mService.getAutojoinDisallowedSecurityTypes(new IIntegerListener.Stub() {
                 @Override
                 public void onResult(int value) {
@@ -13989,7 +13988,7 @@ public class WifiManager {
         Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
         Bundle extras = new Bundle();
         extras.putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                mContext.getAttributionSource());
+                getAttributionSourceInternal());
         try {
             mService.queryPrivilegedConfiguredNetworks(
                     new IPrivilegedConfiguredNetworksListener.Stub() {

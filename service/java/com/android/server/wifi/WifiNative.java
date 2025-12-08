@@ -1414,7 +1414,7 @@ public class WifiNative {
      */
     public Iface createNanIface(
             HalDeviceManager.InterfaceDestroyedListener nanInterfaceDestroyedListener,
-            Handler handler, WorkSource requestorWs) {
+            Handler handler, WorkSource requestorWs, boolean skipHalCreation) {
         synchronized (mLock) {
             // Make sure HAL is started for Nan
             if (!startHal()) {
@@ -1425,7 +1425,7 @@ public class WifiNative {
             Iface iface = mIfaceMgr.allocateIface(Iface.IFACE_TYPE_NAN);
             if (iface != null) {
                 WifiNanIface nanIface = mWifiInjector.getHalDeviceManager().createNanIface(
-                        nanInterfaceDestroyedListener, handler, requestorWs);
+                        nanInterfaceDestroyedListener, handler, requestorWs, skipHalCreation);
                 if (nanIface != null) {
                     iface.iface = nanIface;
                     iface.name = nanIface.getName();
@@ -2579,7 +2579,7 @@ public class WifiNative {
         } else {
             SoftApHalCallbackFromWificond softApHalCallbackFromWificond =
                     new SoftApHalCallbackFromWificond(ifaceName, callback);
-            if (!mNl80211Native.registerWificondApCallback(ifaceName,
+            if (!mNl80211Native.registerApCallback(ifaceName,
                     Runnable::run, softApHalCallbackFromWificond)) {
                 Log.e(TAG, "Failed to register ap hal event callback from wificond");
                 return SoftApManager.START_RESULT_FAILURE_REGISTER_AP_CALLBACK_WIFICOND;

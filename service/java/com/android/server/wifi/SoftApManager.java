@@ -544,7 +544,6 @@ public class SoftApManager implements ActiveModeManager {
         mMaximumNumberOfMLDSupported = ApConfigUtil.getMaximumSupportedMLD(
                 mContext, mWifiNative.isMultipleMLDSupportedOnSap());
         mCurrentExistingMLD = mActiveModeWarden.getCurrentMLDAp();
-        mIsUsingMlo = useMultilinkMloSoftAp();
         enableVerboseLogging(verboseLoggingEnabled);
         mStateMachine.sendMessage(SoftApStateMachine.CMD_START, requestorWs);
     }
@@ -1368,6 +1367,7 @@ public class SoftApManager implements ActiveModeManager {
                         setSoftApIfaceOnSecondWlan();
                         Log.d(getTag(), "wifi.softap.iface.on.dual.wlan set to "
                                 + WifiProperties.softap_iface_on_dual_wlan());
+                        mIsUsingMlo = useMultilinkMloSoftAp();
                         mApInterfaceName = mWifiNative.setupInterfaceForSoftApMode(
                                 mWifiNativeInterfaceCallback, mRequestorWs,
                                 mCurrentSoftApConfiguration.getBand(), isBridgeRequired(),

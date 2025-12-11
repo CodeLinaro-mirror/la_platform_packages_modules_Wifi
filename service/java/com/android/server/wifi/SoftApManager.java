@@ -572,9 +572,6 @@ public class SoftApManager implements ActiveModeManager {
     }
 
     private boolean useMultilinkMloSoftAp() {
-        if (!Flags.mloSap()) {
-            return false;
-        }
         if (SdkLevel.isAtLeastT() && mCurrentSoftApConfiguration != null
                 && mCurrentSoftApConfiguration.isIeee80211beEnabled()
                 && isBridgedMode() && mIsMLDApSupportMLO) {

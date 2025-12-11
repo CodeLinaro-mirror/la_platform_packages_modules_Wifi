@@ -162,6 +162,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -960,6 +961,43 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 case "start-softap": {
                     CountDownLatch countDownLatch = new CountDownLatch(1);
                     SoftApConfiguration config = buildSoftApConfiguration(pw);
+                    // Starting in B, a DHCP server will not be started for AP ifaces that weren't
+                    // requested by TetheringManager#startTethering.
+                    // TODO: This provides internet access on the AP iface if there is a suitable
+                    //       upstream available. This matches historical behavior, but consider
+                    //       starting the IpServer in local-only mode since the current clients of
+                    //       this command don't need to verify internet connection.
+                    if (SdkLevel.isAtLeastB()) {
+                        final TetheringRequest tr = new TetheringRequest.Builder(TETHERING_WIFI)
+                                .setSoftApConfiguration(config)
+                                .build();
+                        TetheringManager mTetheringManager =
+                                mContext.getSystemService(TetheringManager.class);
+                        AtomicBoolean callbackCalled = new AtomicBoolean(false);
+                        mTetheringManager.startTethering(tr, mContext.getMainExecutor(),
+                                new StartTetheringCallback() {
+                                    @Override
+                                    public void onTetheringStarted() {
+                                        pw.println("Soft AP started.");
+                                        callbackCalled.set(true);
+                                        countDownLatch.countDown();
+                                    }
+
+                                    @Override
+                                    public void onTetheringFailed(int e) {
+                                        pw.println("Soft AP start failed with tether error: " + e
+                                                + ". Please check config parameters.");
+                                        callbackCalled.set(true);
+                                        countDownLatch.countDown();
+                                    }
+                                });
+                        countDownLatch.await(10000, TimeUnit.MILLISECONDS);
+                        if (!callbackCalled.get()) {
+                            pw.println("Soft AP start timed out.");
+                        }
+                        return 0;
+                    }
+
                     SoftApCallbackProxy softApCallback =
                             new SoftApCallbackProxy(pw, countDownLatch);
                     mWifiService.registerSoftApCallback(softApCallback);

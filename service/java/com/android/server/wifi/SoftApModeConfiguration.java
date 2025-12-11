@@ -36,6 +36,7 @@ class SoftApModeConfiguration {
     private final int mTargetMode;
     private final SoftApCapability mCapability;
     private final String mCountryCode;
+    private final int mLohsType;
 
     /**
      * SoftApConfiguration for internal use, or null if it hasn't been generated yet.
@@ -49,7 +50,8 @@ class SoftApModeConfiguration {
 
     SoftApModeConfiguration(int targetMode, @Nullable SoftApConfiguration config,
             SoftApCapability capability, @Nullable String countryCode,
-            @Nullable TetheringManager.TetheringRequest request) {
+            @Nullable TetheringManager.TetheringRequest request, int lohsType) {
+
         Preconditions.checkArgument(
                 targetMode == WifiManager.IFACE_IP_MODE_TETHERED
                         || targetMode == WifiManager.IFACE_IP_MODE_LOCAL_ONLY);
@@ -59,6 +61,7 @@ class SoftApModeConfiguration {
         mCapability = capability;
         mCountryCode = countryCode;
         mTetheringRequest = request;
+        mLohsType = lohsType;
     }
 
     public int getTargetMode() {
@@ -80,4 +83,9 @@ class SoftApModeConfiguration {
     public TetheringManager.TetheringRequest getTetheringRequest() {
         return mTetheringRequest;
     }
+
+    public int getLohsType() {
+        return mLohsType;
+    }
+
 }

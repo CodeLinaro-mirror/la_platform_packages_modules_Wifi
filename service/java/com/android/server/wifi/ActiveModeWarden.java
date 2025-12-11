@@ -25,6 +25,7 @@ import static android.net.wifi.WifiManager.WIFI_STATE_DISABLING;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLED;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLING;
 import static android.net.wifi.WifiManager.WIFI_STATE_UNKNOWN;
+import static android.net.wifi.WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY;
 
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_LOCAL_ONLY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
@@ -153,6 +154,7 @@ public class ActiveModeWarden {
 
     private WifiServiceImpl.SoftApCallbackInternal mSoftApCallback;
     private WifiServiceImpl.SoftApCallbackInternal mLohsCallback;
+    private WifiServiceImpl.SoftApCallbackInternal mLohsCallbackSecondary;
 
     private final RemoteCallbackList<ISubsystemRestartCallback> mRestartCallbacks =
             new RemoteCallbackList<>();
@@ -323,6 +325,11 @@ public class ActiveModeWarden {
      */
     public void registerLohsCallback(@NonNull WifiServiceImpl.SoftApCallbackInternal callback) {
         mLohsCallback = callback;
+    }
+
+
+    public void registerLohsCallbackSecondary(@NonNull WifiServiceImpl.SoftApCallbackInternal callback) {
+        mLohsCallbackSecondary = callback;
     }
 
     /**
@@ -938,6 +945,13 @@ public class ActiveModeWarden {
         }
     }
 
+    /** Stop LOHS.
+     *  @param config {@link SoftApModeConfiguration} which has Lohs type Info
+     */
+    public void stopLohs(SoftApModeConfiguration config) {
+        mWifiController.sendMessage(WifiController.CMD_SET_AP, 0, WifiManager.IFACE_IP_MODE_LOCAL_ONLY, config);
+    }
+
     /** Update SoftAp Capability. */
     public void updateSoftApCapability(SoftApCapability capability, int ipMode) {
         mWifiController.sendMessage(WifiController.CMD_UPDATE_AP_CAPABILITY, ipMode, 0, capability);
@@ -1325,7 +1339,8 @@ public class ActiveModeWarden {
 
         WifiServiceImpl.SoftApCallbackInternal callback =
                 softApConfig.getTargetMode() == IFACE_IP_MODE_LOCAL_ONLY
-                        ? mLohsCallback : mSoftApCallback;
+                        ? (softApConfig.getLohsType() == LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY
+                        ? mLohsCallbackSecondary : mLohsCallback) : mSoftApCallback;
         SoftApManager manager = mWifiInjector.makeSoftApManager(
                 new SoftApListener(), callback, softApConfig, requestorWs,
                 getRoleForSoftApIpMode(softApConfig.getTargetMode()), mVerboseLoggingEnabled);
@@ -1347,6 +1362,24 @@ public class ActiveModeWarden {
         for (SoftApManager softApManager : mSoftApManagers) {
             if (ipMode == WifiManager.IFACE_IP_MODE_UNSPECIFIED
                     || getRoleForSoftApIpMode(ipMode) == softApManager.getRole()) {
+                softApManager.stop();
+            }
+        }
+    }
+
+    /**
+     * Method to stop Lohs with specified Lohs type
+     *
+     * This method will stop softApManager for Lohs with specified Lohs type
+     *
+     * @param config {@link SoftApModeConfiguration}
+     */
+    private void stopLohsModeManagers(SoftApModeConfiguration config) {
+        Log.d(TAG, "Shutting down LOHS with type: " + config.getLohsType());
+        for (SoftApManager softApManager : mSoftApManagers) {
+            if (softApManager.getRole() == getRoleForSoftApIpMode(WifiManager.IFACE_IP_MODE_LOCAL_ONLY)
+                    && config.getLohsType() ==
+                        softApManager.getSoftApModeConfiguration().getLohsType()) {
                 softApManager.stop();
             }
         }
@@ -2189,7 +2222,8 @@ public class ActiveModeWarden {
                             int mode = softApConfig.getTargetMode();
                             WifiServiceImpl.SoftApCallbackInternal callback =
                                     mode == IFACE_IP_MODE_LOCAL_ONLY
-                                            ? mLohsCallback : mSoftApCallback;
+                                            ? (softApConfig.getLohsType() == LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY
+                                            ? mLohsCallbackSecondary : mLohsCallback) : mSoftApCallback;
                             // need to notify SoftApCallback that start/stop AP failed
                             callback.onStateChanged(new SoftApState(
                                     WIFI_AP_STATE_FAILED, SAP_START_FAILURE_GENERAL,
@@ -2713,7 +2747,10 @@ public class ActiveModeWarden {
                             startSoftApModeManager(
                                     softApConfigAndWs.first, softApConfigAndWs.second);
                         } else {
-                            stopSoftApModeManagers(msg.arg2);
+                            if (msg.arg2 == WifiManager.IFACE_IP_MODE_LOCAL_ONLY)
+                                stopLohsModeManagers((SoftApModeConfiguration)msg.obj);
+                            else
+                                stopSoftApModeManagers(msg.arg2);
                         }
                         break;
                     case CMD_AIRPLANE_TOGGLED:

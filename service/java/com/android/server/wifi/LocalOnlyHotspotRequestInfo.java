@@ -109,6 +109,10 @@ class LocalOnlyHotspotRequestInfo implements IBinder.DeathRecipient {
         mCallback.onHotspotStarted(config);
     }
 
+    public void sendHotspotStartedMessageWithType(int mLohsType, SoftApConfiguration config) throws RemoteException {
+        mCallback.onHotspotStartedWithType(mLohsType, config);
+    }
+
     /**
      * Send a HOTSPOT_STOPPED message to WifiManager for the calling application.
      *

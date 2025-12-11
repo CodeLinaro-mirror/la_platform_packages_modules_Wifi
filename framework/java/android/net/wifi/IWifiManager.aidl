@@ -276,6 +276,10 @@ interface IWifiManager {
 
     boolean stopAllLocalOnlyHotspotRequests(String packageName);
 
+    void stopLocalOnlyHotspotWithType(in int mLohsType);
+
+    int getSecondaryWifiLocalOnlyHotspotEnabledState();
+
     void startWatchLocalOnlyHotspot(in ILocalOnlyHotspotCallback callback);
 
     void stopWatchLocalOnlyHotspot();
@@ -291,6 +295,8 @@ interface IWifiManager {
     boolean setWifiApConfiguration(in WifiConfiguration wifiConfig, String packageName);
 
     boolean setSoftApConfiguration(in SoftApConfiguration softApConfig, String packageName);
+
+    boolean setLohsConfiguration(in int lohsType, in SoftApConfiguration softApConfig, String packageName);
 
     void enableTdls(String remoteIPAddress, boolean enable);
 

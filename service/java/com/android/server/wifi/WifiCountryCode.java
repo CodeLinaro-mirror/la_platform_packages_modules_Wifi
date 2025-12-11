@@ -725,7 +725,8 @@ public class WifiCountryCode {
                     SoftApModeConfiguration modeConfig = sm.getSoftApModeConfiguration();
                     SoftApModeConfiguration newModeConfig = new SoftApModeConfiguration(
                             modeConfig.getTargetMode(), modeConfig.getSoftApConfiguration(),
-                            modeConfig.getCapability(), country, modeConfig.getTetheringRequest());
+                            modeConfig.getCapability(), country, modeConfig.getTetheringRequest(),
+                            modeConfig.getLohsType());
                     mActiveModeWarden.restartSoftApForCcChange(newModeConfig, sm.getRequestorWs());
                 } else {
                     // The API:updateCountryCode in SoftApManager is asynchronous, it requires a

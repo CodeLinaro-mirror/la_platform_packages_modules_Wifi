@@ -436,7 +436,9 @@ public class WifiAwareDataPathStateManager {
                 }
             }
 
+// QTI_BEGIN: 2021-06-23: WLAN: Aware: Update peerDiscoveryMac for existing AwareNetworkRequestInformation
             ndpInfo.peerDiscoveryMac = mac;
+// QTI_END: 2021-06-23: WLAN: Aware: Update peerDiscoveryMac for existing AwareNetworkRequestInformation
             return false; //ignore this for NDP set up flow: it is used to obtain app_info from Resp
         }
 

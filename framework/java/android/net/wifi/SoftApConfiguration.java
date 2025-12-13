@@ -459,11 +459,13 @@ public final class SoftApConfiguration implements Parcelable {
     })
     public @interface SecurityType {}
 
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
     /*
      * Iface name for OWE transition mode.
      */
     private final @Nullable String mOweTransIfaceName;
 
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
     /** Private constructor for Builder and Parcelable implementation. */
     private SoftApConfiguration(
             @Nullable WifiSsid ssid,
@@ -524,7 +526,9 @@ public final class SoftApConfiguration implements Parcelable {
         mAllowedAcsChannels5g = new HashSet<>(allowedAcsChannels5g);
         mAllowedAcsChannels6g = new HashSet<>(allowedAcsChannels6g);
         mMaxChannelBandwidth = maxChannelBandwidth;
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         mOweTransIfaceName = oweTransIfaceName;
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         mVendorData = new ArrayList<>(vendorData);
         mIsClientIsolationEnabled = isClientIsolationEnabled;
         mIsBandOptimizationEnabled = isBandOptimizationEnabled;
@@ -556,7 +560,9 @@ public final class SoftApConfiguration implements Parcelable {
                         == other.mBridgedModeOpportunisticShutdownEnabled
                 && mIeee80211axEnabled == other.mIeee80211axEnabled
                 && mIeee80211beEnabled == other.mIeee80211beEnabled
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
                 && mIsUserConfiguration == other.mIsUserConfiguration
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
                 && mBridgedModeOpportunisticShutdownTimeoutMillis
                         == other.mBridgedModeOpportunisticShutdownTimeoutMillis
                 && Objects.equals(mVendorElements, other.mVendorElements)
@@ -636,7 +642,9 @@ public final class SoftApConfiguration implements Parcelable {
         sbuf.append(" \n mAllowedAcsChannels5g = ").append(mAllowedAcsChannels5g);
         sbuf.append(" \n mAllowedAcsChannels6g = ").append(mAllowedAcsChannels6g);
         sbuf.append(" \n mMaxChannelBandwidth = ").append(mMaxChannelBandwidth);
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         sbuf.append(" \n OWE Transition mode Iface =").append(mOweTransIfaceName);
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         sbuf.append(" \n mVendorData = ").append(mVendorData);
         sbuf.append(" \n mIsClientIsolationEnabled = ").append(mIsClientIsolationEnabled);
         sbuf.append(" \n mIsBandOptimizationEnabled = ").append(mIsBandOptimizationEnabled);
@@ -669,7 +677,9 @@ public final class SoftApConfiguration implements Parcelable {
         writeHashSetInt(dest, mAllowedAcsChannels5g);
         writeHashSetInt(dest, mAllowedAcsChannels6g);
         dest.writeInt(mMaxChannelBandwidth);
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         dest.writeString(mOweTransIfaceName);
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         dest.writeList(mVendorData);
         dest.writeBoolean(mIsClientIsolationEnabled);
         dest.writeBoolean(mIsBandOptimizationEnabled);
@@ -1345,6 +1355,7 @@ public final class SoftApConfiguration implements Parcelable {
         return wifiConfig;
     }
 
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
     /**
      * Return the iface name for OWE transition mode for the AP.
      * {@link #setOweTransIfaceName(String)}.
@@ -1356,6 +1367,7 @@ public final class SoftApConfiguration implements Parcelable {
       return mOweTransIfaceName;
     }
 
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
     /**
      * Builds a {@link SoftApConfiguration}, which allows an app to configure various aspects of a
      * Soft AP.
@@ -1389,7 +1401,9 @@ public final class SoftApConfiguration implements Parcelable {
         private Set<Integer> mAllowedAcsChannels5g;
         private Set<Integer> mAllowedAcsChannels6g;
         private @WifiAnnotations.Bandwidth int mMaxChannelBandwidth;
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         private String mOweTransIfaceName;
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         private @Nullable List<OuiKeyedData> mVendorData;
         private boolean mIsClientIsolationEnabled;
         private boolean mIsBandOptimizationEnabled;
@@ -1427,7 +1441,9 @@ public final class SoftApConfiguration implements Parcelable {
             mAllowedAcsChannels5g = new HashSet<>();
             mAllowedAcsChannels6g = new HashSet<>();
             mMaxChannelBandwidth = SoftApInfo.CHANNEL_WIDTH_AUTO;
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
             mOweTransIfaceName = null;
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
             mVendorData = new ArrayList<>();
             mIsClientIsolationEnabled = false;
             mIsBandOptimizationEnabled = true; // enabled by default.
@@ -1477,7 +1493,9 @@ public final class SoftApConfiguration implements Parcelable {
                 // SoftApConfiguration.
                 mMacRandomizationSetting = RANDOMIZATION_NONE;
             }
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
             mOweTransIfaceName = other.mOweTransIfaceName;
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
             mVendorData = new ArrayList<>(other.mVendorData);
             mIsClientIsolationEnabled = other.mIsClientIsolationEnabled;
             mIsBandOptimizationEnabled = other.mIsBandOptimizationEnabled;
@@ -2492,6 +2510,7 @@ public final class SoftApConfiguration implements Parcelable {
             return this;
         }
 
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         /**
          * Specifies an iface name for OWE transition mode for the AP.
          * <p>
@@ -2507,6 +2526,7 @@ public final class SoftApConfiguration implements Parcelable {
             mOweTransIfaceName = oweTransIfaceName;
             return this;
         }
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
 
         /**
          * Set additional vendor-provided configuration data.

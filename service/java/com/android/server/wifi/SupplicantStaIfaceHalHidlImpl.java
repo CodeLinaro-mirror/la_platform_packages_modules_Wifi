@@ -50,11 +50,13 @@ import android.hardware.wifi.supplicant.V1_3.WifiTechnology;
 import android.hardware.wifi.supplicant.V1_3.WpaDriverCapabilitiesMask;
 import android.hardware.wifi.supplicant.V1_4.DppCurve;
 import android.hardware.wifi.supplicant.V1_4.LegacyMode;
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
 import vendor.qti.hardware.wifi.supplicant.V2_0.ISupplicantVendor;
 import vendor.qti.hardware.wifi.supplicant.V2_0.ISupplicantVendorIface;
 import vendor.qti.hardware.wifi.supplicant.V2_0.ISupplicantVendorStaIface;
 import vendor.qti.hardware.wifi.supplicant.V2_0.ISupplicantVendorNetwork;
 import vendor.qti.hardware.wifi.supplicant.V2_0.ISupplicantVendorStaNetwork;
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
 import android.hidl.manager.V1_0.IServiceManager;
 import android.hidl.manager.V1_0.IServiceNotification;
 import android.net.MacAddress;
@@ -169,7 +171,9 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                             Log.e(TAG, "Registering ISupplicant death recipient failed.");
                             return;
                         }
+// QTI_BEGIN: 2024-08-22: WLAN: Wifi: Avoid removing the iface before switching from Connectivity to Scan only mode.
                         linkToSupplicantVendorDeath();
+// QTI_END: 2024-08-22: WLAN: Wifi: Avoid removing the iface before switching from Connectivity to Scan only mode.
                         Log.i(TAG, "Completed service registration of ISupplicant.");
                     }
                 }
@@ -221,7 +225,9 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
         mServiceManagerDeathRecipient = new ServiceManagerDeathRecipient();
         mSupplicantDeathRecipient = new SupplicantDeathRecipient();
         mPmkCacheManager = new PmkCacheManager(mClock, mEventHandler);
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
         mSupplicantVendorDeathRecipient = new SupplicantVendorDeathRecipient();
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
     }
 
     /**
@@ -269,8 +275,10 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
             }
             mISupplicant = null;
             mISupplicantStaIfaces.clear();
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
             mISupplicantVendor = null;
             mISupplicantVendorStaIfaces.clear();
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
             if (mIServiceManager != null) {
                 // Already have an IServiceManager and serviceNotification registered, don't
                 // don't register another.
@@ -467,10 +475,12 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
             return false;
         }
 
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
         /** creation vendor sta iface binder */
         if (!vendor_setupIface(ifaceName))
             Log.e(TAG, "Failed to create vendor setupiface");
 
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
         return true;
     }
 
@@ -590,9 +600,11 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 Log.e(TAG, "Trying to teardown unknown interface");
                 return false;
             }
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
             if (mISupplicantVendorStaIfaces.remove(ifaceName) == null) {
                 Log.e(TAG, "Trying to teardown unknown vendor interface");
             }
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
             mISupplicantStaIfaceCallbacks.remove(ifaceName);
             return true;
         }
@@ -660,9 +672,13 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
     private void clearState() {
         synchronized (mLock) {
             mISupplicant = null;
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
             mISupplicantVendor = null;
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
             mISupplicantStaIfaces.clear();
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
             mISupplicantVendorStaIfaces.clear();
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
             mCurrentNetworkLocalConfigs.clear();
             mCurrentNetworkRemoteHandles.clear();
             mLinkedNetworkLocalAndRemoteConfigs.clear();
@@ -730,8 +746,10 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 return false;
             }
         }
+// QTI_BEGIN: 2024-08-22: WLAN: Wifi: Avoid removing the iface before switching from Connectivity to Scan only mode.
         if (!initSupplicantVendorService())
             Log.e(TAG, "Failed to init SupplicantVendor service");
+// QTI_END: 2024-08-22: WLAN: Wifi: Avoid removing the iface before switching from Connectivity to Scan only mode.
         return true;
     }
 
@@ -979,7 +997,9 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                 loge("Failed to add a network!");
                 return null;
             }
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
             network.setVendorStaNetwork(getVendorNetwork(ifaceName, network.getNetworkId()));
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
             boolean saveSuccess = false;
             try {
                 saveSuccess = network.saveWifiConfiguration(config);
@@ -4025,6 +4045,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
         pw.println("ifaces: " + mISupplicantStaIfaces.keySet());
     }
 
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
     /** [START] ISupplicant Vendor Iface implementation */
 
     private ISupplicantVendor mISupplicantVendor; // Supplicant Vendor HAL interface objects
@@ -4045,10 +4066,14 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
 
     private boolean linkToSupplicantVendorDeath() {
         synchronized (mLock) {
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
+// QTI_BEGIN: 2024-08-22: WLAN: Wifi: Avoid removing the iface before switching from Connectivity to Scan only mode.
             if (mISupplicantVendor == null) {
                 Log.e(TAG, "ISupplicantVendor interface is null!");
                 return false;
             }
+// QTI_END: 2024-08-22: WLAN: Wifi: Avoid removing the iface before switching from Connectivity to Scan only mode.
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
             try {
                 if (!mISupplicantVendor.linkToDeath(mSupplicantVendorDeathRecipient, 0)) {
                     Log.wtf(TAG, "Error on linkToDeath on ISupplicantVendor");
@@ -4324,4 +4349,5 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
         }
     }
     /** [END] ISupplicant Vendor Iface implementation */
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
 }

@@ -22,7 +22,9 @@ import android.hardware.wifi.supplicant.V1_0.ISupplicantStaNetwork;
 import android.hardware.wifi.supplicant.V1_0.ISupplicantStaNetworkCallback;
 import android.hardware.wifi.supplicant.V1_0.SupplicantStatus;
 import android.hardware.wifi.supplicant.V1_0.SupplicantStatusCode;
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
 import vendor.qti.hardware.wifi.supplicant.V2_0.ISupplicantVendorStaNetwork;
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
 import android.net.wifi.SecurityParams;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiEnterpriseConfig;
@@ -31,7 +33,9 @@ import android.net.wifi.WifiSsid;
 import android.os.RemoteException;
 import android.text.TextUtils;
 import android.util.Log;
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: set SIM number to supplicant via Vendor Supplicant HAL
 import android.telephony.SubscriptionManager;
+// QTI_END: 2022-10-06: WLAN: HIDL: set SIM number to supplicant via Vendor Supplicant HAL
 
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.wifi.util.ArrayUtils;
@@ -138,8 +142,12 @@ public class SupplicantStaNetworkHalHidlImpl {
     private @Ocsp int mOcsp;
     private String mWapiCertSuite;
     private BitSet mAdvanceKeyMgmtFeatures;
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
     private ISupplicantVendorStaNetwork mISupplicantVendorStaNetwork;
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: set SIM number to supplicant via Vendor Supplicant HAL
     private final WifiCarrierInfoManager mWifiCarrierInfoManager;
+// QTI_END: 2022-10-06: WLAN: HIDL: set SIM number to supplicant via Vendor Supplicant HAL
 
     SupplicantStaNetworkHalHidlImpl(ISupplicantStaNetwork iSupplicantStaNetwork, String ifaceName,
             Context context, WifiMonitor monitor, WifiGlobals wifiGlobals,
@@ -150,7 +158,9 @@ public class SupplicantStaNetworkHalHidlImpl {
         mWifiMonitor = monitor;
         mWifiGlobals = wifiGlobals;
         mAdvanceKeyMgmtFeatures = advanceKeyMgmtFeature;
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: set SIM number to supplicant via Vendor Supplicant HAL
         mWifiCarrierInfoManager = WifiInjector.getInstance().getWifiCarrierInfoManager();
+// QTI_END: 2022-10-06: WLAN: HIDL: set SIM number to supplicant via Vendor Supplicant HAL
     }
 
     /**
@@ -496,6 +506,7 @@ public class SupplicantStaNetworkHalHidlImpl {
                     return true;
                 } else if (!saveWifiEnterpriseConfig(config.SSID, config.enterpriseConfig)) {
                     return false;
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: set SIM number to supplicant via Vendor Supplicant HAL
                 } else if (config.enterpriseConfig.isAuthenticationSimBased()) {
                     /* SIM number for EAP_PROXY */
                     int simIndex = mWifiCarrierInfoManager
@@ -504,6 +515,7 @@ public class SupplicantStaNetworkHalHidlImpl {
                             && !setVendorSimNumber(simIndex + 1)) {
                          Log.e(TAG, config.SSID + ": failed to set VendorSimNumber : " + simIndex + 1);
                     }
+// QTI_END: 2022-10-06: WLAN: HIDL: set SIM number to supplicant via Vendor Supplicant HAL
                 }
             }
 
@@ -1403,7 +1415,9 @@ public class SupplicantStaNetworkHalHidlImpl {
     }
 
     /** See ISupplicantNetwork.hal for documentation */
+// QTI_BEGIN: 2021-07-13: WLAN: Wifi: Use correct network ID while clearing linked networks
     public boolean getId() {
+// QTI_END: 2021-07-13: WLAN: Wifi: Use correct network ID while clearing linked networks
         synchronized (mLock) {
             final String methodStr = "getId";
             if (!checkISupplicantStaNetworkAndLogFailure(methodStr)) return false;
@@ -3964,6 +3978,7 @@ public class SupplicantStaNetworkHalHidlImpl {
                     mIfaceName, mLock, mWifiMonitor);
         }
     }
+// QTI_BEGIN: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
 
     /** [START] ISupplicant Vendor Iface Network implementation */
 
@@ -4024,4 +4039,5 @@ public class SupplicantStaNetworkHalHidlImpl {
     }
 
     /** [END] ISupplicant Vendor Iface Network implementation */
+// QTI_END: 2022-10-06: WLAN: HIDL: Add support for using ISupplicantVendor interface
 }

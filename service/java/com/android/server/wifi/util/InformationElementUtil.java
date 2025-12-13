@@ -2033,9 +2033,11 @@ public class InformationElementUtil {
                         case RSN_AKM_EAP_SUITE_B_192:
                             rsnKeyManagement.add(ScanResult.KEY_MGMT_EAP_SUITE_B_192);
                             break;
+// QTI_BEGIN: 2021-11-10: WLAN: Add support for FT_EAP_SHA384 key_mgmt in framework
                         case RSN_AKM_FT_EAP_SHA384:
                             rsnKeyManagement.add(ScanResult.KEY_MGMT_FT_EAP_SHA384);
                             break;
+// QTI_END: 2021-11-10: WLAN: Add support for FT_EAP_SHA384 key_mgmt in framework
                         case RSN_OSEN:
                             rsnKeyManagement.add(ScanResult.KEY_MGMT_OSEN);
                             break;
@@ -2484,8 +2486,10 @@ public class InformationElementUtil {
                     return "FT/SAE_EXT_KEY";
                 case ScanResult.KEY_MGMT_EAP_SUITE_B_192:
                     return "EAP_SUITE_B_192";
+// QTI_BEGIN: 2021-11-10: WLAN: Add support for FT_EAP_SHA384 key_mgmt in framework
                 case ScanResult.KEY_MGMT_FT_EAP_SHA384:
                     return "FT/EAP_SUITE_B_192";
+// QTI_END: 2021-11-10: WLAN: Add support for FT_EAP_SHA384 key_mgmt in framework
                 case ScanResult.KEY_MGMT_OSEN:
                     return "OSEN";
                 case ScanResult.KEY_MGMT_WAPI_PSK:

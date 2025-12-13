@@ -131,7 +131,9 @@ public class HostapdHal {
             if (mIHostapd == null) {
                 return handleNullIHostapd(methodStr);
             }
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             return mIHostapd.isApInfoCallbackSupported();
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
         }
     }
 
@@ -346,27 +348,45 @@ public class HostapdHal {
         return (mIHostapd != null) && (mIHostapd instanceof HostapdHalAidlImp);
     }
 
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
     /* ######################### Hostapd Vendor change ###################### */
     // Keep hostapd vendor changes below this line to have minimal conflicts during merge/upgrade
 
     /**
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
      * Check if needs to use hostapd vendor service.
      * @return
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
      */
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
     public boolean useVendorHostapdHal() {
         return mIHostapd.useVendorHostapdHal();
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
     }
 
     /**
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
      * Add and start a new vendor access point.
      *
      * @param ifaceName Name of the softap interface.
      * @param config Configuration to use for the AP.
      * @param onFailureListener A runnable to be triggered on failure.
      * @return true on success, false otherwise.
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
      */
     public boolean addVendorAccessPoint(@NonNull String ifaceName,
             @NonNull SoftApConfiguration config, @NonNull Runnable onFailureListener) {
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
         return mIHostapd.addVendorAccessPoint(ifaceName, config, onFailureListener);
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
     }
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
 }

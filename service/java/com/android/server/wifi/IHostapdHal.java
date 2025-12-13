@@ -131,6 +131,7 @@ interface IHostapdHal {
      * Dump information about the specific implementation.
      */
     void dump(PrintWriter pw);
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
 
     /**
      * Check if needs to use hostapd vendor service.
@@ -153,6 +154,7 @@ interface IHostapdHal {
             Runnable onFailureListener) {
         return false;
     }
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
 
     /**
      * Removes an existing link from multiple link device which the current AP resides on.

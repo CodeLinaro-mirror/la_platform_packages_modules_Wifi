@@ -955,7 +955,9 @@ public class WifiNative {
             if (!unregisterNetworkObserver(iface.networkObserver)) {
                 Log.e(TAG, "Failed to unregister network observer on " + iface);
             }
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
             if (!removeAccessPoint(iface.name)) {
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                 Log.e(TAG, "Failed to remove access point on " + iface);
             }
             String nl80211Iface = iface.name;
@@ -1328,15 +1330,21 @@ public class WifiNative {
             @NonNull SoftApManager softApManager, @NonNull List<OuiKeyedData> vendorData, int type) {
         synchronized (mLock) {
             if (mWifiVendorHal.isVendorHalSupported()) {
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                 // Hostapd vendor V1_2: bridge iface setup start
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                 mVendorBridgeModeActive = ((isBridged && mHostapdHal.useVendorHostapdHal())
                                            || (HostapdHalHidlImp.serviceDeclared()
                                                && (type == SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION)));
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                 Log.i(TAG, "CreateApIface - vendor bridge=" + mVendorBridgeModeActive);
                 if (isVendorBridgeModeActive()) {
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                     return createVendorBridgeIface(iface, requestorWs, band, softApManager);
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                 }
                 // Hostapd vendor V1_2: bridge iface setup end
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                 return mWifiVendorHal.createApIface(
                         new InterfaceDestoyedListenerInternal(iface.id), requestorWs,
                         band, isBridged, softApManager, vendorData);
@@ -1462,10 +1470,12 @@ public class WifiNative {
     @Nullable
     public List<String> getBridgedApInstances(@NonNull String ifaceName) {
         synchronized (mLock) {
+// QTI_BEGIN: 2021-07-28: WLAN: wifi-service: use vendor bridged ifaces for getBridgedApInstances
             if (isVendorBridgeModeActive() && !TextUtils.isEmpty(mdualApInterfaces[0])
                 && !TextUtils.isEmpty(mdualApInterfaces[1])) {
                     return Arrays.asList(mdualApInterfaces[0], mdualApInterfaces[1]);
             } else if (mWifiVendorHal.isVendorHalSupported()) {
+// QTI_END: 2021-07-28: WLAN: wifi-service: use vendor bridged ifaces for getBridgedApInstances
                 return mWifiVendorHal.getBridgedApInstances(ifaceName);
             } else {
                 Log.i(TAG, "Vendor Hal not supported, ignoring getBridgedApInstances.");
@@ -1508,11 +1518,13 @@ public class WifiNative {
     private boolean removeApIface(@NonNull Iface iface) {
         synchronized (mLock) {
             if (mWifiVendorHal.isVendorHalSupported()) {
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                 // Hostapd vendor V1_2: bridge iface remove start
                 if (isVendorBridgeModeActive()) {
                     return removeVendorBridgeIface(iface);
                 }
                 // Hostapd vendor V1_2: bridge iface remove end
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                 return mWifiVendorHal.removeApIface(iface.name);
             } else {
                 Log.i(TAG, "Vendor Hal not supported, ignoring removeApIface.");
@@ -1742,10 +1754,12 @@ public class WifiNative {
             @SoftApConfiguration.BandType int band, boolean isBridged,
             @NonNull SoftApManager softApManager) {
         return setupInterfaceForSoftApMode(interfaceCallback, requestorWs, band, isBridged, softApManager, new ArrayList<>(), false, -1);
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
     }
 
     public String setupInterfaceForSoftApMode(
             @NonNull InterfaceCallback interfaceCallback, @NonNull WorkSource requestorWs,
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
             @SoftApConfiguration.BandType int band, boolean isBridged,
             @NonNull SoftApManager softApManager, @NonNull List<OuiKeyedData> vendorData, boolean isUsingMlo, int type) {
         synchronized (mLock) {
@@ -1999,6 +2013,7 @@ public class WifiNative {
         }
     }
 
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
     /**
      * Set interface UP.
      *
@@ -2017,6 +2032,7 @@ public class WifiNative {
         }
     }
 
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
     /**
      * Teardown an interface in Client/AP mode.
      *
@@ -2609,6 +2625,7 @@ public class WifiNative {
     @Keep
     public boolean forceClientDisconnect(@NonNull String ifaceName,
             @NonNull MacAddress client, int reasonCode) {
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
         if (isVendorBridgeModeActive()) {
             boolean ret1 = false, ret2= false;
             if (!TextUtils.isEmpty(mdualApInterfaces[0])) {
@@ -2620,6 +2637,7 @@ public class WifiNative {
             return ret1 || ret2;
         }
 
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
         return mHostapdHal.forceClientDisconnect(ifaceName, client, reasonCode);
     }
 
@@ -4588,11 +4606,13 @@ public class WifiNative {
      * @return true for success
      */
     public boolean setApCountryCode(@NonNull String ifaceName, String countryCode) {
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         String ifaceForCountry = ifaceName;
         if (isVendorBridgeModeActive() && !TextUtils.isEmpty(mdualApInterfaces[0]))
             ifaceForCountry = mdualApInterfaces[0];
 
         if (mWifiVendorHal.setApCountryCode(ifaceForCountry, countryCode)) {
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
             if (mCountryCodeChangeListener != null) {
                 mCountryCodeChangeListener.onSetCountryCodeSucceeded(countryCode);
             }
@@ -5343,18 +5363,29 @@ public class WifiNative {
             mCountryCodeChangeListener.setChangeListener(listener);
         }
     }
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
 
     /* ######################### Vendor hostapd hal V1_2 adaptor  ###################### */
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
     private boolean mVendorBridgeModeActive;
     private String[] mdualApInterfaces = new String[2];
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
     private static String mVendorBridgeIfaceName = null;
 
     public static void setBridgeIfaceName(String suffixIface) {
         mVendorBridgeIfaceName = "ap_br_" + suffixIface; // Refer kApBridgeIfacePrefix
     }
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
 
     public static String getBridgeIfaceName() {
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         return (mVendorBridgeIfaceName == null) ? "" : mVendorBridgeIfaceName;
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
     }
 
     public boolean isVendorBridgeModeActive() {
@@ -5363,25 +5394,35 @@ public class WifiNative {
 
     private String createVendorBridgeIface(@NonNull Iface iface,
             @NonNull WorkSource requestorWs,
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
             @SoftApConfiguration.BandType int band,
             @NonNull SoftApManager softApManager) {
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
 
         // create 2 Ap interfaces
         mdualApInterfaces[0] = mWifiVendorHal.createApIface(
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
               new InterfaceDestoyedListenerInternal(iface.id), requestorWs, band, false, softApManager, new ArrayList<>());
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
         if (TextUtils.isEmpty(mdualApInterfaces[0])) {
             return null;
         }
         mdualApInterfaces[1] = mWifiVendorHal.createApIface(
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
               new InterfaceDestoyedListenerInternal(iface.id), requestorWs, band, false, softApManager, new ArrayList<>());
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
         if (TextUtils.isEmpty(mdualApInterfaces[1])) {
             mWifiVendorHal.removeApIface(mdualApInterfaces[0]);
             return null;
         }
 
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         // Use second interface to differentiate from AOSP
         setBridgeIfaceName(mdualApInterfaces[1]);
 
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
         // return bridge name
         return getBridgeIfaceName();
     }
@@ -5411,7 +5452,9 @@ public class WifiNative {
          return ret1 && ret2;
     }
 
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
     private boolean setupOweSap(SoftApConfiguration config, SoftApHalCallback callback) {
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
         SoftApConfiguration.Builder openConfigBuilder = new SoftApConfiguration.Builder(config);
         SoftApConfiguration.Builder oweConfigBuilder = new SoftApConfiguration.Builder(config);
 
@@ -5428,7 +5471,9 @@ public class WifiNative {
         Log.d(TAG, "Generated OWE SSID: " + localConfig.getSsid());
 
         if (!mHostapdHal.addVendorAccessPoint(
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
                mdualApInterfaces[0], localConfig, callback::onFailure)) {
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
             Log.e(TAG, "Failed to addVendorAP[0] - " + mdualApInterfaces[0]);
             return false;
         }
@@ -5439,7 +5484,9 @@ public class WifiNative {
                          .build();
 
         if (!mHostapdHal.addVendorAccessPoint(
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
                mdualApInterfaces[1], localConfig, callback::onFailure)) {
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
             Log.e(TAG, "Failed to addVendorAP[1] - " + mdualApInterfaces[1]);
             return false;
         }
@@ -5447,6 +5494,8 @@ public class WifiNative {
         return true;
     }
 
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
+// QTI_BEGIN: 2022-10-06: WLAN: SoftAp: Schedule timeout for SoftAp in OWE and OWE transition mode
     public boolean useVendorHostapdHalForOwe(SoftApConfiguration config) {
         return mHostapdHal.useVendorHostapdHal() ||
             /* Enable OWE only mode for Vendor Hostapd HIDL V_1.2 */
@@ -5455,13 +5504,23 @@ public class WifiNative {
             || config.getSecurityType() == SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION));
     }
 
+// QTI_END: 2022-10-06: WLAN: SoftAp: Schedule timeout for SoftAp in OWE and OWE transition mode
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
     private boolean addAccessPoint(@NonNull String ifaceName,
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
           @NonNull SoftApConfiguration config, boolean isMetered, SoftApHalCallback callback, boolean isUsingMlo) {
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
         if (isVendorBridgeModeActive()) {
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
             if (config != null && config.getSecurityType() == SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION) {
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
                 Log.d(TAG, "Setup for OWE mode Softap");
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
                 if (!setupOweSap(config, callback))
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                     return false;
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
             } else {
                 // AP + AP UP
                 SoftApConfiguration.Builder localConfigBuilder =
@@ -5479,10 +5538,14 @@ public class WifiNative {
                          localConfig = localConfigBuilder.setChannel(channel, band).build();
                     }
                     if (!mHostapdHal.addVendorAccessPoint(
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
                           mdualApInterfaces[i], localConfig, callback::onFailure)) {
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
                         Log.e(TAG, "Failed to addVendorAP["+ i + "] - " + mdualApInterfaces[i]);
                         return false;
                     }
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                 }
             }
 
@@ -5492,24 +5555,32 @@ public class WifiNative {
                 Log.e(TAG, "Failed to set interface up - " + bridgeInterface);
                 return false;
             }
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
         } else if (mHostapdHal.useVendorHostapdHal() ||
                    /* Enable OWE only mode for Vendor Hostapd HIDL V_1.2 */
                    (HostapdHalHidlImp.serviceDeclared() && config != null &&
                     config.getSecurityType() == SoftApConfiguration.SECURITY_TYPE_WPA3_OWE)) {
             if (!mHostapdHal.addVendorAccessPoint(ifaceName, config, callback::onFailure)) {
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
                 Log.e(TAG, "Failed to addVendorAP - " + ifaceName);
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
                 return false;
             }
         } else {
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
             if (!mHostapdHal.addAccessPoint(ifaceName, config, isMetered,
                 isUsingMlo,
                 getBridgedApInstances(ifaceName),
                 callback::onFailure)) {
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
                 return false;
             }
         }
         return true;
     }
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement vendor hostapd 1.2 hal
+// QTI_BEGIN: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
 
     private boolean removeAccessPoint(@NonNull String ifaceName) {
         if (isVendorBridgeModeActive()) {
@@ -5534,6 +5605,7 @@ public class WifiNative {
         }
         return true;
     }
+// QTI_END: 2021-05-26: WLAN: HostapdHal: Implement AP+AP using vendor hostapd 1.2 hal
 
     /**
      * Gets the security params of the current network associated with this interface

@@ -2232,6 +2232,7 @@ public class WifiConnectivityManager {
         return true;
     }
 
+// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
     /**
      * Add the channels into the channel set with a size limit.
      * @param channelSet Target set for adding channel to.
@@ -2249,6 +2250,7 @@ public class WifiConnectivityManager {
         return true;
     }
 
+// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
     /**
      * Fetch channel set for target network.
      */
@@ -2900,6 +2902,7 @@ public class WifiConnectivityManager {
         boolean pnoFrequencyCullingEnabled = mContext.getResources()
                 .getBoolean(R.bool.config_wifiPnoFrequencyCullingEnabled);
 
+// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         boolean isConnectedFreqEnhancementEnable = mContext.getResources().getBoolean(
                 R.bool.config_wifiConnectedFrequencyEnhancementEnabled);
         long ageInMillis = (long) (1000 * 60 * (long) mContext.getResources().getInteger(
@@ -2908,6 +2911,7 @@ public class WifiConnectivityManager {
             Log.d(TAG, "Connected frequency enhancement is: " + isConnectedFreqEnhancementEnable +
                     " maximum age for saved channels retrieve in millis: " + ageInMillis);
         }
+// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         List<PnoSettings.PnoNetwork> pnoList = new ArrayList<>();
         Set<String> pnoSet = new HashSet<>();
         mPnoScanPasspointSsids.clear();
@@ -2954,7 +2958,9 @@ public class WifiConnectivityManager {
                         channelList, config.SSID, 0, 0, MAX_PNO_SCAN_FREQUENCY_AGE_MS);
                 }
                 pnoNetwork.frequencies = channelList.stream().mapToInt(Integer::intValue).toArray();
+// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
             }
+// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         }
         return pnoList;
     }

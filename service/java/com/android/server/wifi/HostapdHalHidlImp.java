@@ -60,9 +60,11 @@ import java.util.concurrent.TimeUnit;
 
 import javax.annotation.concurrent.ThreadSafe;
 
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
 import vendor.qti.hardware.wifi.hostapd.V1_0.IHostapdVendor;
 import vendor.qti.hardware.wifi.hostapd.V1_0.IHostapdVendorIfaceCallback;
 
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
 /**
  * To maintain thread-safety, the locking protocol is that every non-static method (regardless of
  * access level) acquires mLock.
@@ -247,7 +249,9 @@ public class HostapdHalHidlImp implements IHostapdHal {
     @Override
     public boolean isApInfoCallbackSupported() {
         synchronized (mLock) {
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             return isV1_3() || useVendorHostapdHal();
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
         }
     }
 
@@ -396,12 +400,16 @@ public class HostapdHalHidlImp implements IHostapdHal {
 
             // Setup log level
             if (isV1_2()) {
+// QTI_BEGIN: 2023-03-31: WLAN: Hostapd-HIDL: Allow initialization of HostapdVendor.
                setDebugParams();
+// QTI_END: 2023-03-31: WLAN: Hostapd-HIDL: Allow initialization of HostapdVendor.
             }
         }
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
         if (!initHostapdVendorService()) {
             Log.e(TAG, "Failed to init HostapdVendor service");
         }
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
         return true;
     }
 
@@ -424,7 +432,9 @@ public class HostapdHalHidlImp implements IHostapdHal {
                 return false;
             }
 
+// QTI_BEGIN: 2022-03-09: WLAN: Hostapd-HIDL: Enable ApInfoCallback through vendor callback for legacy targets.
             if (!isApInfoCallbackSupported()) {
+// QTI_END: 2022-03-09: WLAN: Hostapd-HIDL: Enable ApInfoCallback through vendor callback for legacy targets.
                 Log.d(TAG, "The current HAL doesn't support event callback.");
                 return false;
             }
@@ -640,7 +650,9 @@ public class HostapdHalHidlImp implements IHostapdHal {
                 return;
             }
             mIHostapd = null;
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             mIHostapdVendor = null;
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             if (mDeathEventHandler != null) {
                 mDeathEventHandler.onDeath();
             }
@@ -1357,6 +1369,7 @@ public class HostapdHalHidlImp implements IHostapdHal {
             pw.println("HIDL interface version: " + getVersion());
         }
     }
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
 
     /* ######################### Hostapd Vendor change ###################### */
     // Keep hostapd vendor changes below this line to have minimal conflicts during merge/upgrade
@@ -1397,8 +1410,10 @@ public class HostapdHalHidlImp implements IHostapdHal {
                 encryptionType =
                   vendor.qti.hardware.wifi.hostapd.V1_2.IHostapdVendor.VendorEncryptionType.SAE_TRANSITION;
                 break;
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             case SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION:
             case SoftApConfiguration.SECURITY_TYPE_WPA3_OWE:
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
                 encryptionType = vendor.qti.hardware.wifi.hostapd.V1_1.IHostapdVendor.VendorEncryptionType.OWE;
                 break;
             default:
@@ -1491,9 +1506,13 @@ public class HostapdHalHidlImp implements IHostapdHal {
      * Wrapper to Convert IHostapd.AcsFrequencyRange to IHostapdVendor.AcsFrequencyRange
      */
     private List<vendor.qti.hardware.wifi.hostapd.V1_2.IHostapdVendor.AcsFrequencyRange>
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             toVendorAcsFreqRanges(@BandType int band, SoftApConfiguration config) {
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
         List<android.hardware.wifi.hostapd.V1_2.IHostapd.AcsFrequencyRange>
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
                 acsFrequencyRanges = toAcsFreqRanges(band, config);
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
 
         List<vendor.qti.hardware.wifi.hostapd.V1_2.IHostapdVendor.AcsFrequencyRange>
                 vendorAcsFreqRanges = new ArrayList<>();
@@ -1592,18 +1611,26 @@ public class HostapdHalHidlImp implements IHostapdHal {
 
         // Prepare freq ranges/lists if needed
         if (vIfaceParamsV1_1.VendorV1_0.ifaceParams.channelParams.enableAcs
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
              && ApConfigUtil.isSendFreqRangesNeeded(config.getBand(), mContext, config)) {
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             if ((config.getBand() & SoftApConfiguration.BAND_2GHZ) != 0) {
                 vIfaceParamsV1_2.channelParams.acsChannelFreqRangesMhz.addAll(
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
                     toVendorAcsFreqRanges(SoftApConfiguration.BAND_2GHZ, config));
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             }
             if ((config.getBand() & SoftApConfiguration.BAND_5GHZ) != 0) {
                 vIfaceParamsV1_2.channelParams.acsChannelFreqRangesMhz.addAll(
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
                     toVendorAcsFreqRanges(SoftApConfiguration.BAND_5GHZ, config));
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             }
             if ((config.getBand() & SoftApConfiguration.BAND_6GHZ) != 0) {
                 vIfaceParamsV1_2.channelParams.acsChannelFreqRangesMhz.addAll(
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
                     toVendorAcsFreqRanges(SoftApConfiguration.BAND_6GHZ, config));
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             }
         }
         return vIfaceParamsV1_2;
@@ -1874,10 +1901,12 @@ public class HostapdHalHidlImp implements IHostapdHal {
             Log.d(TAG, "notifyConnectedClientsChanged on " + ifaceName + " / " + apIfaceInstance
                    + " and Mac is " + MacAddress.fromBytes(bssid).toString()
                    + " isConnected: " + isConnected);
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             SoftApHalCallback callback = mSoftApHalCallbacks.get(ifaceName);
             if (callback != null) {
                   callback.onConnectedClientsChanged(apIfaceInstance,
                           MacAddress.fromBytes(bssid), isConnected, DeauthenticationReasonCode.REASON_UNKNOWN);
+// QTI_BEGIN: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
             }
         } catch (IllegalArgumentException iae) {
             Log.e(TAG, " Invalid clientAddress, " + iae);
@@ -1965,4 +1994,5 @@ public class HostapdHalHidlImp implements IHostapdHal {
         }
     }
 
+// QTI_END: 2022-01-28: WLAN: Refactoring to bring back the vendor hostap changes for OTA targets.
 }

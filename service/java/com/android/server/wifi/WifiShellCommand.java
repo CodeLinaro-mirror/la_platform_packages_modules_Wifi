@@ -162,6 +162,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
 /**
@@ -928,6 +929,12 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         }
 
                         @Override
+                        public void onHotspotStartedWithType(int lohsType, SoftApConfiguration config) {
+                            pw.println("Lohs onStarted, config = " + config + " , lohsType = " + lohsType);
+                            countDownLatch.countDown();
+                        }
+
+                        @Override
                         public void onHotspotStopped() {
                             pw.println("Lohs onStopped");
                             countDownLatch.countDown();
@@ -957,9 +964,144 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     mWifiService.unregisterLocalOnlyHotspotSoftApCallback(softApCallback, extras);
                     return 0;
                 }
+                case "start-lohs-primary": {
+                    CountDownLatch countDownLatch = new CountDownLatch(2);
+                    SoftApConfiguration config = buildSoftApConfiguration(pw);
+                    ILocalOnlyHotspotCallback.Stub lohsCallback =
+                            new ILocalOnlyHotspotCallback.Stub() {
+                        @Override
+                        public void onHotspotStarted(SoftApConfiguration config) {
+                            pw.println("Primary lohs onStarted, config = " + config);
+                            countDownLatch.countDown();
+                        }
+
+                        @Override
+                        public void onHotspotStartedWithType(int lohsType, SoftApConfiguration config) {
+                            pw.println("Primary lohs onStarted, config = " + config + " , lohsType = " + lohsType);
+                            countDownLatch.countDown();
+                        }
+
+                        @Override
+                        public void onHotspotStopped() {
+                            pw.println("Primary lohs onStopped");
+                            countDownLatch.countDown();
+                        }
+
+                        @Override
+                        public void onHotspotFailed(int reason) {
+                            pw.println("Primary lohs onFailed: " + reason);
+                            countDownLatch.countDown();
+                        }
+                    };
+                    SoftApCallbackProxy softApCallback =
+                            new SoftApCallbackProxy(pw, countDownLatch);
+                    Bundle extras = new Bundle();
+                    if (SdkLevel.isAtLeastS()) {
+                        extras.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                                mContext.getAttributionSource());
+                    }
+                    mWifiService.registerLocalOnlyHotspotSoftApCallback(softApCallback, extras);
+                    mWifiService.setLohsConfiguration(WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY,
+                              config, SHELL_PACKAGE_NAME);
+                    if (REQUEST_REGISTERED != mWifiService.startLocalOnlyHotspot(
+                              lohsCallback, SHELL_PACKAGE_NAME, null /* featureId */,
+                              config, extras, false)) {
+                        pw.println("Primary lohs failed to start. Please check config parameters");
+                    }
+                    // Wait for lohs to start and complete callback
+                    countDownLatch.await(10000, TimeUnit.MILLISECONDS);
+                    mWifiService.unregisterLocalOnlyHotspotSoftApCallback(softApCallback, extras);
+                    return 0;
+                }
+                case "start-lohs-secondary": {
+                    CountDownLatch countDownLatch = new CountDownLatch(2);
+                    SoftApConfiguration config = buildSoftApConfiguration(pw);
+                    ILocalOnlyHotspotCallback.Stub lohsCallback =
+                            new ILocalOnlyHotspotCallback.Stub() {
+                        @Override
+                        public void onHotspotStarted(SoftApConfiguration config) {
+                            pw.println("2nd lohs onStarted, config = " + config);
+                            countDownLatch.countDown();
+                        }
+
+                        @Override
+                        public void onHotspotStartedWithType(int lohsType, SoftApConfiguration config) {
+                            pw.println("2nd lohs onStarted, config = " + config + " , lohsType = " + lohsType);
+                            countDownLatch.countDown();
+                        }
+
+                        @Override
+                        public void onHotspotStopped() {
+                            pw.println("2nd lohs onStopped");
+                            countDownLatch.countDown();
+                        }
+
+                        @Override
+                        public void onHotspotFailed(int reason) {
+                            pw.println("2nd lohs onFailed: " + reason);
+                            countDownLatch.countDown();
+                        }
+                    };
+                    SoftApCallbackProxy softApCallback =
+                            new SoftApCallbackProxy(pw, countDownLatch);
+                    Bundle extras = new Bundle();
+                    if (SdkLevel.isAtLeastS()) {
+                        extras.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
+                                mContext.getAttributionSource());
+                    }
+                    mWifiService.registerLocalOnlyHotspotSoftApCallback(softApCallback, extras);
+                    mWifiService.setLohsConfiguration(WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY,
+                              config, SHELL_PACKAGE_NAME);
+                    if (REQUEST_REGISTERED != mWifiService.startLocalOnlyHotspot(
+                              lohsCallback, SHELL_PACKAGE_NAME, null /* featureId */,
+                              config, extras, false)) {
+                        pw.println("2nd lohs failed to start. Please check config parameters");
+                    }
+                    // Wait for lohs to start and complete callback
+                    countDownLatch.await(10000, TimeUnit.MILLISECONDS);
+                    mWifiService.unregisterLocalOnlyHotspotSoftApCallback(softApCallback, extras);
+                    return 0;
+                }
                 case "start-softap": {
                     CountDownLatch countDownLatch = new CountDownLatch(1);
                     SoftApConfiguration config = buildSoftApConfiguration(pw);
+                    // Starting in B, a DHCP server will not be started for AP ifaces that weren't
+                    // requested by TetheringManager#startTethering.
+                    // TODO: This provides internet access on the AP iface if there is a suitable
+                    //       upstream available. This matches historical behavior, but consider
+                    //       starting the IpServer in local-only mode since the current clients of
+                    //       this command don't need to verify internet connection.
+                    if (SdkLevel.isAtLeastB()) {
+                        final TetheringRequest tr = new TetheringRequest.Builder(TETHERING_WIFI)
+                                .setSoftApConfiguration(config)
+                                .build();
+                        TetheringManager mTetheringManager =
+                                mContext.getSystemService(TetheringManager.class);
+                        AtomicBoolean callbackCalled = new AtomicBoolean(false);
+                        mTetheringManager.startTethering(tr, mContext.getMainExecutor(),
+                                new StartTetheringCallback() {
+                                    @Override
+                                    public void onTetheringStarted() {
+                                        pw.println("Soft AP started.");
+                                        callbackCalled.set(true);
+                                        countDownLatch.countDown();
+                                    }
+
+                                    @Override
+                                    public void onTetheringFailed(int e) {
+                                        pw.println("Soft AP start failed with tether error: " + e
+                                                + ". Please check config parameters.");
+                                        callbackCalled.set(true);
+                                        countDownLatch.countDown();
+                                    }
+                                });
+                        countDownLatch.await(10000, TimeUnit.MILLISECONDS);
+                        if (!callbackCalled.get()) {
+                            pw.println("Soft AP start timed out.");
+                        }
+                        return 0;
+                    }
+
                     SoftApCallbackProxy softApCallback =
                             new SoftApCallbackProxy(pw, countDownLatch);
                     mWifiService.registerSoftApCallback(softApCallback);
@@ -1000,6 +1142,18 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 case "stop-lohs": {
                     mWifiService.stopLocalOnlyHotspot();
                     pw.println("Lohs stopped successfully");
+                    return 0;
+                }
+                case "stop-lohs-primary": {
+                    mWifiService.stopLocalOnlyHotspotWithType(
+                           WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY);
+                    pw.println("Primary lohs stopped successfully");
+                    return 0;
+                }
+                case "stop-lohs-secondary": {
+                    mWifiService.stopLocalOnlyHotspotWithType(
+                           WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY);
+                    pw.println("Secondary lohs stopped successfully");
                     return 0;
                 }
                 case "stop-softap": {

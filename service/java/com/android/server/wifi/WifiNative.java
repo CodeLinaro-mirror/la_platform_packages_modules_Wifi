@@ -1680,9 +1680,6 @@ public class WifiNative {
      * Return true when the device supports Wi-Fi 7 MLD AP and multiple links operation (MLO).
      */
     public boolean isMLDApSupportMLO() {
-        if (!Flags.mloSap()) {
-            return false;
-        }
         BitSet cachedFeatureSet = getCompleteFeatureSetFromConfigStore();
         return mWifiInjector.getWifiGlobals().isMLDApSupported()
                 && cachedFeatureSet.get(WifiManager.WIFI_FEATURE_SOFTAP_MLO);
@@ -1692,9 +1689,6 @@ public class WifiNative {
      * Return true when the device supports multiple Wi-Fi 7 multi-link devices (MLD) on SoftAp.
      */
     public boolean isMultipleMLDSupportedOnSap() {
-        if (!Flags.multipleMldOnSapSupported()) {
-            return false;
-        }
         BitSet cachedFeatureSet = getCompleteFeatureSetFromConfigStore();
         return cachedFeatureSet.get(WifiManager.WIFI_FEATURE_MULTIPLE_MLD_ON_SAP);
     }

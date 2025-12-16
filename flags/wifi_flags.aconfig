@@ -446,3 +446,12 @@ flag {
     description: "Add ML scorer into Wi-Fi framework"
     bug: "412641160"
 }
+
+flag {
+    name: "dual_local_only_hotspot"
+    is_exported: true
+    namespace: "wifi"
+    description: "allow Apps to start dual local only hotspot"
+    bug: "<none>"
+    is_fixed_read_only: true
+}

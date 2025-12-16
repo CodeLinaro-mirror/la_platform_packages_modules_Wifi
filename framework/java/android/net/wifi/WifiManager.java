@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/**
+ * Changes from Qualcomm Innovation Center are provided under the following license:
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 package android.net.wifi;
 
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
@@ -968,6 +974,38 @@ public class WifiManager {
      * @hide
      */
     public static final String EXTRA_BSSID_LONG = "android.net.wifi.extra.BSSID_LONG";
+
+    /** @hide */
+    @IntDef(flag = false, prefix = { "LOCAL_ONLY_HOTSPOT_TYPE" }, value = {
+        LOCAL_ONLY_HOTSPOT_TYPE_NONE,
+        LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY,
+        LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY,
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface LocalyOnlyHotspotType {}
+
+    /**
+     * Type for tether hotspot.
+     *
+     */
+    @FlaggedApi(Flags.FLAG_DUAL_LOCAL_ONLY_HOTSPOT)
+    public static final int LOCAL_ONLY_HOTSPOT_TYPE_NONE = 0;
+
+    /**
+     * One of dual types for LOHS, it's set by Application start one of dual LOHS
+     * with API {@link #setLohsSoftApConfiguration(LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY, config)}
+     * If Application start LOHS without specifing LOHS type, PRIMARY is the default type.
+     */
+    @FlaggedApi(Flags.FLAG_DUAL_LOCAL_ONLY_HOTSPOT)
+    public static final int LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY = 1;
+
+    /**
+     * One of dual types for LOHS, it's set when Application start one of dual LOHS
+     * with API {@link #setLohsSoftApConfiguration(LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY, config)}
+     */
+    @FlaggedApi(Flags.FLAG_DUAL_LOCAL_ONLY_HOTSPOT)
+    public static final int LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY = 2;
+
     /**
      * Icon data.
      *
@@ -1273,6 +1311,16 @@ public class WifiManager {
     @SystemApi
     public static final String EXTRA_WIFI_AP_MODE = "android.net.wifi.extra.WIFI_AP_MODE";
 
+    /**
+     * The lookup key for an int extra that stores the intended LOHS type for this Soft AP.
+     * One of {@link #LOCAL_ONLY_HOTSPOT_TYPE}.
+     * This extra is included in the broadcast {@link #WIFI_AP_STATE_CHANGED_ACTION}.
+     * Retrieve its value with {@link android.content.Intent#getIntExtra(String, int)}.
+     *
+     */
+    @FlaggedApi(Flags.FLAG_DUAL_LOCAL_ONLY_HOTSPOT)
+    public static final String EXTRA_WIFI_LOHS_TYPE = "android.net.wifi.extra.WIFI_LOHS_TYPE";
+
     /** @hide */
     @IntDef(flag = false, prefix = { "WIFI_AP_STATE_" }, value = {
         WIFI_AP_STATE_DISABLING,
@@ -1533,6 +1581,7 @@ public class WifiManager {
      */
     @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
     public static final String NETWORK_STATE_CHANGED_ACTION = "android.net.wifi.STATE_CHANGE";
+
     /**
      * The lookup key for a {@link android.net.NetworkInfo} object associated with the
      * Wi-Fi network. Retrieve with
@@ -2112,7 +2161,11 @@ public class WifiManager {
     @GuardedBy("mLock")
     private LocalOnlyHotspotCallbackProxy mLOHSCallbackProxy;
     @GuardedBy("mLock")
+    private int mNumLocalOnlyHotspot = 0; //active LOHS numbers
+    @GuardedBy("mLock")
     private LocalOnlyHotspotObserverProxy mLOHSObserverProxy;
+
+    private static final int MAX_NUM_LOHS = 2;
 
     private static final SparseArray<IOnWifiUsabilityStatsListener>
             sOnWifiUsabilityStatsListenerMap = new SparseArray();
@@ -6133,6 +6186,29 @@ public class WifiManager {
     }
 
     /**
+     * Set the LOHS type mapping with custom softApConfiguration
+     *
+     *@param localOnlyHotspotType A valid type is {@link #LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY}
+     * or {@link #LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY}
+     *@param softApConfig A valid SoftApConfiguration specifying the configuration of the SAP
+     *@return {@code true} if the operation succeeded, {@code false} otherwise
+     */
+    @FlaggedApi(Flags.FLAG_DUAL_LOCAL_ONLY_HOTSPOT)
+    @RequiresPermission(anyOf = {
+            android.Manifest.permission.NETWORK_SETTINGS,
+            android.Manifest.permission.OVERRIDE_WIFI_CONFIG
+    })
+    public boolean setLohsConfiguration(@NonNull int localOnlyHotspotType,
+            @NonNull SoftApConfiguration softApConfig) {
+        try {
+            return mService.setLohsConfiguration(localOnlyHotspotType,
+                    softApConfig, mContext.getOpPackageName());
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
      * Check if input configuration is valid.
      * <p>
      * This will return {@code false} if a non-null BSSID is set but the caller does not have any of
@@ -6321,6 +6397,8 @@ public class WifiManager {
                     return;
                 }
                 mLOHSCallbackProxy = proxy;
+                if (mNumLocalOnlyHotspot < MAX_NUM_LOHS)
+                    mNumLocalOnlyHotspot++;
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
@@ -6366,6 +6444,53 @@ public class WifiManager {
             mLOHSCallbackProxy = null;
             try {
                 mService.stopLocalOnlyHotspot();
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
+    /**
+     *  Method used to inform WifiService that the LocalOnlyHotspot with specified type is no longer
+     *  needed. This method is used by WifiManager to release LocalOnlyHotspotReservations held by calling
+     *  applications and removes the internal tracking for the hotspot request.  When all requesting
+     *  applications are finished using the hotspot, it will be stopped and WiFi will return to the
+     *  previous operational mode.
+     *
+     *  This method should not be called by applications.  Instead, they should call the close()
+     *  method on their LocalOnlyHotspotReservation.
+     *
+     *  @param mLohsType, valid value is {@link #LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY}
+     *  or {@link #LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY}
+     */
+    private void stopLocalOnlyHotspotWithType(int mLohsType) {
+        synchronized (mLock) {
+            if (mLOHSCallbackProxy == null) {
+                // nothing to do, the callback was already cleaned up.
+                return;
+            }
+            mNumLocalOnlyHotspot--;
+            if (mNumLocalOnlyHotspot == 0)
+                mLOHSCallbackProxy = null;
+            try {
+                mService.stopLocalOnlyHotspotWithType(mLohsType);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
+   /**
+    * Allow system applications to stop LocalOnlyHotspot in some speical cases such as suspend to disk.
+    *
+    * @hide
+    */
+    @RequiresPermission(android.Manifest.permission.CHANGE_WIFI_STATE)
+    public boolean stopAllLocalOnlyHotspotRequests() {
+        synchronized (mLock) {
+            try {
+                mLOHSCallbackProxy = null;
+                return mService.stopAllLocalOnlyHotspotRequests(mContext.getOpPackageName());
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
@@ -6554,6 +6679,55 @@ public class WifiManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public boolean isWifiApEnabled() {
         return getWifiApState() == WIFI_AP_STATE_ENABLED;
+    }
+
+    /**
+     * Gets the local-only Wi-Fi hotspot enabled state.
+     * @return One of {@link #WIFI_AP_STATE_DISABLED},
+     *         {@link #WIFI_AP_STATE_DISABLING}, {@link #WIFI_AP_STATE_ENABLED},
+     *         {@link #WIFI_AP_STATE_ENABLING}, {@link #WIFI_AP_STATE_FAILED}
+     * @see #isWifiLocalOnlyHotspotEnabled()
+     *
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
+    public int getWifiLocalOnlyHotspotState() {
+        try {
+            return mService.getWifiLocalOnlyHotspotEnabledState();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+
+    /**
+     * Gets the secondary local-only Wi-Fi hotspot enabled state.
+     * @return One of {@link #WIFI_AP_STATE_DISABLED},
+     *         {@link #WIFI_AP_STATE_DISABLING}, {@link #WIFI_AP_STATE_ENABLED},
+     *         {@link #WIFI_AP_STATE_ENABLING}, {@link #WIFI_AP_STATE_FAILED}
+     * @see #isWifiLocalOnlyHotspotEnabled()
+     *
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
+    public int getSecondaryWifiLocalOnlyHotspotState() {
+        try {
+            return mService.getSecondaryWifiLocalOnlyHotspotEnabledState();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Return whether local-only Wi-Fi hotspot is enabled or disabled.
+     * @return {@code true} if local-only Wi-Fi hotspot is enabled
+     * @see #getWifiLocalOnlyHotspotState()
+     *
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
+    public boolean isWifiLocalOnlyHotspotEnabled() {
+        return getWifiLocalOnlyHotspotState() == WIFI_AP_STATE_ENABLED;
     }
 
     /**
@@ -7474,13 +7648,15 @@ public class WifiManager {
         private final CloseGuard mCloseGuard = new CloseGuard();
         private final SoftApConfiguration mSoftApConfig;
         private final WifiConfiguration mWifiConfig;
+	private final int mLohsType;
         private boolean mClosed = false;
 
         /** @hide */
         @VisibleForTesting
-        public LocalOnlyHotspotReservation(SoftApConfiguration config) {
+        public LocalOnlyHotspotReservation(int lohsType, SoftApConfiguration config) {
             mSoftApConfig = config;
             mWifiConfig = config.toWifiConfiguration();
+	    mLohsType = lohsType;
             mCloseGuard.open("close");
         }
 
@@ -7506,13 +7682,22 @@ public class WifiManager {
             return mSoftApConfig;
         }
 
+        /**
+         * Returns the {@link LocalyOnlyHotspotType} of the current Local Only Hotspot (LOHS).
+         */
+	@FlaggedApi(Flags.FLAG_DUAL_LOCAL_ONLY_HOTSPOT)
+        @NonNull
+        public int getLocalOnlyHotspotType() {
+            return mLohsType;
+        }
+
         @Override
         public void close() {
             try {
                 synchronized (mLock) {
                     if (!mClosed) {
                         mClosed = true;
-                        stopLocalOnlyHotspot();
+                        stopLocalOnlyHotspotWithType(mLohsType);
                         mCloseGuard.close();
                     }
                 }
@@ -7610,7 +7795,24 @@ public class WifiManager {
                 return;
             }
             final LocalOnlyHotspotReservation reservation =
-                    manager.new LocalOnlyHotspotReservation(config);
+                    manager.new LocalOnlyHotspotReservation(LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY, config);
+            if (mCallback == null) return;
+            mExecutor.execute(() -> mCallback.onStarted(reservation));
+        }
+
+
+        @Override
+        public void onHotspotStartedWithType(int lohsType, SoftApConfiguration config) {
+            WifiManager manager = mWifiManager.get();
+            if (manager == null) return;
+
+            if (config == null) {
+                Log.e(TAG, "LocalOnlyHotspotCallbackProxy: config cannot be null.");
+                onHotspotFailed(LocalOnlyHotspotCallback.ERROR_GENERIC);
+                return;
+            }
+            final LocalOnlyHotspotReservation reservation =
+                    manager.new LocalOnlyHotspotReservation(lohsType, config);
             if (mCallback == null) return;
             mExecutor.execute(() -> mCallback.onStarted(reservation));
         }
@@ -7741,6 +7943,12 @@ public class WifiManager {
                 return;
             }
             mExecutor.execute(() -> mObserver.onStarted(config));
+        }
+
+        @Override
+        public void onHotspotStartedWithType(int lohsType, SoftApConfiguration config) {
+            Log.e(TAG, "unsupport in LocalOnlyHotspotObserver");
+            return;
         }
 
         @Override

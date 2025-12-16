@@ -127,6 +127,7 @@ java_library {
         "service-entitlement",
         "wifi-lite-protos",
         "wifi-nano-protos",
+	"net-utils-device-common-netlink",
     ],
 }
 

@@ -1421,8 +1421,7 @@ public class WifiConfigManager {
         }
 
         internalConfig.allowAutojoin = externalConfig.allowAutojoin;
-        if (Environment.isSdkNewerThanB()
-                && android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin()) {
+        if (android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin()) {
             internalConfig.setAutoJoinInAdvancedProtectionModeEnabled(
                     externalConfig.isAutoJoinInAdvancedProtectionModeEnabled());
         }
@@ -2271,7 +2270,7 @@ public class WifiConfigManager {
         WifiConfiguration[] copiedConfigs =
                 mConfiguredNetworks.valuesForAllUsers().toArray(new WifiConfiguration[0]);
         for (WifiConfiguration config : copiedConfigs) {
-            if (userId != UserHandle.getUserHandleForUid(config.creatorUid).getIdentifier()) {
+            if (userId != config.getCreatorUserIdInternal()) {
                 continue;
             }
             localLog("Removing network " + config.SSID + ", user " + userId + " removed");

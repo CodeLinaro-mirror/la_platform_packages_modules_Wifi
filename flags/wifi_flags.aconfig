@@ -278,13 +278,6 @@ flag {
 }
 
 flag {
-    name: "updated_tofu_dialog"
-    namespace: "wifi"
-    description: "Update the TOFU dialog with more information"
-    bug: "276778134"
-}
-
-flag {
     name: "un_deprecated_wificonfiguration"
     is_exported: true
     namespace: "wifi"
@@ -532,4 +525,12 @@ flag {
     namespace: "wifi"
     description: "Add option to temporarily upgrade single 6ghz hotspot config to dual band if available"
     bug: "394409845"
+}
+
+flag {
+    name: "multi_peer_aware_datapath"
+    namespace: "wifi"
+    is_exported: true
+    description: "new API to allow App create as many datapath as the NDP number from capability"
+    bug: "454343159"
 }

@@ -365,8 +365,11 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         mSession = ExtendedMockito.mockitoSession()
                 .mockStatic(WifiInjector.class, withSettings().lenient())
                 .mockStatic(WifiConfigStore.class, withSettings().lenient())
+                .mockStatic(android.security.Flags.class, withSettings().lenient())
                 .strictness(Strictness.LENIENT)
                 .startMocking();
+        when(android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin())
+                .thenReturn(false);
         when(WifiInjector.getInstance()).thenReturn(mWifiInjector);
         when(mWifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
         when(mWifiInjector.getWifiGlobals()).thenReturn(mWifiGlobals);
@@ -5681,7 +5684,7 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         assertFalse(mWifiConfigManager.isNonCarrierMergedNetworkTemporarilyDisabled(
                 visibleNetwork));
         assertFalse(mWifiConfigManager.isNonCarrierMergedNetworkTemporarilyDisabled(otherNetwork));
-        verify(mOnRestrictAutoJoinToSubIdCallback).onRestrictionStopped();
+        verify(mOnRestrictAutoJoinToSubIdCallback).onRestrictionsStopped();
     }
 
     /**
@@ -8750,5 +8753,57 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         }
         assertTrue(networkIds.contains(openNetwork1.networkId));
         assertTrue(networkIds.contains(openNetwork2.networkId));
+    }
+
+    @Test
+    public void testAapmFeatureDisableInsecureWifiAutojoin() {
+        assumeTrue(Environment.isSdkNewerThanB());
+        when(android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin()).thenReturn(true);
+
+        // Test with a secure network type
+        WifiConfiguration secureConfig = WifiConfigurationTestUtil.createPskNetwork();
+        NetworkUpdateResult secureResult = addNetworkToWifiConfigManager(secureConfig);
+        assertTrue(secureResult.isSuccess());
+        WifiConfiguration retrievedSecureConfig =
+                mWifiConfigManager.getConfiguredNetwork(secureResult.getNetworkId());
+        assertTrue(retrievedSecureConfig.isAutoJoinInAdvancedProtectionModeEnabled());
+
+        // Test with an insecure network type
+        WifiConfiguration insecureConfig = WifiConfigurationTestUtil.createOpenNetwork();
+        NetworkUpdateResult insecureResult = addNetworkToWifiConfigManager(insecureConfig);
+        assertTrue(insecureResult.isSuccess());
+        WifiConfiguration retrievedInsecureConfig =
+                mWifiConfigManager.getConfiguredNetwork(insecureResult.getNetworkId());
+        assertFalse(retrievedInsecureConfig.isAutoJoinInAdvancedProtectionModeEnabled());
+    }
+
+    /**
+     * Verifies that the user switch won't cause store is written again if user stop is handled.
+     */
+    @Test
+    public void testHandleUserSwitchAfterUserStop() throws Exception {
+        when(mFeatureFlags.multiUserWifiEnhancement()).thenReturn(true);
+        Context user2Context = mock(Context.class);
+        when(user2Context.getSystemService(eq(UserManager.class))).thenReturn(mUserManager);
+        when(mContext.createContextAsUser(any(), eq(0))).thenReturn(user2Context);
+        when(mUserManager.isAdminUser()).thenReturn(true);
+        int user1 = TEST_DEFAULT_USER;
+        int user2 = TEST_DEFAULT_USER + 1;
+        setupUserProfiles(user2);
+
+        // Set up the internal data first.
+        assertTrue(mWifiConfigManager.loadFromStore());
+
+        // Try stopping user 1 first
+        when(mUserManager.isUserUnlockingOrUnlocked(UserHandle.of(user2))).thenReturn(false);
+        mWifiConfigManager.handleUserStop(user1);
+        mContextConfigStoreMockOrder.verify(mWifiConfigStore).write();
+        reset(mWifiConfigStore);
+        // Now try switching the foreground user2, this should NOT trigger a write to store
+        // since it is unlock.
+        mWifiConfigManager.handleUserSwitch(user2);
+        mContextConfigStoreMockOrder.verify(mWifiConfigStore, never())
+                .switchUserStoresAndRead(any(List.class));
+        mContextConfigStoreMockOrder.verify(mWifiConfigStore, never()).write();
     }
 }

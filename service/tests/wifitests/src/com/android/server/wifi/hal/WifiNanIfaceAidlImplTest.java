@@ -62,11 +62,14 @@ import android.net.wifi.aware.AwarePairingConfig;
 import android.net.wifi.aware.ConfigRequest;
 import android.net.wifi.aware.PublishConfig;
 import android.net.wifi.aware.SubscribeConfig;
+import android.net.wifi.aware.WifiAwareChannelInfo;
 import android.net.wifi.aware.WifiAwareDataPathSecurityConfig;
 import android.net.wifi.util.Environment;
 import android.os.PersistableBundle;
 import android.os.RemoteException;
 import android.util.Pair;
+
+import androidx.annotation.Nullable;
 
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.WifiBaseTest;
@@ -82,20 +85,159 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 
 public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
     private static final Capabilities TEST_CAPABILITIES = new Capabilities();
-
+    private static final byte[] TEST_SDEA_HEADER = new byte[] {0x01, 0x02, 0x03};
     private WifiNanIfaceAidlImpl mDut;
     @Mock private IWifiNanIface mIWifiNanIfaceMock;
+    private FrameworkCallback mFrameworkCallback;
+
+    private static class FrameworkCallback implements WifiNanIface.Callback {
+        private List<android.net.wifi.rtt.RangingResult> mRangingResults;
+
+        @Override
+        public void notifyCapabilitiesResponse(short id, Capabilities capabilities) {
+        }
+        @Override
+        public void notifyEnableResponse(short id, int status) {
+        }
+        @Override
+        public void notifyConfigResponse(short id, int status) {
+        }
+        @Override
+        public void notifyDisableResponse(short id, int status) {
+        }
+        @Override
+        public void notifyStartPublishResponse(short id, int status, byte publishId) {
+        }
+        @Override
+        public void notifyStartSubscribeResponse(short id, int status, byte subscribeId) {
+        }
+        @Override
+        public void notifyTransmitFollowupResponse(short id, int status) {
+        }
+        @Override
+        public void notifyCreateDataInterfaceResponse(short id, int status) {
+        }
+        @Override
+        public void notifyDeleteDataInterfaceResponse(short id, int status) {
+        }
+        @Override
+        public void notifyInitiateDataPathResponse(short id, int status, int ndpInstanceId) {
+        }
+        @Override
+        public void notifyRespondToDataPathIndicationResponse(short id, int status) {
+        }
+        @Override
+        public void notifyTerminateDataPathResponse(short id, int status) {
+        }
+        @Override
+        public void notifyInitiatePairingResponse(short id, int status, int pairingInstanceId) {
+        }
+        @Override
+        public void notifyRespondToPairingIndicationResponse(short id, int status) {
+        }
+        @Override
+        public void notifyInitiateBootstrappingResponse(short id, int status,
+                int bootstrappingInstanceId) {
+        }
+        @Override
+        public void notifyRespondToBootstrappingIndicationResponse(short id, int status) {
+        }
+        @Override
+        public void notifySuspendResponse(short id, int status) {
+        }
+        @Override
+        public void notifyResumeResponse(short id, int status) {
+        }
+        @Override
+        public void notifyTerminatePairingResponse(short id, int status) {
+        }
+        @Override
+        public void eventClusterEvent(int eventType, byte[] addr) {
+        }
+        @Override
+        public void eventDisabled(int status) {
+        }
+        @Override
+        public void eventPublishTerminated(byte sessionId, int status) {
+        }
+        @Override
+        public void eventSubscribeTerminated(byte sessionId, int status) {
+        }
+        @Override
+        public void eventMatch(byte discoverySessionId, int peerId, byte[] addr,
+                byte[] serviceSpecificInfo, byte[] matchFilter, int rangingIndicationType,
+                int rangingMeasurementInMm, byte[] scid, int peerCipherType, byte[] nonce,
+                byte[] tag, AwarePairingConfig pairingConfig,
+                @Nullable List<OuiKeyedData> vendorData) {
+        }
+        @Override
+        public void eventMatchExpired(byte discoverySessionId, int peerId) {
+        }
+        @Override
+        public void eventFollowupReceived(byte discoverySessionId, int peerId, byte[] addr,
+                byte[] serviceSpecificInfo) {
+        }
+        @Override
+        public void eventTransmitFollowup(short id, int status) {
+        }
+        @Override
+        public void eventDataPathRequest(byte discoverySessionId, byte[] peerDiscMacAddr,
+                int ndpInstanceId, byte[] appInfo) {
+        }
+        @Override
+        public void eventDataPathConfirm(int status, int ndpInstanceId,
+                boolean dataPathSetupSuccess, byte[] peerNdiMacAddr, byte[] appInfo,
+                List<WifiAwareChannelInfo> channelInfos) {
+        }
+        @Override
+        public void eventDataPathScheduleUpdate(byte[] peerDiscoveryAddress,
+                ArrayList<Integer> ndpInstanceIds, List<WifiAwareChannelInfo> channelInfo) {
+        }
+        @Override
+        public void eventDataPathTerminated(int ndpInstanceId) {
+        }
+        @Override
+        public void eventPairingRequest(int discoverySessionId, int peerId,
+                byte[] peerDiscMacAddr, int ndpInstanceId, int requestType, boolean enableCache,
+                byte[] nonce, byte[] tag) {
+        }
+        @Override
+        public void eventPairingConfirm(int pairingId, boolean accept, int reason, int requestType,
+                boolean enableCache,
+                com.android.server.wifi.aware.PairingConfigManager.PairingSecurityAssociationInfo
+                npksa) {
+        }
+        @Override
+        public void eventBootstrappingRequest(int discoverySessionId, int peerId,
+                byte[] peerDiscMacAddr, int bootstrappingInstanceId, int method,
+                byte[] serviceSpecificInfo) {
+        }
+        @Override
+        public void eventBootstrappingConfirm(int pairingId, int responseCode, int reason,
+                int comebackDelay, byte[] cookie) {
+        }
+        @Override
+        public void eventSuspensionModeChanged(boolean isSuspended) {
+        }
+        @Override
+        public void notifyRangingResults(ArrayList<android.net.wifi.rtt.RangingResult>
+                rangingResults, byte sessionId) {
+            mRangingResults = rangingResults;
+        }
+    }
 
     @Rule public ErrorCollector collector = new ErrorCollector();
 
     @Before
     public void setup() throws Exception {
         MockitoAnnotations.initMocks(this);
+        mFrameworkCallback = new FrameworkCallback();
         mDut = new WifiNanIfaceAidlImpl(mIWifiNanIfaceMock);
         TEST_CAPABILITIES.supportedDataPathCipherSuites = WIFI_AWARE_CIPHER_SUITE_NCS_SK_128
                 | WIFI_AWARE_CIPHER_SUITE_NCS_SK_256;
@@ -188,23 +330,23 @@ public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
         int numPublishExpected = 2;
         int numSubscribeExpected = 4;
 
-        assertTrue(mDut.publish(tid, pid, pubDefault, null));
-        assertTrue(mDut.publish(tid, pid, pubWithRanging, null));
-        assertTrue(mDut.subscribe(tid, pid, subDefault, null));
-        assertTrue(mDut.subscribe(tid, pid, subWithMin, null));
-        assertTrue(mDut.subscribe(tid, pid, subWithMax, null));
-        assertTrue(mDut.subscribe(tid, pid, subWithMinMax, null));
+        assertTrue(mDut.publish(tid, pid, pubDefault, null, null));
+        assertTrue(mDut.publish(tid, pid, pubWithRanging, null, null));
+        assertTrue(mDut.subscribe(tid, pid, subDefault, null, null));
+        assertTrue(mDut.subscribe(tid, pid, subWithMin, null, null));
+        assertTrue(mDut.subscribe(tid, pid, subWithMax, null, null));
+        assertTrue(mDut.subscribe(tid, pid, subWithMinMax, null, null));
 
         if (SdkLevel.isAtLeastV()) {
-            assertTrue(mDut.publish(tid, pid, pubWithVendorData, null));
-            assertTrue(mDut.subscribe(tid, pid, subWithVendorData, null));
+            assertTrue(mDut.publish(tid, pid, pubWithVendorData, null, null));
+            assertTrue(mDut.subscribe(tid, pid, subWithVendorData, null, null));
             numPublishExpected += 1;
             numSubscribeExpected += 1;
 
         }
 
         if (Environment.isSdkAtLeastB()) {
-            assertTrue(mDut.subscribe(tid, pid, subWithPeriodicRanging, null));
+            assertTrue(mDut.subscribe(tid, pid, subWithPeriodicRanging, null, null));
             numSubscribeExpected += 1;
         }
 
@@ -296,6 +438,7 @@ public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
         assumeTrue(SdkLevel.isAtLeastU());
         short tid = 250;
         byte pid = 34;
+        byte[] ssi = "some service specific info".getBytes();
         AwarePairingConfig awarePairingConfig = new AwarePairingConfig.Builder()
                 .setPairingCacheEnabled(true)
                 .setPairingSetupEnabled(true)
@@ -306,10 +449,11 @@ public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
         PublishConfig config = new PublishConfig.Builder()
                 .setServiceName("XXX")
                 .setPairingConfig(awarePairingConfig)
+                .setServiceSpecificInfo(ssi)
                 .build();
         ArgumentCaptor<NanPublishRequest> pubCaptor = ArgumentCaptor.forClass(
                 NanPublishRequest.class);
-        assertTrue(mDut.publish(tid, pid, config, null));
+        assertTrue(mDut.publish(tid, pid, config, null, TEST_SDEA_HEADER));
         verify(mIWifiNanIfaceMock)
                 .startPublishRequest(eq((char) tid), pubCaptor.capture());
         NanPublishRequest halPubReq = pubCaptor.getValue();
@@ -327,6 +471,10 @@ public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
         assertTrue(halPubReq.baseConfigs.securityConfig.requiresEnhancedFrameProtection);
         assertTrue(halPubReq.baseConfigs.securityConfig.supportBigtksa);
         assertTrue(halPubReq.baseConfigs.securityConfig.supportGtkAndIgtk);
+        assertArrayEquals(ssi, Arrays.copyOfRange(halPubReq.baseConfigs.extendedServiceSpecificInfo,
+                3, halPubReq.baseConfigs.extendedServiceSpecificInfo.length));
+        assertArrayEquals(TEST_SDEA_HEADER, Arrays.copyOfRange(
+                halPubReq.baseConfigs.extendedServiceSpecificInfo, 0, 3));
     }
 
     @Test
@@ -334,6 +482,7 @@ public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
         assumeTrue(SdkLevel.isAtLeastU());
         short tid = 250;
         byte pid = 34;
+        byte[] ssi = "some service specific info".getBytes();
         AwarePairingConfig awarePairingConfig = new AwarePairingConfig.Builder()
                 .setPairingCacheEnabled(true)
                 .setPairingSetupEnabled(true)
@@ -344,10 +493,11 @@ public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
         SubscribeConfig config = new SubscribeConfig.Builder()
                 .setServiceName("XXX")
                 .setPairingConfig(awarePairingConfig)
+                .setServiceSpecificInfo(ssi)
                 .build();
         ArgumentCaptor<NanSubscribeRequest> subCaptor = ArgumentCaptor.forClass(
                 NanSubscribeRequest.class);
-        assertTrue(mDut.subscribe(tid, pid, config, null));
+        assertTrue(mDut.subscribe(tid, pid, config, null, TEST_SDEA_HEADER));
         verify(mIWifiNanIfaceMock)
                 .startSubscribeRequest(eq((char) tid), subCaptor.capture());
         NanSubscribeRequest halSubReq = subCaptor.getValue();
@@ -363,6 +513,10 @@ public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
         assertTrue(halSubReq.baseConfigs.securityConfig.requiresEnhancedFrameProtection);
         assertTrue(halSubReq.baseConfigs.securityConfig.supportBigtksa);
         assertTrue(halSubReq.baseConfigs.securityConfig.supportGtkAndIgtk);
+        assertArrayEquals(ssi, Arrays.copyOfRange(halSubReq.baseConfigs.extendedServiceSpecificInfo,
+                3, halSubReq.baseConfigs.extendedServiceSpecificInfo.length));
+        assertArrayEquals(TEST_SDEA_HEADER, Arrays.copyOfRange(
+                halSubReq.baseConfigs.extendedServiceSpecificInfo, 0, 3));
     }
 
 
@@ -700,7 +854,8 @@ public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
         MacAddress peer = MacAddress.fromString("00:01:02:03:04:05");
         ArgumentCaptor<NanBootstrappingRequest> reqCaptor = ArgumentCaptor.forClass(
                 NanBootstrappingRequest.class);
-        assertTrue(mDut.initiateNanBootstrappingRequest(tid, 1, peer, 2, null, pid, false, ssi));
+        assertTrue(mDut.initiateNanBootstrappingRequest(tid, 1, peer, 2, null, pid, false, ssi,
+                TEST_SDEA_HEADER));
         verify(mIWifiNanIfaceMock).initiateBootstrappingRequest(eq((char) tid),
                 reqCaptor.capture());
         NanBootstrappingRequest request = reqCaptor.getValue();
@@ -709,7 +864,9 @@ public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
         assertArrayEquals(peer.toByteArray(), request.peerDiscMacAddr);
         assertArrayEquals(new byte[0], request.cookie);
         assertEquals(pid, request.discoverySessionId);
-        assertArrayEquals(ssi, request.serviceSpecificInfo);
+        assertArrayEquals(ssi, Arrays.copyOfRange(request.serviceSpecificInfo, 3,
+            request.serviceSpecificInfo.length));
+        assertArrayEquals(TEST_SDEA_HEADER, Arrays.copyOfRange(request.serviceSpecificInfo, 0, 3));
     }
 
     @Test
@@ -992,5 +1149,35 @@ public class WifiNanIfaceAidlImplTest extends WifiBaseTest {
                         equalTo(nrtdpir.serviceNameOutOfBand));
             }
         }
+    }
+
+    @Test
+    public void testRangingResultsBusyTryLater() throws Exception {
+        mDut.registerFrameworkCallback(mFrameworkCallback);
+        WifiNanIfaceCallbackAidlImpl halCallback = new WifiNanIfaceCallbackAidlImpl(mDut);
+        android.hardware.wifi.RttResult[] results =
+                new android.hardware.wifi.RttResult[1];
+        android.hardware.wifi.RttResult res = new android.hardware.wifi.RttResult();
+        res.lci = new android.hardware.wifi.WifiInformationElement();
+        res.lcr = new android.hardware.wifi.WifiInformationElement();
+        res.addr = MacAddress.byteAddrFromStringAddr("05:06:07:08:09:0A");
+        res.status = android.hardware.wifi.RttStatus.FAIL_BUSY_TRY_LATER;
+        res.retryAfterDuration = 5; // 5 seconds
+        results[0] = res;
+
+        halCallback.notifyRangingResults(results, (byte) 0);
+
+        // verify contents of the framework results
+        List<android.net.wifi.rtt.RangingResult> rttR = mFrameworkCallback.mRangingResults;
+
+        collector.checkThat("number of entries", rttR.size(), equalTo(1));
+
+        android.net.wifi.rtt.RangingResult rttResult = rttR.get(0);
+        collector.checkThat("status", rttResult.getStatus(),
+                equalTo(android.net.wifi.rtt.RangingResult.STATUS_BUSY_TRY_LATER));
+        collector.checkThat("mac", rttResult.getMacAddress().toByteArray(),
+                equalTo(MacAddress.fromString("05:06:07:08:09:0A").toByteArray()));
+        collector.checkThat("retryAfterDuration", rttResult.getRetryAfterDurationMillis(),
+                equalTo(5000));
     }
 }

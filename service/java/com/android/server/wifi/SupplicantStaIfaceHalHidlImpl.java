@@ -76,6 +76,7 @@ import com.android.server.wifi.WifiNative.SupplicantDeathEventHandler;
 import com.android.server.wifi.util.GeneralUtil.Mutable;
 import com.android.server.wifi.util.NativeUtil;
 
+import java.io.PrintWriter;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -722,6 +723,7 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
                     mISupplicant = getSupplicantMockable();
                 }
                 setLogLevel(mVerboseHalLoggingEnabled);
+                Log.i(TAG, "Service version: " + getServiceVersion());
             } catch (RemoteException | NoSuchElementException e) {
                 Log.e(TAG, "Exception while trying to start supplicant: " + e);
                 supplicantServiceDiedHandler(mDeathRecipientCookie);
@@ -902,6 +904,14 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
     private boolean isV1_4() {
         return checkHalVersionByInterfaceName(
                 android.hardware.wifi.supplicant.V1_4.ISupplicant.kInterfaceName);
+    }
+
+    private double getServiceVersion() {
+        if (isV1_4()) return 1.4;
+        if (isV1_3()) return 1.3;
+        if (isV1_2()) return 1.2;
+        if (isV1_1()) return 1.1;
+        return 1.0;
     }
 
     private boolean checkHalVersionByInterfaceName(String interfaceName) {
@@ -4001,6 +4011,18 @@ public class SupplicantStaIfaceHalHidlImpl implements ISupplicantStaIfaceHal {
         }
 
         return currentConfig.getNetworkSelectionStatus().getCandidateSecurityParams();
+    }
+
+    /**
+     * Dump information about the internal state
+     *
+     * @param pw PrintWriter to write the dump to
+     */
+    public void dump(PrintWriter pw) {
+        pw.println("Dump of " + TAG);
+        pw.println("Service Version: " + getServiceVersion());
+        pw.println("mISupplicant: " + (mISupplicant != null));
+        pw.println("ifaces: " + mISupplicantStaIfaces.keySet());
     }
 
     /** [START] ISupplicant Vendor Iface implementation */

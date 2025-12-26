@@ -57,6 +57,7 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.internal.telephony.flags.Flags;
 import com.android.modules.utils.BackgroundThread;
 import com.android.modules.utils.build.SdkLevel;
+import com.android.server.wifi.aware.PairingConfigManager;
 import com.android.server.wifi.aware.WifiAwareMetrics;
 import com.android.server.wifi.b2b.WifiRoamingModeManager;
 import com.android.server.wifi.coex.CoexManager;
@@ -284,6 +285,7 @@ public class WifiInjector {
     private boolean mVerboseLoggingEnabled;
     private WifiUsabilityClassifierFactory mWifiUsabilityClassifierFactory;
     @Nullable private final WepNetworkUsageController mWepNetworkUsageController;
+    private final PairingConfigManager mPairingConfigManager;
 
     public WifiInjector(WifiContext context) {
         if (context == null) {
@@ -366,7 +368,7 @@ public class WifiInjector {
                 mWifiGlobals, mSsidTranslator, this);
         mHostapdHal = new HostapdHal(mContext, mWifiHandler);
         mNl80211Native = new Nl80211Native(
-                new Nl80211Proxy(mWifiHandler),
+                new Nl80211Proxy(mWifiHandler, mWifiMetrics),
                 (WifiNl80211Manager) mContext.getSystemService(Context.WIFI_NL80211_SERVICE),
                 true /* useWificond */);
         mWifiNative = new WifiNative(
@@ -411,6 +413,7 @@ public class WifiInjector {
         mWifiCarrierInfoManager = new WifiCarrierInfoManager(makeTelephonyManager(),
                 subscriptionManager, this, mFrameworkFacade, mContext,
                 mWifiConfigStore, mWifiHandler, mWifiMetrics, mClock, mWifiPseudonymManager);
+        mPairingConfigManager = new PairingConfigManager(this);
         String l2KeySeed = Secure.getString(mContext.getContentResolver(), Secure.ANDROID_ID);
         mWifiScoreCard = new WifiScoreCard(mClock, l2KeySeed, mDeviceConfigFacade,
                 mContext, mWifiGlobals);
@@ -508,10 +511,11 @@ public class WifiInjector {
         mPasspointManager.setPasspointNetworkNominateHelper(mNominateHelper);
         mSavedNetworkNominator = new SavedNetworkNominator(
                 mWifiConfigManager, mConnectivityLocalLog, mWifiCarrierInfoManager,
-                mWifiPseudonymManager, mWifiPermissionsUtil, mWifiNetworkSuggestionsManager);
+                mWifiPseudonymManager, mWifiPermissionsUtil, mWifiNetworkSuggestionsManager,
+                mWifiDeviceStateChangeManager);
         mNetworkSuggestionNominator = new NetworkSuggestionNominator(mWifiNetworkSuggestionsManager,
                 mWifiConfigManager, mConnectivityLocalLog, mWifiCarrierInfoManager,
-                mWifiPseudonymManager, mWifiMetrics);
+                mWifiPseudonymManager, mWifiMetrics, mWifiDeviceStateChangeManager);
 
         mWifiMetrics.setPasspointManager(mPasspointManager);
         WifiChannelUtilization wifiChannelUtilizationConnected =
@@ -1374,5 +1378,15 @@ public class WifiInjector {
     @Nullable
     public WepNetworkUsageController getWepNetworkUsageController() {
         return mWepNetworkUsageController;
+    }
+
+    @NonNull
+    public WifiConfigStore getWifiConfigStore() {
+        return mWifiConfigStore;
+    }
+
+    @NonNull
+    public PairingConfigManager getPairingConfigManager() {
+        return mPairingConfigManager;
     }
 }

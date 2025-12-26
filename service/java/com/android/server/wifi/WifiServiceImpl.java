@@ -796,14 +796,15 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                     }
 
                     @Override
-                    public void onRestrictionStopped() {
+                    public void onRestrictionsStopped() {
                         int itemCount = mRestrictAutoJoinToSubIdCallbacks.beginBroadcast();
                         for (int i = 0; i < itemCount; i++) {
                             try {
                                 mRestrictAutoJoinToSubIdCallbacks.getBroadcastItem(i)
-                                        .onRestrictionStopped();
+                                        .onRestrictionsStopped();
                             } catch (RemoteException e) {
-                                Log.e(TAG, "IRestrictAutoJoinToSubIdCallback.onRestrictionStopped:"
+                                Log.e(TAG,
+                                        "IRestrictAutoJoinToSubIdCallback.onRestrictionsStopped:"
                                         + " remote exception -- " + e);
                             }
                         }
@@ -1095,8 +1096,10 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                                             "User removed broadcast received with no user handle");
                                     return;
                                 }
-                                mWifiConfigManager
-                                        .removeNetworksForUser(userHandle.getIdentifier());
+                                mWifiThreadRunner.post(() ->
+                                    mWifiConfigManager
+                                            .removeNetworksForUser(userHandle.getIdentifier()),
+                                            TAG + "#handleUserRemoved");
                             } else if (BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED
                                     .equals(action)) {
                                 int state = intent.getIntExtra(
@@ -1104,20 +1107,24 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                                         BluetoothAdapter.STATE_DISCONNECTED);
                                 boolean isConnected =
                                         state != BluetoothAdapter.STATE_DISCONNECTED;
-                                mWifiGlobals.setBluetoothConnected(isConnected);
-                                for (ClientModeManager cmm :
-                                        mActiveModeWarden.getClientModeManagers()) {
-                                    cmm.onBluetoothConnectionStateChanged();
-                                }
+                                mWifiThreadRunner.post(() -> {
+                                    mWifiGlobals.setBluetoothConnected(isConnected);
+                                    for (ClientModeManager cmm :
+                                            mActiveModeWarden.getClientModeManagers()) {
+                                        cmm.onBluetoothConnectionStateChanged();
+                                    }
+                                }, TAG + "#handleBluetoothConnectionStateChanged");
                             } else if (BluetoothAdapter.ACTION_STATE_CHANGED.equals(action)) {
                                 int state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE,
                                         BluetoothAdapter.STATE_OFF);
                                 boolean isEnabled = state != BluetoothAdapter.STATE_OFF;
-                                mWifiGlobals.setBluetoothEnabled(isEnabled);
-                                for (ClientModeManager cmm :
-                                        mActiveModeWarden.getClientModeManagers()) {
-                                    cmm.onBluetoothConnectionStateChanged();
-                                }
+                                mWifiThreadRunner.post(() -> {
+                                    mWifiGlobals.setBluetoothEnabled(isEnabled);
+                                    for (ClientModeManager cmm :
+                                            mActiveModeWarden.getClientModeManagers()) {
+                                        cmm.onBluetoothConnectionStateChanged();
+                                    }
+                                }, TAG + "#handleBluetoothStateChanged");
                             } else if (PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED
                                     .equals(action)) {
                                 handleIdleModeChanged();
@@ -1125,9 +1132,10 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                         }
                     },
                     intentFilter,
-                    null,
-                    new Handler(mWifiHandlerThread.getLooper()));
-            registerBroadcastReceiver(
+                    null, null);
+            // Only monitor ACTION_SHUTDOWN from user 0 (system) for device power-down scenarios.
+            // This avoids triggering on user log-outs in multi-user environments.
+            mContext.registerReceiver(
                     new BroadcastReceiver() {
                         @Override
                         public void onReceive(Context context, Intent intent) {
@@ -1349,7 +1357,8 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                         doScan = true;
                     }
                 }
-                mActiveModeWarden.onIdleModeChanged(idle);
+                mWifiThreadRunner.post(() ->
+                    mActiveModeWarden.onIdleModeChanged(idle), TAG + "#handleIdleModeChanged");
             }
         }
         if (doScan) {
@@ -4921,8 +4930,8 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     }
 
     /**
-     * See {@link WifiManager#addRestrictAutoJoinToSubIdCallback(Executor,
-     * WifiManager.RestrictAutoJoinToSubIdCallback)}
+     * See {@link WifiManager#addRestrictAutoJoinToSubscriptionIdCallback(Executor,
+     * WifiManager.RestrictAutoJoinToSubscriptionIdCallback)}
      */
     public void addRestrictAutoJoinToSubIdCallback(
             @NonNull IRestrictAutoJoinToSubIdCallback callback) {
@@ -4950,7 +4959,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                 }
             } else {
                 try {
-                    callback.onRestrictionStopped();
+                    callback.onRestrictionsStopped();
                 } catch (RemoteException e) {
                     Log.e(TAG, "addRestrictAutoJoinToSubIdCallback: remote exception -- "
                             + e);
@@ -4961,7 +4970,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
 
     /**
      * See {@link WifiManager#removeRestrictAutoJoinToSubIdCallback(
-     *WifiManager.RestrictAutoJoinToSubIdCallback)}
+     *WifiManager.RestrictAutoJoinToSubscriptionIdCallback)}
      */
     public void removeRestrictAutoJoinToSubIdCallback(
             @NonNull IRestrictAutoJoinToSubIdCallback callback) {

@@ -25,12 +25,12 @@ import android.annotation.SuppressLint;
 import android.hardware.wifi.supplicant.BandMask;
 import android.hardware.wifi.supplicant.DebugLevel;
 import android.hardware.wifi.supplicant.FreqRange;
-import android.hardware.wifi.supplicant.IfaceInfo;
-import android.hardware.wifi.supplicant.IfaceType;
 import android.hardware.wifi.supplicant.ISupplicant;
 import android.hardware.wifi.supplicant.ISupplicantP2pIface;
 import android.hardware.wifi.supplicant.ISupplicantP2pIfaceCallback;
 import android.hardware.wifi.supplicant.ISupplicantP2pNetwork;
+import android.hardware.wifi.supplicant.IfaceInfo;
+import android.hardware.wifi.supplicant.IfaceType;
 import android.hardware.wifi.supplicant.KeyMgmtMask;
 import android.hardware.wifi.supplicant.MiracastMode;
 import android.hardware.wifi.supplicant.P2pAddGroupConfigurationParams;
@@ -91,10 +91,13 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
+ * Abstract base class for the Supplicant P2P Iface HAL AIDL implementations.
  * Native calls sending requests to the P2P Hals, and callbacks for receiving P2P events.
  */
 public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfaceHal {
@@ -120,9 +123,10 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
     protected ISupplicant mISupplicant = null;
     protected ISupplicantP2pIface mISupplicantP2pIface = null;
     private final WifiP2pMonitor mMonitor;
-    private final WifiInjector mWifiInjector;
+    protected final WifiInjector mWifiInjector;
     private ISupplicantP2pIfaceCallback mCallback = null;
     private int mServiceVersion = -1;
+    protected CountDownLatch mWaitForDeathLatch;
 
     public SupplicantP2pIfaceHalAidlBase(WifiP2pMonitor monitor, WifiInjector wifiInjector) {
         mMonitor = monitor;
@@ -135,12 +139,6 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
      */
     @Override
     public abstract boolean initialize();
-
-    /**
-     * Terminate the supplicant daemon & wait for its death.
-     */
-    @Override
-    public abstract void terminate();
 
     /**
      * Signals whether initialization started successfully.
@@ -325,14 +323,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
     }
 
     @VisibleForTesting
-    protected IBinder getServiceBinderMockable() {
-        synchronized (mLock) {
-            if (mISupplicant == null) {
-                return null;
-            }
-            return mISupplicant.asBinder();
-        }
-    }
+    protected abstract IBinder getCurrentServiceBinderMockable();
 
     /**
      * Returns false if mISupplicant is null and logs failure message
@@ -368,7 +359,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
         }
     }
 
-    private void handleServiceSpecificException(ServiceSpecificException e, String methodStr) {
+    protected void handleServiceSpecificException(ServiceSpecificException e, String methodStr) {
         synchronized (mLock) {
             Log.e(TAG, "ISupplicantP2pIface." + methodStr + " failed with "
                     + "service specific exception: ", e);
@@ -2960,8 +2951,9 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
                 aidlUsdBasedServiceDiscoveryConfig.serviceName = usdServiceConfig.getServiceName();
                 aidlUsdBasedServiceDiscoveryConfig.serviceProtocolType = usdServiceConfig
                         .getServiceProtocolType();
-                aidlUsdBasedServiceDiscoveryConfig.serviceSpecificInfo = usdServiceConfig
-                        .getServiceSpecificInfo();
+                aidlUsdBasedServiceDiscoveryConfig.serviceSpecificInfo =
+                        usdServiceConfig.getServiceSpecificInfo() != null
+                                ? usdServiceConfig.getServiceSpecificInfo() : new byte[0];
                 if (discoveryConfig.getBand() != ScanResult.UNSPECIFIED) {
                     aidlUsdBasedServiceDiscoveryConfig.bandMask =
                             scanResultBandMaskToSupplicantHalWifiBandMask(
@@ -2971,6 +2963,9 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
                 }
                 aidlUsdBasedServiceDiscoveryConfig.frequencyListMhz = discoveryConfig
                         .getFrequenciesMhz();
+                aidlUsdBasedServiceDiscoveryConfig.frequencyListMhz =
+                        discoveryConfig.getFrequenciesMhz() != null
+                                ? discoveryConfig.getFrequenciesMhz() : new int[0];
                 aidlUsdBasedServiceDiscoveryConfig.timeoutInSeconds = timeoutInSeconds;
                 return mISupplicantP2pIface.startUsdBasedServiceDiscovery(
                         aidlUsdBasedServiceDiscoveryConfig);
@@ -3036,8 +3031,9 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
                 aidlServiceAdvertisementConfig.serviceName = usdServiceConfig.getServiceName();
                 aidlServiceAdvertisementConfig.serviceProtocolType = usdServiceConfig
                         .getServiceProtocolType();
-                aidlServiceAdvertisementConfig.serviceSpecificInfo = usdServiceConfig
-                        .getServiceSpecificInfo();
+                aidlServiceAdvertisementConfig.serviceSpecificInfo =
+                        usdServiceConfig.getServiceSpecificInfo() != null
+                                ? usdServiceConfig.getServiceSpecificInfo() : new byte[0];
                 aidlServiceAdvertisementConfig.frequencyMHz = advertisementConfig.getFrequencyMhz();
                 aidlServiceAdvertisementConfig.timeoutInSeconds = timeoutInSeconds;
                 return mISupplicantP2pIface.startUsdBasedServiceAdvertisement(
@@ -3209,6 +3205,38 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             default:
                 throw new IllegalArgumentException(
                         "Invalid WPS config method: " + configMethod);
+        }
+    }
+
+    /**
+     * Terminate the supplicant daemon & wait for its death.
+     */
+    @Override
+    public void terminate() {
+        synchronized (mLock) {
+            final String methodStr = "terminate";
+            if (!checkSupplicantAndLogFailure(methodStr)) {
+                return;
+            }
+            Log.i(TAG, "Terminate supplicant service");
+            try {
+                mWaitForDeathLatch = new CountDownLatch(1);
+                mISupplicant.terminate();
+            } catch (RemoteException e) {
+                handleRemoteException(e, methodStr);
+            }
+        }
+
+        // Wait for death recipient to confirm the service death.
+        try {
+            if (!mWaitForDeathLatch.await(WAIT_FOR_DEATH_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                Log.w(TAG, "Timed out waiting for confirmation of supplicant death");
+                supplicantServiceDiedHandler();
+            } else {
+                Log.d(TAG, "Got service death confirmation");
+            }
+        } catch (InterruptedException e) {
+            Log.w(TAG, "Failed to wait for supplicant death");
         }
     }
 

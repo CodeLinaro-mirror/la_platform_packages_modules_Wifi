@@ -32,6 +32,7 @@ import android.util.Range;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.wifi.usd.UsdRequestManager;
 
+import java.io.PrintWriter;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.net.InetAddress;
@@ -904,14 +905,22 @@ public class SupplicantStaIfaceHal {
     @VisibleForTesting
     protected ISupplicantStaIfaceHal createStaIfaceHalMockable() {
         synchronized (mLock) {
-            // Prefer AIDL Vendor implementation if service is declared.
-            if (SupplicantStaIfaceHalAidlVendorImpl.serviceDeclared()) {
-                Log.i(TAG, "Initializing SupplicantStaIfaceHal using AIDL implementation.");
+            // Prefer AIDL Mainline implementation if service is declared.
+            if (SupplicantStaIfaceHalAidlMainlineImpl.isServiceAvailable(mContext)) {
+                Log.i(TAG, "Initializing SupplicantStaIfaceHal using AIDL Mainline implementation");
+                return new SupplicantStaIfaceHalAidlMainlineImpl(mContext, mWifiMonitor,
+                        mEventHandler, mClock, mWifiMetrics, mWifiGlobals, mSsidTranslator,
+                        mWifiInjector);
+
+            } else if (SupplicantStaIfaceHalAidlVendorImpl.serviceDeclared()) {
+                // Fallback to the AIDL Vendor implementation if service is declared.
+                Log.i(TAG, "Initializing SupplicantStaIfaceHal using AIDL Vendor implementation.");
                 return new SupplicantStaIfaceHalAidlVendorImpl(mContext, mWifiMonitor,
                         mEventHandler, mClock, mWifiMetrics, mWifiGlobals, mSsidTranslator,
                         mWifiInjector);
 
             } else if (SupplicantStaIfaceHalHidlImpl.serviceDeclared()) {
+                // Fallback to the HIDL implementation if service is declared.
                 Log.i(TAG, "Initializing SupplicantStaIfaceHal using HIDL implementation.");
                 return new SupplicantStaIfaceHalHidlImpl(mContext, mWifiMonitor, mFrameworkFacade,
                         mEventHandler, mClock, mWifiMetrics, mWifiGlobals, mSsidTranslator);
@@ -2576,6 +2585,19 @@ public class SupplicantStaIfaceHal {
             }
             return mStaIfaceHal.sendUsdMessage(interfaceName, ownId, peerId, peerMacAddress,
                     message);
+        }
+    }
+
+    /**
+     * Dump information about the internal state
+     *
+     * @param pw PrintWriter to write the dump to
+     */
+    protected void dump(PrintWriter pw) {
+        pw.println("Dump of " + TAG);
+        pw.println("Implemented: " + (mStaIfaceHal != null));
+        if (mStaIfaceHal != null) {
+            mStaIfaceHal.dump(pw);
         }
     }
 }

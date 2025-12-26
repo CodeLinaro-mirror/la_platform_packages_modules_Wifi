@@ -2208,7 +2208,7 @@ public class WifiManager {
     private static final SparseArray<IWifiStateChangedListener>
             sWifiStateChangedListenerMap = new SparseArray<>();
     private static final SparseArray<IRestrictAutoJoinToSubIdCallback>
-            sRestrictAutoJoinToSubIdCallbackMap = new SparseArray<>();
+            sRestrictAutoJoinToSubscriptionIdCallbackMap = new SparseArray<>();
 
     /**
      * Multi-link operation (MLO) will allow Wi-Fi devices to operate on multiple links at the same
@@ -7986,11 +7986,13 @@ public class WifiManager {
      * Register a callback for Wi-Fi auto-join restriction state.
      * Caller will receive the event when the autojoin restriction state changes.
      * Caller can remove a previously registered callback using
-     * {@link #removeRestrictAutoJoinToSubIdCallback(RestrictAutoJoinToSubIdCallback)}
+     * {@link
+     * #removeRestrictAutoJoinToSubscriptionIdCallback(RestrictAutoJoinToSubscriptionIdCallback)}
      *
      * @see WifiManager#startRestrictingAutoJoinToSubscriptionId(int)
      * @see WifiManager#stopRestrictingAutoJoinToSubscriptionId()
-     * @see WifiManager#removeRestrictAutoJoinToSubIdCallback(RestrictAutoJoinToSubIdCallback)
+     * @see WifiManager
+     * #removeRestrictAutoJoinToSubscriptionIdCallback(RestrictAutoJoinToSubscriptionIdCallback)
      *
      * @param executor Executor to execute listener callback on
      * @param callback Listener to register
@@ -8003,31 +8005,31 @@ public class WifiManager {
             android.Manifest.permission.NETWORK_SETTINGS,
             android.Manifest.permission.NETWORK_SETUP_WIZARD})
     @RequiresApi(Build.VERSION_CODES.S)
-    public void addRestrictAutoJoinToSubIdCallback(
+    public void addRestrictAutoJoinToSubscriptionIdCallback(
             @NonNull @CallbackExecutor Executor executor,
-            @NonNull RestrictAutoJoinToSubIdCallback callback) {
+            @NonNull RestrictAutoJoinToSubscriptionIdCallback callback) {
         Objects.requireNonNull(executor);
         Objects.requireNonNull(callback);
         if (mVerboseLoggingEnabled) {
-            Log.d(TAG, "addRestrictAutoJoinToSubIdCallback: callback=" + callback
+            Log.d(TAG, "addRestrictAutoJoinToSubscriptionIdCallback: callback=" + callback
                     + ", executor=" + executor);
         }
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
         }
         final int callbackIdentifier = System.identityHashCode(callback);
-        synchronized (sRestrictAutoJoinToSubIdCallbackMap) {
+        synchronized (sRestrictAutoJoinToSubscriptionIdCallbackMap) {
             try {
-                if (sRestrictAutoJoinToSubIdCallbackMap.contains(callbackIdentifier)) {
+                if (sRestrictAutoJoinToSubscriptionIdCallbackMap.contains(callbackIdentifier)) {
                     Log.w(TAG, "Same listener already registered");
                     return;
                 }
                 IRestrictAutoJoinToSubIdCallback.Stub callbackProxy =
                         new RestrictAutoJoinToSubIdCallbackProxy(executor, callback);
-                sRestrictAutoJoinToSubIdCallbackMap.put(callbackIdentifier, callbackProxy);
+                sRestrictAutoJoinToSubscriptionIdCallbackMap.put(callbackIdentifier, callbackProxy);
                 mService.addRestrictAutoJoinToSubIdCallback(callbackProxy);
             } catch (RemoteException e) {
-                sRestrictAutoJoinToSubIdCallbackMap.remove(callbackIdentifier);
+                sRestrictAutoJoinToSubscriptionIdCallbackMap.remove(callbackIdentifier);
                 throw e.rethrowFromSystemServer();
             }
         }
@@ -8047,28 +8049,28 @@ public class WifiManager {
             android.Manifest.permission.NETWORK_SETTINGS,
             android.Manifest.permission.NETWORK_SETUP_WIZARD})
     @RequiresApi(Build.VERSION_CODES.S)
-    public void removeRestrictAutoJoinToSubIdCallback(
-            @NonNull RestrictAutoJoinToSubIdCallback callback) {
+    public void removeRestrictAutoJoinToSubscriptionIdCallback(
+            @NonNull RestrictAutoJoinToSubscriptionIdCallback callback) {
         Objects.requireNonNull(callback);
         if (mVerboseLoggingEnabled) {
-            Log.d(TAG, "removeRestrictAutoJoinToSubIdCallback: callback=" + callback);
+            Log.d(TAG, "removeRestrictAutoJoinToSubscriptionIdCallback: callback=" + callback);
         }
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
         }
         final int callbackIdentifier = System.identityHashCode(callback);
-        synchronized (sRestrictAutoJoinToSubIdCallbackMap) {
+        synchronized (sRestrictAutoJoinToSubscriptionIdCallbackMap) {
             try {
-                if (!sRestrictAutoJoinToSubIdCallbackMap.contains(callbackIdentifier)) {
+                if (!sRestrictAutoJoinToSubscriptionIdCallbackMap.contains(callbackIdentifier)) {
                     Log.w(TAG, "Unknown external listener " + callbackIdentifier);
                     return;
                 }
                 mService.removeRestrictAutoJoinToSubIdCallback(
-                        sRestrictAutoJoinToSubIdCallbackMap.get(callbackIdentifier));
+                        sRestrictAutoJoinToSubscriptionIdCallbackMap.get(callbackIdentifier));
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             } finally {
-                sRestrictAutoJoinToSubIdCallbackMap.remove(callbackIdentifier);
+                sRestrictAutoJoinToSubscriptionIdCallbackMap.remove(callbackIdentifier);
             }
         }
     }
@@ -8085,7 +8087,7 @@ public class WifiManager {
     @FlaggedApi(Flags.FLAG_RESTRICT_AUTOJOIN_CALLBACK_API)
     @SystemApi
     @RequiresApi(Build.VERSION_CODES.S)
-    public interface RestrictAutoJoinToSubIdCallback {
+    public interface RestrictAutoJoinToSubscriptionIdCallback {
         /**
          * Called when the Wi-Fi auto-join restriction to a subscription ID starts.
          *
@@ -8095,9 +8097,9 @@ public class WifiManager {
         void onRestrictionStarted(int subscriptionId);
 
         /**
-         * Called when the Wi-Fi auto-join restriction to subscription ID has stopped.
+         * Called when the Wi-Fi auto-join restriction to all subscription IDs have stopped.
          */
-        void onRestrictionStopped();
+        void onRestrictionsStopped();
     }
 
     /**
@@ -8107,10 +8109,10 @@ public class WifiManager {
     private static class RestrictAutoJoinToSubIdCallbackProxy
             extends IRestrictAutoJoinToSubIdCallback.Stub {
         private Executor mExecutor;
-        private RestrictAutoJoinToSubIdCallback mCallback;
+        private RestrictAutoJoinToSubscriptionIdCallback mCallback;
 
         RestrictAutoJoinToSubIdCallbackProxy(@NonNull Executor executor,
-                @NonNull RestrictAutoJoinToSubIdCallback callback) {
+                @NonNull RestrictAutoJoinToSubscriptionIdCallback callback) {
             Objects.requireNonNull(executor);
             Objects.requireNonNull(callback);
             mExecutor = executor;
@@ -8126,11 +8128,11 @@ public class WifiManager {
         }
 
         @Override
-        public void onRestrictionStopped() {
+        public void onRestrictionsStopped() {
             Log.i(TAG, "RestrictAutoJoinToSubIdCallbackProxy:"
-                    + " onRestrictionStopped");
+                    + " onRestrictionsStopped");
             Binder.clearCallingIdentity();
-            mExecutor.execute(() -> mCallback.onRestrictionStopped());
+            mExecutor.execute(() -> mCallback.onRestrictionsStopped());
         }
     }
 
@@ -11026,6 +11028,27 @@ public class WifiManager {
          */
         @RequiresApi(Build.VERSION_CODES.S)
         default void blocklistCurrentBssid(int sessionId) {}
+
+        /**
+         * Called by applications to unblocklist all BSSIDs that were blocked by the external
+         * scorer via {@link #blocklistCurrentBssid(int)}.
+         */
+        @FlaggedApi(Flags.FLAG_FEED_MORE_DATA_TO_EXTERNAL_SCORER)
+        default void unblockAllBssids() {}
+
+        /**
+         * Called by applications to enable/disable pre-evaluation the next time the current Wi-Fi
+         * network is connected.
+         * During the pre-evaluation stage, the Wi-Fi network is restricted to privileged apps only.
+         * The external scorer app can test the Wi-Fi connection quality during the pre-evaluation
+         * stage to assess whether it meets the current requirement to become default network.
+         *
+         * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
+         *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
+         * @param enabled The boolean representing whether the pre-evaluation is enabled or not.
+         */
+        @FlaggedApi(Flags.FLAG_FEED_MORE_DATA_TO_EXTERNAL_SCORER)
+        default void setPreEvaluationEnabled(int sessionId, boolean enabled) {}
     }
 
     /**
@@ -11089,6 +11112,24 @@ public class WifiManager {
             }
             try {
                 mScoreUpdateObserver.blocklistCurrentBssid(sessionId);
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+
+        @Override
+        public void unblockAllBssids() {
+            try {
+                mScoreUpdateObserver.unblockAllBssids();
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+
+        @Override
+        public void setPreEvaluationEnabled(int sessionId, boolean enabled) {
+            try {
+                mScoreUpdateObserver.setPreEvaluationEnabled(sessionId, enabled);
             } catch (RemoteException e) {
                 throw e.rethrowFromSystemServer();
             }
@@ -11157,6 +11198,17 @@ public class WifiManager {
          */
         default void onNetworkSwitchRejected(
                 int sessionId, int targetNetworkId, @NonNull String targetBssid) {
+            // No-op.
+        }
+
+        /**
+         * Called by framework to indicate an L3 data stall is suspected.
+         *
+         * @param sessionId The ID to indicate current Wi-Fi network connection obtained from
+         *                  {@link WifiConnectedNetworkScorer#onStart(int)}.
+         */
+        @FlaggedApi(Flags.FLAG_FEED_MORE_DATA_TO_EXTERNAL_SCORER)
+        default void onL3DataStallSuspected(int sessionId) {
             // No-op.
         }
     }
@@ -11372,6 +11424,15 @@ public class WifiManager {
             Binder.clearCallingIdentity();
             mExecutor.execute(() -> mScorer.onNetworkSwitchRejected(
                     sessionId, targetNetworkId, targetBssid));
+        }
+
+        @Override
+        public void onL3DataStallSuspected(int sessionId) {
+            if (mVerboseLoggingEnabled) {
+                Log.v(TAG, "WifiConnectedNetworkScorer: onDataStallSuspected(" + sessionId + ")");
+            }
+            Binder.clearCallingIdentity();
+            mExecutor.execute(() -> mScorer.onL3DataStallSuspected(sessionId));
         }
     }
 

@@ -1007,6 +1007,8 @@ public class WifiNetworkFactory extends NetworkFactory {
         pw.println(TAG + ": mGenericConnectionReqCount " + mGenericConnectionReqCount);
         pw.println(TAG + ": mActiveSpecificNetworkRequest " + mActiveSpecificNetworkRequest);
         pw.println(TAG + ": mUserApprovedAccessPointMap " + mUserApprovedAccessPointMap);
+        pw.println(TAG + ": mLocalOnlyDisconnectionStatusListenerPerApp "
+                + mLocalOnlyDisconnectionStatusListenerPerApp);
     }
 
     /**
@@ -2159,11 +2161,11 @@ public class WifiNetworkFactory extends NetworkFactory {
                 || mConnectedSpecificNetworkRequest == null
                 || mConnectedSpecificNetworkRequestSpecifier == null
                 || mConnectedSpecificNetworkRequestSpecifier.wifiConfiguration == null
-                || !config.fromWifiNetworkSpecifier) {
+                || !config.fromWifiNetworkSpecifier
+                || mUserSelectedNetwork == null) {
             return false;
         }
-        return config.getProfileKey().equals(
-                mConnectedSpecificNetworkRequestSpecifier.wifiConfiguration.getProfileKey());
+        return config.getProfileKey().equals(mUserSelectedNetwork.getProfileKey());
     }
 
     /**

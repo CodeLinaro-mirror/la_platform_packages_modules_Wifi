@@ -1227,6 +1227,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
             if (mFeatureFlags.multiUserWifiEnhancement()) {
                 mActiveModeWarden.handleUserSwitch(userId);
                 mWifiApConfigStore.handleUserSwitch(userId);
+                mSettingsConfigStore.handleUserSwitch(userId);
             }
         }, TAG + "#handleUserSwitch");
     }
@@ -1250,6 +1251,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
             if (mFeatureFlags.multiUserWifiEnhancement()) {
                 mActiveModeWarden.handleUserStop(userId);
                 mWifiApConfigStore.handleUserStop(userId);
+                mSettingsConfigStore.handleUserStop(userId);
             }
         }, TAG + "#handleUserStop");
     }
@@ -4485,6 +4487,13 @@ public class WifiServiceImpl extends IWifiManager.Stub {
             throw new SecurityException("Caller is not a device owner, profile owner, system app,"
                     + " or privileged app");
         }
+        if (mWifiPermissionsUtil.isSharedOrPrivateConfigUserRestrictionSet(config.shared)) {
+            mLog.info("addOrUpdateNetwork not allowed for a "
+                    + (config.shared ? "shared" : "private")
+                    + " config for the user when user restriction is set").flush();
+            return new AddNetworkResult(
+                    AddNetworkResult.STATUS_NO_PERMISSION, -1);
+        }
         return addOrUpdateNetworkInternal(config, packageName, uid, packageName, false);
     }
 
@@ -4576,28 +4585,13 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                                 + "user when DISALLOW_CONFIG_WIFI user restriction is set").flush();
                 return -1;
             }
-            if (android.multiuser.Flags.userRestrictionConfigWifiSharedPrivate()) {
-                if (config.shared) {
-                    if (mUserManager.hasUserRestrictionForUser(
-                            UserManager.DISALLOW_CONFIG_WIFI_SHARED,
-                            UserHandle.of(mWifiPermissionsUtil.getCurrentUser()))) {
-                        mLog.info("addOrUpdateNetwork not allowed for a shared config for the user"
-                                + " when DISALLOW_CONFIG_WIFI_SHARED restriction is set")
-                                .flush();
-                        return -1;
-                    }
-                } else {
-                    // handle private network case
-                    if (mUserManager.hasUserRestrictionForUser(
-                            UserManager.DISALLOW_CONFIG_WIFI_PRIVATE,
-                            UserHandle.of(mWifiPermissionsUtil.getCurrentUser()))) {
-                        mLog.info("addOrUpdateNetwork not allowed for a private config for the user"
-                                + " when DISALLOW_CONFIG_WIFI_PRIVATE restriction is set")
-                                .flush();
-                        return -1;
-                    }
-                }
+            if (mWifiPermissionsUtil.isSharedOrPrivateConfigUserRestrictionSet(config.shared)) {
+                mLog.info("addOrUpdateNetwork not allowed for a "
+                        + (config.shared ? "shared" : "private")
+                        + " config for the user when user restriction is set").flush();
+                return -1;
             }
+
             if (SdkLevel.isAtLeastT() && mUserManager.hasUserRestrictionForUser(
                     UserManager.DISALLOW_ADD_WIFI_CONFIG,
                     UserHandle.getUserHandleForUid(callingUid))) {
@@ -5491,8 +5485,15 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                         + "when the DISALLOW_ADD_WIFI_CONFIG user restriction is set").flush();
                 return false;
             }
+
         } finally {
             Binder.restoreCallingIdentity(ident);
+        }
+        if (mWifiPermissionsUtil.isSharedOrPrivateConfigUserRestrictionSet(false)) {
+            mLog.info("addOrUpdatePasspointConfiguration not allowed"
+                    + " when DISALLOW_CONFIG_WIFI_PRIVATE restriction is set")
+                    .flush();
+            return false;
         }
         mLog.info("addorUpdatePasspointConfiguration uid=%").c(callingUid).flush();
         return mWifiThreadRunner.call(
@@ -6771,7 +6772,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     /**
      * Retrieve the data to be backed to save the current state.
      *
-     * @return  Raw byte stream of the data to be backed up.
+     * @return Raw byte stream of the data to be backed up.
      */
     @Override
     public byte[] retrieveBackupData() {
@@ -6779,8 +6780,11 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         mLog.info("retrieveBackupData uid=%").c(Binder.getCallingUid()).flush();
         Log.d(TAG, "Retrieving backup data");
         List<WifiConfiguration> wifiConfigurations = mWifiThreadRunner.call(
-                () -> mWifiConfigManager.getConfiguredNetworksWithPasswords(), null,
-                TAG + "#retrieveBackupData");
+                // TODO: b/449013275 Add Environment.isSdkNewerThanB())
+                () -> mFeatureFlags.multiUserWifiEnhancement()
+                        ? mWifiConfigManager.getConfiguredNetworksCreatedByCurrentUserWithPassword()
+                        : mWifiConfigManager.getConfiguredNetworksWithPasswords(),
+                null, TAG + "#retrieveBackupData");
         byte[] backupData =
                 mWifiBackupRestore.retrieveBackupDataFromConfigurations(wifiConfigurations);
         Log.d(TAG, "Retrieved backup data");
@@ -6804,7 +6808,30 @@ public class WifiServiceImpl extends IWifiManager.Stub {
             boolean notOverrideExisting = CompatChanges
                     .isChangeEnabled(NOT_OVERRIDE_EXISTING_NETWORKS_ON_RESTORE, callingUid);
             int networkId;
+            boolean sharedDevice = false;
+            // TODO: b/449013275 Add Environment.isSdkNewerThanB()
+            if (mFeatureFlags.multiUserWifiEnhancement()) {
+                sharedDevice = mUserManager.getUserCount() > 1;
+            }
             for (WifiConfiguration configuration : configurations) {
+                // TODO: b/449013275 Add Environment.isSdkNewerThanB()
+                if (mFeatureFlags.multiUserWifiEnhancement() && sharedDevice) {
+                    if (configuration == null) {
+                        continue;
+                    }
+                    // The existence check of private networks requires user-related fields.
+                    // Populate these fields in advance.
+                    mWifiConfigManager.updateNetworkWithUidAndCurrentUserIdIfNeeded(configuration,
+                            callingUid);
+                    if (configuration.shared && (!mWifiConfigManager.isNetworkConfigured(
+                            configuration) || !notOverrideExisting)) {
+                        // Shared networks will be converted to private networks if they are not
+                        // already configured by the user, or overridden is allowed.
+                        configuration.shared = false;
+                        mLog.info("Shared network % converted to private network").c(
+                                configuration.getProfileKey()).flush();
+                    }
+                }
                 if (notOverrideExisting) {
                     networkId = mWifiConfigManager.addNetwork(configuration, callingUid)
                             .getNetworkId();
@@ -7060,6 +7087,13 @@ public class WifiServiceImpl extends IWifiManager.Stub {
             }
         } finally {
             Binder.restoreCallingIdentity(ident);
+        }
+
+        if (mWifiPermissionsUtil.isSharedOrPrivateConfigUserRestrictionSet(false)) {
+            mLog.info("addNetworkSuggestions not allowed"
+                    + " when DISALLOW_CONFIG_WIFI_PRIVATE restriction is set")
+                    .flush();
+            return WifiManager.STATUS_NETWORK_SUGGESTIONS_ERROR_RESTRICTED_BY_ADMIN;
         }
 
         if (mVerboseLoggingEnabled) {
@@ -7768,16 +7802,14 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         }
         mLastCallerInfoManager.put(WifiManager.API_FORGET, Process.myTid(),
                 uid, Binder.getCallingPid(), "<unknown>", true);
-        boolean isUserRestrictionConfigWifiShared =
-                android.multiuser.Flags.userRestrictionConfigWifiSharedPrivate()
-                && mUserManager.hasUserRestrictionForUser(UserManager.DISALLOW_CONFIG_WIFI_SHARED,
-                        UserHandle.of(mWifiPermissionsUtil.getCurrentUser()));
+
+        // There is no use case to forget a private config when user restriction is set.
         mWifiThreadRunner.post(() -> {
             WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(netId);
-            if (isUserRestrictionConfigWifiShared && config.shared) {
-                mLog.info("forget not allowed for a shared config for the user"
-                        + " when DISALLOW_CONFIG_WIFI_SHARED restriction is set")
-                        .flush();
+            if (config != null && mWifiPermissionsUtil.isSharedOrPrivateConfigUserRestrictionSet(
+                    config.shared)) {
+                mLog.info("forget not allowed for a " + (config.shared ? "shared" : "private")
+                        + " config for the user when user restriction is set").flush();
                 return;
             }
             boolean success = mWifiConfigManager.removeNetwork(netId, uid, null);

@@ -1414,7 +1414,7 @@ public class WifiNative {
      */
     public Iface createNanIface(
             HalDeviceManager.InterfaceDestroyedListener nanInterfaceDestroyedListener,
-            Handler handler, WorkSource requestorWs) {
+            Handler handler, WorkSource requestorWs, boolean skipHalCreation) {
         synchronized (mLock) {
             // Make sure HAL is started for Nan
             if (!startHal()) {
@@ -1425,7 +1425,7 @@ public class WifiNative {
             Iface iface = mIfaceMgr.allocateIface(Iface.IFACE_TYPE_NAN);
             if (iface != null) {
                 WifiNanIface nanIface = mWifiInjector.getHalDeviceManager().createNanIface(
-                        nanInterfaceDestroyedListener, handler, requestorWs);
+                        nanInterfaceDestroyedListener, handler, requestorWs, skipHalCreation);
                 if (nanIface != null) {
                     iface.iface = nanIface;
                     iface.name = nanIface.getName();
@@ -2579,7 +2579,7 @@ public class WifiNative {
         } else {
             SoftApHalCallbackFromWificond softApHalCallbackFromWificond =
                     new SoftApHalCallbackFromWificond(ifaceName, callback);
-            if (!mNl80211Native.registerWificondApCallback(ifaceName,
+            if (!mNl80211Native.registerApCallback(ifaceName,
                     Runnable::run, softApHalCallbackFromWificond)) {
                 Log.e(TAG, "Failed to register ap hal event callback from wificond");
                 return SoftApManager.START_RESULT_FAILURE_REGISTER_AP_CALLBACK_WIFICOND;
@@ -3838,10 +3838,8 @@ public class WifiNative {
             nl80211NativePnoSettings.setMin2gRssiDbm(min24GHzRssi);
             nl80211NativePnoSettings.setMin5gRssiDbm(min5GHzRssi);
             nl80211NativePnoSettings.setMin6gRssiDbm(min6GHzRssi);
-            if (SdkLevel.isAtLeastU()) {
-                nl80211NativePnoSettings.setScanIterations(scanIterations);
-                nl80211NativePnoSettings.setScanIntervalMultiplier(scanIntervalMultiplier);
-            }
+            nl80211NativePnoSettings.setScanIterations(scanIterations);
+            nl80211NativePnoSettings.setScanIntervalMultiplier(scanIntervalMultiplier);
 
             List<com.android.server.wifi.nl80211.PnoNetwork> pnoNetworks = new ArrayList<>();
             if (networkList != null) {
@@ -4418,15 +4416,22 @@ public class WifiNative {
         private final BitSet mTidsDownlinkMap;
         private final MacAddress mApMacAddress;
         private final int mFrequencyMHz;
+        private final int mChannelBandwidth;
+        private final int mMaxNumberTxSpatialStreams;
+        private final int mMaxNumberRxSpatialStreams;
 
         ConnectionMloLink(int id, MacAddress staMacAddress, MacAddress apMacAddress,
-                byte tidsUplink, byte tidsDownlink, int frequencyMHz) {
+                byte tidsUplink, byte tidsDownlink, int frequencyMHz, int channelBandwidth,
+                int maxNumberTxSpatialStreams, int maxNumberRxSpatialStreams) {
             mLinkId = id;
             mStaMacAddress = staMacAddress;
             mApMacAddress = apMacAddress;
             mTidsDownlinkMap = BitSet.valueOf(new byte[] { tidsDownlink });
             mTidsUplinkMap = BitSet.valueOf(new byte[] { tidsUplink });
             mFrequencyMHz = frequencyMHz;
+            mChannelBandwidth = channelBandwidth;
+            mMaxNumberTxSpatialStreams = maxNumberTxSpatialStreams;
+            mMaxNumberRxSpatialStreams = maxNumberRxSpatialStreams;
         };
 
         /**
@@ -4501,6 +4506,27 @@ public class WifiNative {
          */
         public int getFrequencyMHz() {
             return mFrequencyMHz;
+        }
+
+        /**
+         * Get channel band width
+         */
+        public int getChannelBandwidth() {
+            return mChannelBandwidth;
+        }
+
+        /**
+         * Get the maximum number of spatial streams supported by the link in the up direction.
+         */
+        public int getMaxNumberTxSpatialStreams() {
+            return mMaxNumberTxSpatialStreams;
+        }
+
+        /**
+         * Get the maximum number of spatial streams supported by the link in the down direction.
+         */
+        public int getMaxNumberRxSpatialStreams() {
+            return mMaxNumberRxSpatialStreams;
         }
     }
 

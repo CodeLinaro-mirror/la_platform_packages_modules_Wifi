@@ -36,6 +36,7 @@ import android.annotation.Size;
 import android.annotation.StringDef;
 import android.annotation.SystemApi;
 import android.annotation.SystemService;
+import android.content.AttributionSource;
 import android.content.Context;
 import android.net.MacAddress;
 import android.net.wifi.ScanResult;
@@ -55,6 +56,7 @@ import com.android.wifi.flags.Flags;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.Executor;
@@ -258,7 +260,7 @@ public class WifiRttManager {
             Bundle extras = new Bundle();
             if (SdkLevel.isAtLeastS()) {
                 extras.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                        mContext.getAttributionSource());
+                        getAttributionSourceInternal());
             }
             mService.startRanging(binder, mContext.getOpPackageName(),
                     mContext.getAttributionTag(), workSource, request, new IRttCallback.Stub() {
@@ -278,6 +280,13 @@ public class WifiRttManager {
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
+    }
+
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
+    private AttributionSource getAttributionSourceInternal() {
+        return SdkLevel.isAtLeastU()
+                ? mContext.createDeviceContext(Context.DEVICE_ID_DEFAULT).getAttributionSource()
+                : mContext.getAttributionSource();
     }
 
     /**
@@ -322,17 +331,22 @@ public class WifiRttManager {
     }
 
     /**
-     * Returns the characteristics of the Proximity Detection feature.
+     * Returns the characteristics of the Proximity Detection feature, if available.
      *
-     * <p>
-     * This method provides a {@link ProximityDetectionCharacteristics} object which contains
-     * various parameters and capabilities of the device's Proximity Detection implementation,
-     * such as the maximum number of supported sessions, supported ranging protocols etc.
+     * <p>This method provides a {@link ProximityDetectionCharacteristics} object which contains
+     * various parameters and capabilities of the device's Proximity Detection implementation.
      *
-     * @return A {@link ProximityDetectionCharacteristics} object specifying the feature's
-     *         capabilities, or {@code null} if the Wi-Fi RTT service is not initialized or when
-     *         Wi-Fi RTT service is initialized, but the device doesn't support proximity
-     *         detection.
+     * <p>For this feature to be available, Wi-Fi must be enabled (see
+     * {@link WifiManager#isWifiEnabled()}) and general Wi-Fi RTT must be available (see
+     * {@link #isAvailable()}).
+     *
+     * <p>To check if Proximity Detection is supported by the hardware and software, call this
+     * method and verify that the result is not {@code null}. A {@code null} return value
+     * indicates that the feature is unavailable, either because it is not supported or because
+     * one of the prerequisites is not met.
+     *
+     * @return A {@link ProximityDetectionCharacteristics} object if the feature is available,
+     *         or {@code null} if the feature is not supported or currently unavailable.
      *
      * @throws UnsupportedOperationException if the API is not supported on this SDK version.
      * @throws SecurityException if the caller does not have the required permissions.
@@ -367,7 +381,8 @@ public class WifiRttManager {
      * The device name may be shared Out-Of-Band to identify the device discovered via Out-Of-Band
      * discovery channel.
      *
-     * @param deviceName A 32 byte friendly name of the proximity detection device.
+     * @param deviceName A friendly name of the proximity detection device. The name must be a
+     * *                   UTF-8 string, and its byte representation must not exceed 32 bytes.
      *
      * @throws UnsupportedOperationException if the API is not supported on this SDK version.
      * @throws SecurityException if the caller does not have the required permissions.
@@ -391,8 +406,9 @@ public class WifiRttManager {
         if (TextUtils.isEmpty(deviceName)) {
             throw new IllegalArgumentException("deviceName must not be null or empty");
         }
-        if (deviceName.length() > 32) {
-            throw new IllegalArgumentException("deviceName must not be longer than 32 bytes");
+        if (deviceName.getBytes(StandardCharsets.UTF_8).length > 32) {
+            throw new IllegalArgumentException(
+                    "deviceName must not exceed 32 bytes in UTF-8 encoding");
         }
         if (VDBG) {
             Log.v(TAG, "setProximityDetectionDeviceName : " + deviceName);
@@ -448,7 +464,7 @@ public class WifiRttManager {
         }
         Bundle extras = new Bundle();
         extras.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                mContext.getAttributionSource());
+                getAttributionSourceInternal());
         try {
             return mService.getProximityDetectionRandomizedMacAddress(mContext.getAttributionTag(),
                     mContext.getOpPackageName(), extras);
@@ -504,7 +520,7 @@ public class WifiRttManager {
         Objects.requireNonNull(executor, "Executor cannot be null");
         Bundle extras = new Bundle();
         extras.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                mContext.getAttributionSource());
+                getAttributionSourceInternal());
         if (VDBG) {
             Log.v(TAG, "registerProximityDetectionMacAddressCallback: executor=" + executor
                     + ", callback=" + callback);
@@ -567,7 +583,7 @@ public class WifiRttManager {
         Objects.requireNonNull(callback, "Callback cannot be null");
         Bundle extras = new Bundle();
         extras.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                mContext.getAttributionSource());
+                getAttributionSourceInternal());
         if (VDBG) {
             Log.v(TAG, "unregisterProximityDetectionMacAddressCallback: callback="
                     + callback);
@@ -639,7 +655,7 @@ public class WifiRttManager {
         try {
             Bundle extras = new Bundle();
             extras.putParcelable(WifiManager.EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE,
-                    mContext.getAttributionSource());
+                    getAttributionSourceInternal());
             mService.startContinuousRanging(binder, mContext.getOpPackageName(),
                     mContext.getAttributionTag(), workSource, request,
                     new IContinuousRangingResultCallback.Stub() {

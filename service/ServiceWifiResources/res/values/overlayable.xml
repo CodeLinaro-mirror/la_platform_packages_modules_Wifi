@@ -84,6 +84,7 @@
           <item type="bool" name="config_wifiSoftapResetMaxClientSettingConfig" />
           <item type="bool" name="config_wifiSoftapAutoUpgradeToBridgedConfigWhenSupported" />
           <item type="bool" name="config_wifiSoftapUpgradeTetheredTo2g5gBridgedIfBandsAreSubset" />
+          <item type="bool" name="config_wifiSoftapUpgradeTetheredTo2g6gBridgedIfBandIs6g" />
           <item type="string"  name="config_wifiSoftap2gChannelList" />
           <item type="string"  name="config_wifiSoftap5gChannelList" />
           <item type="string"  name="config_wifiSoftap6gChannelList" />
@@ -366,6 +367,7 @@
           <item type="integer" name="config_internalScorerType" />
           <item type="bool" name="config_prioritizeExternalScorer" />
           <item type="bool" name="config_wifiAwareSdeaHeaderFromFramework" />
+          <item type="bool" name="config_preEvaluationEnabled" />
 
           <!-- Params from config.xml that can be overlayed -->
 

@@ -45,7 +45,7 @@ public class SupplicantP2pIfaceHalAidlMainlineImpl extends SupplicantP2pIfaceHal
 
     public SupplicantP2pIfaceHalAidlMainlineImpl(WifiP2pMonitor monitor, WifiInjector wifiInjector)
     {
-        super(monitor, wifiInjector);
+        super(monitor, wifiInjector, true);
         mWifiContext = wifiInjector.getContext();
         mIsServiceAvailable = isServiceAvailableMockable(mWifiContext);
         mSupplicantDeathRecipient = new SupplicantDeathRecipient();
@@ -162,7 +162,7 @@ public class SupplicantP2pIfaceHalAidlMainlineImpl extends SupplicantP2pIfaceHal
     @Override
     public boolean isInitializationStarted() {
         synchronized (mLock) {
-            return mIsServiceAvailable;
+            return mInitializationStarted;
         }
     }
 

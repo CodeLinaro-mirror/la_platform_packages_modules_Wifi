@@ -127,10 +127,13 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
     private ISupplicantP2pIfaceCallback mCallback = null;
     private int mServiceVersion = -1;
     protected CountDownLatch mWaitForDeathLatch;
+    private final boolean mIsUsingMainlineSupplicant;
 
-    public SupplicantP2pIfaceHalAidlBase(WifiP2pMonitor monitor, WifiInjector wifiInjector) {
+    public SupplicantP2pIfaceHalAidlBase(WifiP2pMonitor monitor, WifiInjector wifiInjector,
+            boolean isUsingMainlineSupplicant) {
         mMonitor = monitor;
         mWifiInjector = wifiInjector;
+        mIsUsingMainlineSupplicant = isUsingMainlineSupplicant;
     }
 
     /**
@@ -204,11 +207,27 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
      * @param ifaceName Name of the interface.
      * @return true on success, false otherwise.
      */
-    public boolean setupIface(@NonNull String ifaceName) {
+    public boolean setupIface(@NonNull String ifaceName, int userId) {
         synchronized (mLock) {
             if (mISupplicantP2pIface != null) {
                 // P2P iface already exists
                 return false;
+            }
+            if (Environment.isSdkNewerThanB() && Flags.multiUserWifiEnhancement()
+                    && (getCachedServiceVersion() >= 5 || mIsUsingMainlineSupplicant)) {
+                final String methodStr = "setCurrentUserIdentity";
+                if (!checkSupplicantAndLogFailure(methodStr)) {
+                    return false;
+                }
+                try {
+                    mISupplicant.setCurrentUserIdentity(userId);
+                } catch (RemoteException e) {
+                    handleRemoteException(e, methodStr);
+                    return false;
+                } catch (ServiceSpecificException e) {
+                    handleServiceSpecificException(e, methodStr);
+                    return false;
+                }
             }
             ISupplicantP2pIface iface = addIface(ifaceName);
             if (iface == null) {
@@ -541,7 +560,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             if (!checkP2pIfaceAndLogFailure(methodStr)) {
                 return false;
             }
-            if (getCachedServiceVersion() < 3) {
+            if (getCachedServiceVersion() < 3 && !mIsUsingMainlineSupplicant) {
                 // HAL does not support findWithParams before V3.
                 return find(config.getScanType(), config.getFrequencyMhz(), timeout);
             }
@@ -798,7 +817,8 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             if (!vendorData.isEmpty()) {
                 info.vendorData = HalAidlUtil.frameworkToHalOuiKeyedDataList(vendorData);
             }
-            if (getCachedServiceVersion() >= 4 && pairingBootstrappingMethod != 0) {
+            if ((mIsUsingMainlineSupplicant || getCachedServiceVersion() >= 4)
+                    && pairingBootstrappingMethod != 0) {
                 info.pairingBootstrappingMethod = pairingBootstrappingMethod;
                 info.password = pairingPassword;
                 info.frequencyMHz = frequencyMHz;
@@ -911,7 +931,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
                 return null;
             }
 
-            if (getCachedServiceVersion() >= 3) {
+            if (mIsUsingMainlineSupplicant || getCachedServiceVersion() >= 3) {
                 if (SdkLevel.isAtLeastV() && config.getVendorData() != null
                         && !config.getVendorData().isEmpty()) {
                     vendorData = config.getVendorData();
@@ -1067,7 +1087,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
                 return false;
             }
 
-            if (getCachedServiceVersion() >= 4) {
+            if (mIsUsingMainlineSupplicant || getCachedServiceVersion() >= 4) {
                 return provisionDiscoveryWithParams(macAddress, targetWpsMethod,
                         pairingBootstrappingMethod);
             }
@@ -1348,7 +1368,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             }
 
             /* Call only for P2P V2 group now. TODO extend for V1 group in the future. */
-            if (getCachedServiceVersion() >= 4 && dikId >= 0) {
+            if ((mIsUsingMainlineSupplicant || getCachedServiceVersion() >= 4) && dikId >= 0) {
                 return reinvokePersistentGroupWithParams(macAddress, networkId, dikId);
             }
 
@@ -1381,7 +1401,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             if (!checkP2pIfaceAndLogFailure(methodStr)) {
                 return false;
             }
-            if (getCachedServiceVersion() >= 4) {
+            if (mIsUsingMainlineSupplicant || getCachedServiceVersion() >= 4) {
                 return createGroupOwner(networkId, isPersistent, isP2pV2);
             }
             try {
@@ -1456,7 +1476,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
                 return false;
             }
 
-            if (getCachedServiceVersion() >= 4) {
+            if (mIsUsingMainlineSupplicant || getCachedServiceVersion() >= 4) {
                 return addGroupWithConfigurationParams(
                         ssid, passphrase, connectionType, isPersistent, freq, macAddress, join);
             }
@@ -1613,7 +1633,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
                 return false;
             }
 
-            if (getCachedServiceVersion() >= 3) {
+            if (mIsUsingMainlineSupplicant || getCachedServiceVersion() >= 3) {
                 return configureExtListenWithParams(
                         periodInMillis, intervalInMillis, extListenParams);
             }
@@ -2864,7 +2884,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             if (!checkP2pIfaceAndLogFailure(methodStr)) {
                 return 0;
             }
-            if (getCachedServiceVersion() < 4) {
+            if (!mIsUsingMainlineSupplicant && getCachedServiceVersion() < 4) {
                 return 0;
             }
 
@@ -2903,7 +2923,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
      */
     public boolean configureEapolIpAddressAllocationParams(int ipAddressGo, int ipAddressMask,
             int ipAddressStart, int ipAddressEnd) {
-        if (getCachedServiceVersion() < 2) {
+        if (!mIsUsingMainlineSupplicant && getCachedServiceVersion() < 2) {
             return false;
         }
         synchronized (mLock) {
@@ -2939,7 +2959,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             if (!checkP2pIfaceAndLogFailure(methodStr)) {
                 return -1;
             }
-            if (getCachedServiceVersion() < 4) {
+            if (!mIsUsingMainlineSupplicant && getCachedServiceVersion() < 4) {
                 return -1;
             }
             if (usdServiceConfig == null || discoveryConfig == null) {
@@ -2990,7 +3010,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             if (!checkP2pIfaceAndLogFailure(methodStr)) {
                 return;
             }
-            if (getCachedServiceVersion() < 4) {
+            if (!mIsUsingMainlineSupplicant && getCachedServiceVersion() < 4) {
                 return;
             }
             try {
@@ -3019,7 +3039,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             if (!checkP2pIfaceAndLogFailure(methodStr)) {
                 return -1;
             }
-            if (getCachedServiceVersion() < 4) {
+            if (!mIsUsingMainlineSupplicant && getCachedServiceVersion() < 4) {
                 return -1;
             }
             if (usdServiceConfig == null || advertisementConfig == null) {
@@ -3059,7 +3079,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             if (!checkP2pIfaceAndLogFailure(methodStr)) {
                 return;
             }
-            if (getCachedServiceVersion() < 4) {
+            if (!mIsUsingMainlineSupplicant && getCachedServiceVersion() < 4) {
                 return;
             }
             try {
@@ -3099,7 +3119,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             if (!checkP2pIfaceAndLogFailure(methodStr)) {
                 return null;
             }
-            if (getCachedServiceVersion() < 4) {
+            if (!mIsUsingMainlineSupplicant && getCachedServiceVersion() < 4) {
                 return null;
             }
             try {
@@ -3133,7 +3153,7 @@ public abstract class SupplicantP2pIfaceHalAidlBase implements ISupplicantP2pIfa
             if (!checkP2pIfaceAndLogFailure(methodStr)) {
                 return -1;
             }
-            if (getCachedServiceVersion() < 4) {
+            if (!mIsUsingMainlineSupplicant && getCachedServiceVersion() < 4) {
                 return -1;
             }
             try {

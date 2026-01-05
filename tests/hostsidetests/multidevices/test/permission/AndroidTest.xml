@@ -10,7 +10,7 @@
      See the License for the specific language governing permissions and
      limitations under the License.
 -->
-<configuration description="Test config for Wi-Fi Aware multi-device CTS tests">
+<configuration description="Test config for Wi-Fi Permission multi-device CTS tests">
   <option name="test-suite-tag" value="cts-v-host" />
   <option name="config-descriptor:metadata" key="component" value="wifi" />
   <option name="config-descriptor:metadata" key="parameter" value="not_instant_app" />
@@ -19,19 +19,19 @@
 
   <device name="AndroidDevice">
     <target_preparer class="AndroidDeviceFeaturesCheckDecorator">
-      <option name="required_feature" value="android.hardware.wifi.aware" />
+      <option name="required_feature" value="android.hardware.wifi" />
     </target_preparer>
     <target_preparer class="AndroidInstallAppsDecorator" />
   </device>
   <device name="AndroidDevice">
     <target_preparer class="AndroidDeviceFeaturesCheckDecorator">
-      <option name="required_feature" value="android.hardware.wifi.aware" />
+      <option name="required_feature" value="android.hardware.wifi" />
     </target_preparer>
     <target_preparer class="AndroidInstallAppsDecorator" />
   </device>
 
   <test class="MoblyAospTest" />
 
-  <option name="mobly_pkg" key="file" value="CtsWifiAwareTests" />
+  <option name="mobly_pkg" key="file" value="CtsWifiPermissionTests" />
   <option name="build_apk" key="file" value="wifi_mobly_snippet.apk" />
 </configuration>

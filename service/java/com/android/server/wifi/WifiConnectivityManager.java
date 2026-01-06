@@ -3926,19 +3926,30 @@ public class WifiConnectivityManager {
         if (targetNetwork != null)
             primaryCmmCandidate = targetNetwork.getNetworkSelectionStatus().getCandidate();
 
-        if (primaryCmmCandidate != null && secondaryCcm != null &&
+        if (secondaryCcm != null &&
                 (secondaryCcm.isConnecting() || secondaryCcm.isConnected())) {
             secondaryInfo = secondaryCcm.getConnectionInfo();
-            secondaryBandType = ScanResult.toBandType(secondaryInfo.getFrequency());
-            if (primaryCmmCandidate.getBandType() == secondaryBandType) {
+           /* If secondary STA has two multi links, then disconnect directly since
+            * wifi chip supports up to two band simultaneously. Once secondary STA
+            * has two links, it will occupy two band, then it will conflict with
+            * primary STA.
+            */
+            if (secondaryInfo.getAssociatedMloLinks().size() == 2) {
+                Log.d(TAG, "2nd STA has two Mlo links, need to disconnect");
                 needDisconnect = true;
-                secondaryCcm.disconnect();
+            }
+
+            secondaryBandType = ScanResult.toBandType(secondaryInfo.getFrequency());
+            if (primaryCmmCandidate != null && (primaryCmmCandidate.getBandType() == secondaryBandType)) {
+                needDisconnect = true;
             }
         }
 
+        if (needDisconnect == true)
+            secondaryCcm.disconnect();
+
         return needDisconnect;
     }
-
 
     /* Fix the case that: No scan result for the user selected network
      * When user select network for primary STA, but there is no scan result
@@ -3974,19 +3985,31 @@ public class WifiConnectivityManager {
 
         if (isPrimary && secondaryCcm != null && (secondaryCcm.isConnecting() || secondaryCcm.isConnected())) {
             secondaryInfo = secondaryCcm.getConnectionInfo();
+           /* If secondary STA has two multi links, then disconnect directly since
+            * wifi chip supports up to two band simultaneously. Once secondary STA
+            * has two links, it will occupy two band, then it will conflict with
+            * primary STA.
+            */
+            if (secondaryInfo.getAssociatedMloLinks().size() == 2) {
+                Log.d(TAG, "2nd STA has two Mlo links, need to disconnect");
+                needDisconnect = true;
+            }
+
             secondaryBandType = ScanResult.toBandType(secondaryInfo.getFrequency());
             if (bandType == secondaryBandType) {
                 needDisconnect = true;
-                secondaryCcm.disconnect();
             }
         } else if (!isPrimary && primaryCcm != null && (primaryCcm.isConnecting() || primaryCcm.isConnected())) {
             primaryInfo = primaryCcm.getConnectionInfo();
             primaryBandType = ScanResult.toBandType(primaryInfo.getFrequency());
             if (bandType == primaryBandType) {
                 needDisconnect = true;
-                secondaryCcm.disconnect();
             }
         }
+
+        if (needDisconnect == true)
+            secondaryCcm.disconnect();
+
         return needDisconnect;
     }
 

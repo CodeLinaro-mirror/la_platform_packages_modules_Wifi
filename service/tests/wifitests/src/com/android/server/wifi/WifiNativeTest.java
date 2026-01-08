@@ -78,6 +78,7 @@ import com.android.server.wifi.nl80211.Nl80211Native;
 import com.android.server.wifi.nl80211.RadioChainInfo;
 import com.android.server.wifi.p2p.WifiP2pNative;
 import com.android.server.wifi.proto.WifiStatsLog;
+import com.android.server.wifi.rtt.SupplicantWifiRttController;
 import com.android.server.wifi.util.NativeUtil;
 import com.android.server.wifi.util.NetdWrapper;
 import com.android.wifi.flags.Flags;
@@ -172,8 +173,13 @@ public class WifiNativeTest extends WifiBaseTest {
             new FateMapping(WifiLoggerHal.RX_PKT_FATE_DRV_DROP_OTHER, "driver dropped (other)"),
             new FateMapping((byte) 42, "42")
     };
-    private static final WifiNl80211Manager.SignalPollResult SIGNAL_POLL_RESULT =
-            new WifiNl80211Manager.SignalPollResult(-60, 12, 6, 5240);
+    private static final Nl80211Native.SignalPollResult SIGNAL_POLL_RESULT =
+            new Nl80211Native.SignalPollResult.Builder()
+                    .setCurrentRssiDbm(-60)
+                    .setTxBitrateMbps(12)
+                    .setRxBitrateMbps(6)
+                    .setAssociationFrequencyMHz(5240)
+                    .build();
 
     private static final Set<Integer> SCAN_FREQ_SET = Set.of(
             2410,
@@ -976,7 +982,7 @@ public class WifiNativeTest extends WifiBaseTest {
      */
     @Test
     public void testSignalPoll() throws Exception {
-        when(mNl80211Native.wificondSignalPoll(WIFI_IFACE_NAME))
+        when(mNl80211Native.signalPoll(WIFI_IFACE_NAME))
                 .thenReturn(SIGNAL_POLL_RESULT);
         when(mStaIfaceHal.getSignalPollResults(WIFI_IFACE_NAME)).thenReturn(null);
 
@@ -987,7 +993,7 @@ public class WifiNativeTest extends WifiBaseTest {
                 pollResults.getFrequency());
         assertEquals(SIGNAL_POLL_RESULT.rxBitrateMbps, pollResults.getRxLinkSpeed());
 
-        verify(mNl80211Native).wificondSignalPoll(WIFI_IFACE_NAME);
+        verify(mNl80211Native).signalPoll(WIFI_IFACE_NAME);
     }
 
     /**
@@ -1962,6 +1968,37 @@ public class WifiNativeTest extends WifiBaseTest {
         assertEquals(status, mWifiNative.setRoamingMode(WIFI_IFACE_NAME,
                 WifiManager.ROAMING_MODE_NORMAL));
         verify(mWifiVendorHal).setRoamingMode(WIFI_IFACE_NAME, WifiManager.ROAMING_MODE_NORMAL);
+    }
+
+    /**
+     * Test that we can call createWifiSupplicantRttController
+     */
+    @Test
+    public void testCreateWifiSupplicantRttController() {
+        SupplicantWifiRttController rttController = mock(SupplicantWifiRttController.class);
+        when(mStaIfaceHal.createRttController(anyString())).thenReturn(rttController);
+        when(rttController.setup()).thenReturn(true);
+
+        // Test successful creation and setup
+        SupplicantWifiRttController resultController =
+                mWifiNative.createSupplicantWifiRttController(WIFI_IFACE_NAME);
+        assertNotNull(resultController);
+        verify(mStaIfaceHal).createRttController(eq(WIFI_IFACE_NAME));
+        verify(rttController).setup();
+
+        // Test null return from SupplicantStaIfaceHal
+        when(mStaIfaceHal.createRttController(anyString())).thenReturn(null);
+        resultController = mWifiNative.createSupplicantWifiRttController(WIFI_IFACE_NAME);
+        assertNull(resultController);
+        verify(mStaIfaceHal, times(2)).createRttController(eq(WIFI_IFACE_NAME));
+
+        // Test setup failure
+        when(mStaIfaceHal.createRttController(anyString())).thenReturn(rttController);
+        when(rttController.setup()).thenReturn(false);
+        resultController = mWifiNative.createSupplicantWifiRttController(WIFI_IFACE_NAME);
+        assertNull(resultController);
+        verify(mStaIfaceHal, times(3)).createRttController(eq(WIFI_IFACE_NAME));
+        verify(rttController, times(2)).setup();
     }
 
     @Test

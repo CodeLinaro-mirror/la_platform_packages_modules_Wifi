@@ -16,6 +16,7 @@
 
 package com.android.server.wifi.nl80211;
 
+import static com.android.dx.mockito.inline.extended.ExtendedMockito.doThrow;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_CHANNEL_WIDTH;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_IFINDEX;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_MAC;
@@ -72,6 +73,7 @@ import android.os.Bundle;
 import androidx.test.filters.SmallTest;
 
 import com.android.modules.utils.build.SdkLevel;
+import com.android.net.module.util.netlink.StructNlAttr;
 import com.android.net.module.util.netlink.StructNlMsgHdr;
 import com.android.server.wifi.SelfRecovery;
 import com.android.server.wifi.WifiInjector;
@@ -100,6 +102,10 @@ public class Nl80211NativeTest {
     private static final int WIPHY_INDEX_1 = 1;
     private static final String CLIENT_IFACE_NAME = "wlan0";
     private static final int CLIENT_IFACE_INDEX = 3;
+    private static final byte[] TEST_BSSID = new byte[]{0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    private static final byte[] TEST_BSSID_2 = new byte[]{0x0B, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F};
+    private static final int TEST_FREQ = 2412;
+    private static final int TEST_FREQ_2 = 2417;
     private static final String AP_IFACE_NAME = "wlan1";
     private static final int AP_IFACE_INDEX = 4;
     private static final String COUNTRY_CODE = "US";
@@ -284,12 +290,13 @@ public class Nl80211NativeTest {
         mDut.registerApCallback(AP_IFACE_NAME, mExecutor, mSoftApCallback);
         verify(mNl80211Proxy).registerBroadcastCallback(eq(NL80211_CMD_NEW_STATION),
                 mNl80211BroadcastCallbackCaptor.capture());
-        GenericNetlinkMsg msg = mock(GenericNetlinkMsg.class);
-        when(msg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX)).thenReturn(AP_IFACE_INDEX);
+        GenericNetlinkMsg newStationMsg = mock(GenericNetlinkMsg.class);
+        when(newStationMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(AP_IFACE_INDEX);
         byte[] macAddress = new byte[]{0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
-        when(msg.getAttributeValueAsByteArray(NL80211_ATTR_MAC)).thenReturn(macAddress);
+        when(newStationMsg.getAttributeValueAsByteArray(NL80211_ATTR_MAC)).thenReturn(macAddress);
 
-        mNl80211BroadcastCallbackCaptor.getValue().onEvent(NL80211_CMD_NEW_STATION, msg);
+        mNl80211BroadcastCallbackCaptor.getValue().onEvent(NL80211_CMD_NEW_STATION, newStationMsg);
 
         ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
         verify(mExecutor).execute(runnableCaptor.capture());
@@ -307,12 +314,13 @@ public class Nl80211NativeTest {
         mDut.registerApCallback(AP_IFACE_NAME, mExecutor, mSoftApCallback);
         verify(mNl80211Proxy).registerBroadcastCallback(eq(NL80211_CMD_DEL_STATION),
                 mNl80211BroadcastCallbackCaptor.capture());
-        GenericNetlinkMsg msg = mock(GenericNetlinkMsg.class);
-        when(msg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX)).thenReturn(AP_IFACE_INDEX);
+        GenericNetlinkMsg delStationMsg = mock(GenericNetlinkMsg.class);
+        when(delStationMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(AP_IFACE_INDEX);
         byte[] macAddress = new byte[]{0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
-        when(msg.getAttributeValueAsByteArray(NL80211_ATTR_MAC)).thenReturn(macAddress);
+        when(delStationMsg.getAttributeValueAsByteArray(NL80211_ATTR_MAC)).thenReturn(macAddress);
 
-        mNl80211BroadcastCallbackCaptor.getValue().onEvent(NL80211_CMD_DEL_STATION, msg);
+        mNl80211BroadcastCallbackCaptor.getValue().onEvent(NL80211_CMD_DEL_STATION, delStationMsg);
 
         ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
         verify(mExecutor).execute(runnableCaptor.capture());
@@ -330,14 +338,18 @@ public class Nl80211NativeTest {
         mDut.registerApCallback(AP_IFACE_NAME, mExecutor, mSoftApCallback);
         verify(mNl80211Proxy).registerBroadcastCallback(eq(NL80211_CMD_CH_SWITCH_NOTIFY),
                 mNl80211BroadcastCallbackCaptor.capture());
-        GenericNetlinkMsg msg = mock(GenericNetlinkMsg.class);
-        when(msg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX)).thenReturn(AP_IFACE_INDEX);
+        GenericNetlinkMsg chSwitchNotifyMsg = mock(GenericNetlinkMsg.class);
+        when(chSwitchNotifyMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(AP_IFACE_INDEX);
         int frequency = 5220;
         int channelWidth = NetlinkConstants.NL80211_CHAN_WIDTH_80;
-        when(msg.getAttributeValueAsInteger(NL80211_ATTR_WIPHY_FREQ)).thenReturn(frequency);
-        when(msg.getAttributeValueAsInteger(NL80211_ATTR_CHANNEL_WIDTH)).thenReturn(channelWidth);
+        when(chSwitchNotifyMsg.getAttributeValueAsInteger(NL80211_ATTR_WIPHY_FREQ))
+                .thenReturn(frequency);
+        when(chSwitchNotifyMsg.getAttributeValueAsInteger(NL80211_ATTR_CHANNEL_WIDTH))
+                .thenReturn(channelWidth);
 
-        mNl80211BroadcastCallbackCaptor.getValue().onEvent(NL80211_CMD_CH_SWITCH_NOTIFY, msg);
+        mNl80211BroadcastCallbackCaptor.getValue().onEvent(NL80211_CMD_CH_SWITCH_NOTIFY,
+                chSwitchNotifyMsg);
 
         ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
         verify(mExecutor).execute(runnableCaptor.capture());
@@ -367,38 +379,259 @@ public class Nl80211NativeTest {
     /** Test that an associate event updates the client interface info. */
     @Test
     public void testBroadcastEvent_onAssociate_updatesClientInfo() {
-        mDut = initNl80211Native(false);
-        setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
-        assertFalse(mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME).associated);
-        verify(mNl80211Proxy).registerBroadcastCallback(eq(NetlinkConstants.NL80211_CMD_ASSOCIATE),
-                mNl80211BroadcastCallbackCaptor.capture());
+        NativeScanResult scanResult = new NativeScanResult();
+        scanResult.bssid = TEST_BSSID;
+        scanResult.frequency = TEST_FREQ;
+        scanResult.associated = true;
+        when(mNl80211Utils.getScanResults(CLIENT_IFACE_NAME)).thenReturn(List.of(scanResult));
 
-        GenericNetlinkMsg msg = mock(GenericNetlinkMsg.class);
-        when(msg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX)).thenReturn(CLIENT_IFACE_INDEX);
-        mNl80211BroadcastCallbackCaptor.getValue().onEvent(NetlinkConstants.NL80211_CMD_ASSOCIATE,
-                msg);
+        GenericNetlinkMsg associateMsg = mock(GenericNetlinkMsg.class);
+        when(associateMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(CLIENT_IFACE_INDEX);
+        when(associateMsg.getAttributeValueAsByteArray(NL80211_ATTR_MAC)).thenReturn(TEST_BSSID);
 
-        assertTrue(mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME).associated);
+        testAssociationEvent(NetlinkConstants.NL80211_CMD_ASSOCIATE, associateMsg,
+                /* expectSuccess */ true, scanResult.bssid, scanResult.frequency);
     }
 
-    /** Test that a disassociate event updates the client interface info. */
-    @Test
-    public void testBroadcastEvent_onDisassociate_updatesClientInfo() {
+    private void testAssociationEvent(short command, @NonNull GenericNetlinkMsg eventMsg,
+            boolean expectSuccess, @Nullable byte[] expectedBssid, int expectedFreq) {
+        // Setup
         mDut = initNl80211Native(false);
         setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
-        // First associate the interface to ensure a state change when disassociating
-        mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME).associated = true;
+        ArgumentCaptor<Nl80211BroadcastMonitor.Nl80211BroadcastCallback> callbackCaptor =
+                ArgumentCaptor.forClass(Nl80211BroadcastMonitor.Nl80211BroadcastCallback.class);
+        verify(mNl80211Proxy).registerBroadcastCallback(eq(command), callbackCaptor.capture());
 
-        verify(mNl80211Proxy).registerBroadcastCallback(
-                eq(NetlinkConstants.NL80211_CMD_DISASSOCIATE),
-                mNl80211BroadcastCallbackCaptor.capture());
+        // Trigger
+        callbackCaptor.getValue().onEvent(command, eventMsg);
 
-        GenericNetlinkMsg msg = mock(GenericNetlinkMsg.class);
-        when(msg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX)).thenReturn(CLIENT_IFACE_INDEX);
-        mNl80211BroadcastCallbackCaptor.getValue().onEvent(
-                NetlinkConstants.NL80211_CMD_DISASSOCIATE, msg);
+        // Verify
+        Nl80211Native.ClientInterfaceInfo clientIfaceInfo =
+                mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME);
+        assertEquals(expectSuccess, clientIfaceInfo.associated);
+        assertArrayEquals(expectedBssid, clientIfaceInfo.associatedBssid);
+        assertEquals(expectedFreq, clientIfaceInfo.associatedFreqMhz);
+    }
 
-        assertFalse(mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME).associated);
+    @Test
+    public void testBroadcastEvent_onConnect_success() {
+        NativeScanResult scanResult = new NativeScanResult();
+        scanResult.bssid = TEST_BSSID;
+        scanResult.frequency = TEST_FREQ;
+        scanResult.associated = true;
+        when(mNl80211Utils.getScanResults(CLIENT_IFACE_NAME)).thenReturn(List.of(scanResult));
+
+        GenericNetlinkMsg connectMsg = mock(GenericNetlinkMsg.class);
+        when(connectMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(CLIENT_IFACE_INDEX);
+        when(connectMsg.getAttributeValueAsByteArray(NL80211_ATTR_MAC))
+                .thenReturn(scanResult.bssid);
+        when(connectMsg.getAttributeValueAsShort(eq(NetlinkConstants.NL80211_ATTR_STATUS_CODE)))
+                .thenReturn((short) 0);
+
+        testAssociationEvent(NetlinkConstants.NL80211_CMD_CONNECT, connectMsg,
+                /* expectSuccess */ true, scanResult.bssid, scanResult.frequency);
+    }
+
+    @Test
+    public void testBroadcastEvent_onRoam_success() {
+        NativeScanResult scanResult = new NativeScanResult();
+        scanResult.bssid = TEST_BSSID;
+        scanResult.frequency = TEST_FREQ;
+        scanResult.associated = true;
+        when(mNl80211Utils.getScanResults(CLIENT_IFACE_NAME)).thenReturn(List.of(scanResult));
+
+        GenericNetlinkMsg roamMsg = mock(GenericNetlinkMsg.class);
+        when(roamMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(CLIENT_IFACE_INDEX);
+        when(roamMsg.getAttributeValueAsByteArray(NL80211_ATTR_MAC)).thenReturn(scanResult.bssid);
+
+        testAssociationEvent(NetlinkConstants.NL80211_CMD_ROAM, roamMsg, /* expectSuccess */ true,
+                scanResult.bssid, scanResult.frequency);
+    }
+
+    @Test
+    public void testBroadcastEvent_onAssociate_successEvenWithStatusCode() {
+        // This test verifies parity with wificond, which ignores status code for ASSOCIATE events.
+        NativeScanResult scanResult = new NativeScanResult();
+        scanResult.bssid = TEST_BSSID;
+        scanResult.frequency = TEST_FREQ;
+        scanResult.associated = true;
+        when(mNl80211Utils.getScanResults(CLIENT_IFACE_NAME)).thenReturn(List.of(scanResult));
+
+        GenericNetlinkMsg associateMsg = mock(GenericNetlinkMsg.class);
+        when(associateMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(CLIENT_IFACE_INDEX);
+        when(associateMsg.getAttributeValueAsByteArray(NL80211_ATTR_MAC))
+                .thenReturn(scanResult.bssid);
+        when(associateMsg.getAttributeValueAsShort(eq(NetlinkConstants.NL80211_ATTR_STATUS_CODE)))
+                .thenReturn((short) 15); // Non-zero, but should be ignored
+
+        testAssociationEvent(NetlinkConstants.NL80211_CMD_ASSOCIATE, associateMsg,
+                /* expectSuccess */ true, scanResult.bssid, scanResult.frequency);
+    }
+
+    @Test
+    public void testBroadcastEvent_onAssociate_failureTimeout() {
+        GenericNetlinkMsg associateMsg = mock(GenericNetlinkMsg.class);
+        when(associateMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(CLIENT_IFACE_INDEX);
+        when(associateMsg.getAttribute(eq(NetlinkConstants.NL80211_ATTR_TIMED_OUT)))
+                .thenReturn(mock(StructNlAttr.class));
+
+        testAssociationEvent(NetlinkConstants.NL80211_CMD_ASSOCIATE, associateMsg,
+                /* expectSuccess */ false, /* expectedBssid */ null, /* expectedFreqMhz */ 0);
+    }
+
+    @Test
+    public void testBroadcastEvent_onAssociate_successButFreqNotInScanResults() {
+        // Mock scan results that do NOT contain the associated BSSID
+        when(mNl80211Utils.getScanResults(CLIENT_IFACE_NAME)).thenReturn(new ArrayList<>());
+
+        GenericNetlinkMsg associateMsg = mock(GenericNetlinkMsg.class);
+        when(associateMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(CLIENT_IFACE_INDEX);
+        when(associateMsg.getAttributeValueAsByteArray(NL80211_ATTR_MAC)).thenReturn(TEST_BSSID);
+
+        // Expect success, but frequency should remain 0
+        testAssociationEvent(NetlinkConstants.NL80211_CMD_ASSOCIATE, associateMsg,
+                /* expectSuccess */ true, TEST_BSSID, /* expectedFreqMhz */ 0);
+    }
+
+    @Test
+    public void testBroadcastEvent_onAssociate_ignoresScanResultWithMismatchedBssid() {
+        NativeScanResult matchingScanResult = new NativeScanResult();
+        matchingScanResult.bssid = TEST_BSSID;
+        matchingScanResult.frequency = TEST_FREQ;
+        matchingScanResult.associated = true;
+
+        NativeScanResult differentScanResult = new NativeScanResult();
+        differentScanResult.bssid = TEST_BSSID_2;
+        differentScanResult.frequency = TEST_FREQ_2;
+        differentScanResult.associated = true;
+
+        when(mNl80211Utils.getScanResults(CLIENT_IFACE_NAME))
+                .thenReturn(List.of(differentScanResult, matchingScanResult));
+
+        GenericNetlinkMsg associateMsg = mock(GenericNetlinkMsg.class);
+        when(associateMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(CLIENT_IFACE_INDEX);
+        when(associateMsg.getAttributeValueAsByteArray(NL80211_ATTR_MAC))
+                .thenReturn(matchingScanResult.bssid);
+        when(associateMsg.getAttributeValueAsShort(eq(NetlinkConstants.NL80211_ATTR_STATUS_CODE)))
+                .thenReturn((short) 0);
+
+        testAssociationEvent(NetlinkConstants.NL80211_CMD_ASSOCIATE, associateMsg,
+                /* expectSuccess */ true, matchingScanResult.bssid, matchingScanResult.frequency);
+    }
+
+    @Test
+    public void testBroadcastEvent_onConnect_failureStatusCode() {
+        GenericNetlinkMsg connectMsg = mock(GenericNetlinkMsg.class);
+        when(connectMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(CLIENT_IFACE_INDEX);
+        when(connectMsg.getAttributeValueAsShort(eq(NetlinkConstants.NL80211_ATTR_STATUS_CODE)))
+                .thenReturn((short) 1); // Non-zero status code
+
+        testAssociationEvent(NetlinkConstants.NL80211_CMD_CONNECT, connectMsg,
+                /* expectSuccess */ false, /* expectedBssid */ null, /* expectedFreqMhz */ 0);
+    }
+
+    @Test
+    public void testBroadcastEvent_onConnect_failureMissingBssid() {
+        GenericNetlinkMsg connectMsg = mock(GenericNetlinkMsg.class);
+        when(connectMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(CLIENT_IFACE_INDEX);
+        when(connectMsg.getAttributeValueAsByteArray(NL80211_ATTR_MAC)).thenReturn(null);
+        when(connectMsg.getAttributeValueAsShort(eq(NetlinkConstants.NL80211_ATTR_STATUS_CODE)))
+                .thenReturn((short) 0);
+
+        testAssociationEvent(NetlinkConstants.NL80211_CMD_CONNECT, connectMsg,
+                /* expectSuccess */ false, /* expectedBssid */ null,  /* expectedFreqMhz */ 0);
+    }
+
+    private void testDisassociationEvent(short command) {
+        mDut = initNl80211Native(false);
+        // Set up a connected client interface.
+        setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
+        Nl80211Native.ClientInterfaceInfo clientIfaceInfo =
+                mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME);
+        clientIfaceInfo.associated = true;
+        clientIfaceInfo.associatedBssid = TEST_BSSID;
+        clientIfaceInfo.associatedFreqMhz = TEST_FREQ;
+
+        ArgumentCaptor<Nl80211BroadcastMonitor.Nl80211BroadcastCallback> callbackCaptor =
+                ArgumentCaptor.forClass(Nl80211BroadcastMonitor.Nl80211BroadcastCallback.class);
+        verify(mNl80211Proxy).registerBroadcastCallback(eq(command), callbackCaptor.capture());
+
+        GenericNetlinkMsg disassociateMsg = mock(GenericNetlinkMsg.class);
+        when(disassociateMsg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX))
+                .thenReturn(CLIENT_IFACE_INDEX);
+
+        // Trigger a disassociation event (either CMD_DISASSOCIATE or CMD_DISCONNECT).
+        callbackCaptor.getValue().onEvent(command, disassociateMsg);
+
+        // Client interface should not be associated anymore.
+        assertFalse(clientIfaceInfo.associated);
+        assertNull(clientIfaceInfo.associatedBssid);
+        assertEquals(0, clientIfaceInfo.associatedFreqMhz);
+    }
+
+    @Test
+    public void testBroadcastEvent_onDisconnect_clearsClientInfo() {
+        testDisassociationEvent(NetlinkConstants.NL80211_CMD_DISCONNECT);
+    }
+
+    @Test
+    public void testBroadcastEvent_onDisassociate_clearsClientInfo() {
+        testDisassociationEvent(NetlinkConstants.NL80211_CMD_DISASSOCIATE);
+    }
+
+    @Test
+    public void testSetupInterfaceForClientMode_netdFailureReturnsTrue() {
+        mDut = initNl80211Native(false);
+        Nl80211Utils.InterfaceInfo ifaceInfo = new Nl80211Utils.InterfaceInfo(
+                CLIENT_IFACE_INDEX, WIPHY_INDEX_0, CLIENT_IFACE_NAME, new byte[6]);
+        when(mNl80211Utils.getInterfaceInfo(CLIENT_IFACE_NAME)).thenReturn(ifaceInfo);
+        Nl80211Utils.WiphyInfo wiphyInfo = new Nl80211Utils.WiphyInfo(
+                new Nl80211Utils.BandInfo(),
+                mock(Nl80211Utils.ScanCapabilities.class),
+                new Nl80211Utils.WiphyFeatures.Builder().build(),
+                mock(Nl80211Utils.DriverCapabilities.class));
+        when(mNl80211Utils.getWiphyInfo(WIPHY_INDEX_0)).thenReturn(wiphyInfo);
+        // Simulate a failure from NetdWrapper.
+        doThrow(new IllegalStateException("netd has died"))
+                .when(mNetdWrapper).setInterfaceUp(CLIENT_IFACE_NAME);
+
+        assertTrue(mDut.setupInterfaceForClientMode(
+                CLIENT_IFACE_NAME, mExecutor, mScanCallback, mPnoScanCallback));
+    }
+
+    @Test
+    public void testTearDownClientInterface_netdFailureReturnsTrue() {
+        mDut = initNl80211Native(false);
+        setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
+        // Simulate a failure from NetdWrapper.
+        doThrow(new IllegalStateException("netd has died"))
+                .when(mNetdWrapper).setInterfaceDown(CLIENT_IFACE_NAME);
+
+        assertTrue(mDut.tearDownClientInterface(CLIENT_IFACE_NAME));
+        // The client info should still be removed even if netd fails to bring down the interface.
+        assertFalse(mDut.getClientInterfaceInfos().containsKey(CLIENT_IFACE_NAME));
+    }
+
+    @Test
+    public void testTearDownSoftApInterface_netdFailureReturnsTrue() {
+        mDut = initNl80211Native(false);
+        setupSoftApInterfaceForTest(WIPHY_INDEX_0, null);
+        // Simulate a failure from NetdWrapper.
+        doThrow(new IllegalStateException("netd has died"))
+                .when(mNetdWrapper).setInterfaceDown(AP_IFACE_NAME);
+
+        assertTrue(mDut.tearDownSoftApInterface(AP_IFACE_NAME));
+        // The AP info should still be removed even if netd fails to bring down the interface.
+        assertFalse(mDut.getApInterfaceInfos().containsKey(AP_IFACE_NAME));
     }
 
     /** Test that {@link Nl80211Native#getInterfaceNames()} returns the expected value. */
@@ -449,19 +682,6 @@ public class Nl80211NativeTest {
     }
 
     @Test
-    public void testTearDownClientInterface() {
-        mDut = initNl80211Native(false);
-        setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
-
-        assertTrue(mDut.getClientInterfaceInfos().containsKey(CLIENT_IFACE_NAME));
-        assertEquals(1, mDut.getClientInterfaceInfos().size());
-
-        assertTrue(mDut.tearDownClientInterface(CLIENT_IFACE_NAME));
-        assertEquals(0, mDut.getClientInterfaceInfos().size());
-        assertNull(mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME));
-    }
-
-    @Test
     public void testSetupInterfaceForClientMode_getWiphyIndexFails() {
         mDut = initNl80211Native(false);
         when(mNl80211Utils.getWiphyIndex(CLIENT_IFACE_NAME)).thenReturn(-1);
@@ -501,6 +721,25 @@ public class Nl80211NativeTest {
     }
 
     @Test
+    public void testTearDownClientInterface_noIfaceFoundReturnsFalse() {
+        mDut = initNl80211Native(false);
+        assertFalse(mDut.tearDownSoftApInterface(AP_IFACE_NAME));
+    }
+
+    @Test
+    public void testTearDownClientInterface_success() {
+        mDut = initNl80211Native(false);
+        setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
+
+        assertTrue(mDut.getClientInterfaceInfos().containsKey(CLIENT_IFACE_NAME));
+        assertEquals(1, mDut.getClientInterfaceInfos().size());
+
+        assertTrue(mDut.tearDownClientInterface(CLIENT_IFACE_NAME));
+        assertEquals(0, mDut.getClientInterfaceInfos().size());
+        assertNull(mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME));
+    }
+
+    @Test
     public void testSetupInterfaceForSoftApMode_useWificondEnabled_callsWificond() {
         mDut = initNl80211Native(true);
         when(mWificondManager.setupInterfaceForSoftApMode(AP_IFACE_NAME)).thenReturn(true);
@@ -537,6 +776,12 @@ public class Nl80211NativeTest {
     }
 
     @Test
+    public void testTearDownSoftApInterface_noIfaceFoundReturnsFalse() {
+        mDut = initNl80211Native(false);
+        assertFalse(mDut.tearDownSoftApInterface(AP_IFACE_NAME));
+    }
+
+    @Test
     public void testTearDownSoftApInterface_success() {
         mDut = initNl80211Native(false);
         setupSoftApInterfaceForTest(WIPHY_INDEX_0, null);
@@ -552,6 +797,29 @@ public class Nl80211NativeTest {
                 eq(NL80211_CMD_DEL_STATION), any());
         verify(mNl80211Proxy).unregisterBroadcastCallback(
                 eq(NL80211_CMD_CH_SWITCH_NOTIFY), any());
+    }
+
+    @Test
+    public void testSetupInterfaceForClientMode_getWiphyInfoFails() {
+        mDut = initNl80211Native(false);
+        Nl80211Utils.InterfaceInfo ifaceInfo = new Nl80211Utils.InterfaceInfo(
+                CLIENT_IFACE_INDEX, WIPHY_INDEX_0, CLIENT_IFACE_NAME, new byte[6]);
+        when(mNl80211Utils.getInterfaceInfo(CLIENT_IFACE_NAME)).thenReturn(ifaceInfo);
+        when(mNl80211Utils.getWiphyInfo(WIPHY_INDEX_0)).thenReturn(null);
+
+        assertFalse(mDut.setupInterfaceForClientMode(
+                CLIENT_IFACE_NAME, mExecutor, mScanCallback, mPnoScanCallback));
+    }
+
+    @Test
+    public void testSetupInterfaceForSoftApMode_getWiphyInfoFails() {
+        mDut = initNl80211Native(false);
+        Nl80211Utils.InterfaceInfo ifaceInfo = new Nl80211Utils.InterfaceInfo(
+                AP_IFACE_INDEX, WIPHY_INDEX_0, AP_IFACE_NAME, new byte[6]);
+        when(mNl80211Utils.getInterfaceInfo(AP_IFACE_NAME)).thenReturn(ifaceInfo);
+        when(mNl80211Utils.getWiphyInfo(WIPHY_INDEX_0)).thenReturn(null);
+
+        assertFalse(mDut.setupInterfaceForSoftApMode(AP_IFACE_NAME));
     }
 
     @Test
@@ -1705,20 +1973,102 @@ public class Nl80211NativeTest {
     }
 
     @Test
-    public void testWificondSignalPoll_useWificondEnabled_callsWificond() {
+    public void testSignalPoll_useWificondEnabled_callsWificond() {
         mDut = initNl80211Native(true);
-        WifiNl80211Manager.SignalPollResult expectedResult =
-                mock(WifiNl80211Manager.SignalPollResult.class);
-        when(mWificondManager.signalPoll(CLIENT_IFACE_NAME)).thenReturn(expectedResult);
-        assertEquals(expectedResult, mDut.wificondSignalPoll(CLIENT_IFACE_NAME));
+        int expectedCurrentRssiDbm = -50;
+        int expectedTxBitrateMbps = 1000;
+        int expectedRxBitrateMbps = 2000;
+        int expectedAssociationFrequencyMhz = 5180;
+        WifiNl80211Manager.SignalPollResult wificondPollResult =
+                new WifiNl80211Manager.SignalPollResult(
+                        expectedCurrentRssiDbm,
+                        expectedTxBitrateMbps,
+                        expectedRxBitrateMbps,
+                        expectedAssociationFrequencyMhz);
+        when(mWificondManager.signalPoll(CLIENT_IFACE_NAME)).thenReturn(wificondPollResult);
+
+        Nl80211Native.SignalPollResult result = mDut.signalPoll(CLIENT_IFACE_NAME);
+
+        assertNotNull(result);
         verify(mWificondManager).signalPoll(CLIENT_IFACE_NAME);
+        assertEquals(expectedCurrentRssiDbm, result.currentRssiDbm);
+        assertEquals(expectedTxBitrateMbps, result.txBitrateMbps);
+        assertEquals(expectedRxBitrateMbps, result.rxBitrateMbps);
+        assertEquals(expectedAssociationFrequencyMhz, result.associationFrequencyMHz);
     }
 
+    /** Test that a successful signal poll returns the expected result. */
     @Test
-    public void testWificondSignalPoll_throwsException() {
+    public void testSignalPoll_success() {
         mDut = initNl80211Native(false);
-        assertThrows(UnsupportedOperationException.class,
-                () -> mDut.wificondSignalPoll(CLIENT_IFACE_NAME));
+        setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
+        Nl80211Native.ClientInterfaceInfo clientIfaceInfo =
+                mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME);
+        clientIfaceInfo.associated = true;
+        clientIfaceInfo.associatedBssid = TEST_BSSID;
+        clientIfaceInfo.associatedFreqMhz = TEST_FREQ;
+        Nl80211Utils.StationInfo stationInfo = new Nl80211Utils.StationInfo.Builder()
+                .setSignalDbm(-50)
+                .setTxBitrate100Kbps(1000) // 100Mbps
+                .setRxBitrate100Kbps(2000) // 200Mbps
+                .build();
+        when(mNl80211Utils.getStationInfo(eq(CLIENT_IFACE_INDEX), any()))
+                .thenReturn(stationInfo);
+
+        Nl80211Native.SignalPollResult result = mDut.signalPoll(CLIENT_IFACE_NAME);
+
+        assertNotNull(result);
+        assertEquals(stationInfo.signalDbm, result.currentRssiDbm);
+        assertEquals(stationInfo.txBitrate100Kbps / 10, result.txBitrateMbps);
+        assertEquals(stationInfo.rxBitrate100Kbps / 10, result.rxBitrateMbps);
+        assertEquals(clientIfaceInfo.associatedFreqMhz, result.associationFrequencyMHz);
+        verify(mNl80211Utils).getStationInfo(eq(CLIENT_IFACE_INDEX),
+                eq(clientIfaceInfo.associatedBssid));
+    }
+
+    /** Test that signalPoll returns null when Nl80211Utils.getStationInfo returns null. */
+    @Test
+    public void testSignalPoll_getStationInfoReturnsNull() {
+        mDut = initNl80211Native(false);
+        setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
+        Nl80211Native.ClientInterfaceInfo clientIfaceInfo =
+                mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME);
+        clientIfaceInfo.associated = true;
+        clientIfaceInfo.associatedBssid = TEST_BSSID;
+        clientIfaceInfo.associatedFreqMhz = TEST_FREQ;
+        when(mNl80211Utils.getStationInfo(eq(CLIENT_IFACE_INDEX), any())).thenReturn(null);
+
+        Nl80211Native.SignalPollResult result = mDut.signalPoll(CLIENT_IFACE_NAME);
+
+        assertNull(result);
+        verify(mNl80211Utils).getStationInfo(eq(CLIENT_IFACE_INDEX),
+                eq(clientIfaceInfo.associatedBssid));
+    }
+
+    /** Test that signalPoll returns null if no client interface info is found. */
+    @Test
+    public void testSignalPoll_noInterfaceInfo() {
+        mDut = initNl80211Native(false);
+
+        Nl80211Native.SignalPollResult result = mDut.signalPoll(CLIENT_IFACE_NAME);
+
+        assertNull(result);
+        verify(mNl80211Utils, never()).getStationInfo(anyInt(), any());
+    }
+
+    /** Test that signalPoll returns null if the interface is not associated */
+    @Test
+    public void testSignalPoll_notAssociatedOrInvalidAssociation() {
+        mDut = initNl80211Native(false);
+        setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
+        Nl80211Native.ClientInterfaceInfo clientIfaceInfo =
+                mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME);
+        clientIfaceInfo.associated = false;
+
+        Nl80211Native.SignalPollResult result = mDut.signalPoll(CLIENT_IFACE_NAME);
+
+        assertNull(result);
+        verify(mNl80211Utils, never()).getStationInfo(anyInt(), any());
     }
 
     @Test
@@ -1998,12 +2348,12 @@ public class Nl80211NativeTest {
         verify(mNl80211Proxy).registerBroadcastCallback(
                 eq(NL80211_CMD_REG_CHANGE), callbackCaptor.capture());
 
-        GenericNetlinkMsg msg = mock(GenericNetlinkMsg.class);
-        when(msg.getAttributeValueAsByte(eq(NL80211_ATTR_REG_TYPE)))
+        GenericNetlinkMsg regChangeMsg = mock(GenericNetlinkMsg.class);
+        when(regChangeMsg.getAttributeValueAsByte(eq(NL80211_ATTR_REG_TYPE)))
                 .thenReturn((byte) NL80211_REGDOM_TYPE_COUNTRY);
-        when(msg.getAttributeValueAsString(eq(NL80211_ATTR_REG_ALPHA2))).thenReturn("CA");
+        when(regChangeMsg.getAttributeValueAsString(eq(NL80211_ATTR_REG_ALPHA2))).thenReturn("CA");
 
-        callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, msg);
+        callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, regChangeMsg);
 
         ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
         verify(mExecutor).execute(runnableCaptor.capture());
@@ -2024,11 +2374,11 @@ public class Nl80211NativeTest {
         verify(mNl80211Proxy).registerBroadcastCallback(
                 eq(NL80211_CMD_REG_CHANGE), callbackCaptor.capture());
 
-        GenericNetlinkMsg msg = mock(GenericNetlinkMsg.class);
-        when(msg.getAttributeValueAsByte(eq(NL80211_ATTR_REG_TYPE)))
+        GenericNetlinkMsg regChangeMsg = mock(GenericNetlinkMsg.class);
+        when(regChangeMsg.getAttributeValueAsByte(eq(NL80211_ATTR_REG_TYPE)))
                 .thenReturn((byte) NL80211_REGDOM_TYPE_WORLD);
 
-        callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, msg);
+        callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, regChangeMsg);
 
         ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
         verify(mExecutor).execute(runnableCaptor.capture());
@@ -2051,12 +2401,13 @@ public class Nl80211NativeTest {
         verify(mNl80211Proxy).registerBroadcastCallback(
                 eq(NL80211_CMD_REG_CHANGE), callbackCaptor.capture());
 
-        GenericNetlinkMsg msg = mock(GenericNetlinkMsg.class);
-        when(msg.getAttributeValueAsByte(eq(NL80211_ATTR_REG_TYPE)))
+        GenericNetlinkMsg regChangeMsg = mock(GenericNetlinkMsg.class);
+        when(regChangeMsg.getAttributeValueAsByte(eq(NL80211_ATTR_REG_TYPE)))
                 .thenReturn((byte) NL80211_REGDOM_TYPE_COUNTRY);
-        when(msg.getAttributeValueAsString(eq(NL80211_ATTR_REG_ALPHA2))).thenReturn(COUNTRY_CODE);
+        when(regChangeMsg.getAttributeValueAsString(eq(NL80211_ATTR_REG_ALPHA2)))
+                .thenReturn(COUNTRY_CODE);
 
-        callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, msg);
+        callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, regChangeMsg);
 
         verify(mExecutor, never()).execute(any());
         verify(mCountryCodeChangedListener, never()).onCountryCodeChanged(anyString());
@@ -2083,12 +2434,12 @@ public class Nl80211NativeTest {
         when(mNl80211Utils.getCountryCode(WIPHY_INDEX_0)).thenReturn("JP");
         when(mNl80211Utils.getCountryCode(WIPHY_INDEX_1)).thenReturn("US");
 
-        GenericNetlinkMsg msg = mock(GenericNetlinkMsg.class);
-        when(msg.getAttributeValueAsByte(eq(NL80211_ATTR_REG_TYPE)))
+        GenericNetlinkMsg regChangeMsg = mock(GenericNetlinkMsg.class);
+        when(regChangeMsg.getAttributeValueAsByte(eq(NL80211_ATTR_REG_TYPE)))
                 .thenReturn((byte) NL80211_REGDOM_TYPE_WORLD);
-        when(msg.getAttributeValueAsString(eq(NL80211_ATTR_REG_ALPHA2))).thenReturn(null);
+        when(regChangeMsg.getAttributeValueAsString(eq(NL80211_ATTR_REG_ALPHA2))).thenReturn(null);
 
-        callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, msg);
+        callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, regChangeMsg);
 
         ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
         verify(mExecutor, times(2)).execute(runnableCaptor.capture());
@@ -2103,6 +2454,35 @@ public class Nl80211NativeTest {
         assertEquals("JP", countryCodeCaptor.getAllValues().get(0));
         assertEquals("US", countryCodeCaptor.getAllValues().get(1));
         verify(mNl80211Utils, times(2)).clearWiphyInfoCaches();
+    }
+
+    @Test
+    public void testCountryCodeChanged_getWiphyInfoFails_preservesOriginalWiphyInfo() {
+        mDut = initNl80211Native(false);
+        setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
+        Nl80211Native.ClientInterfaceInfo info =
+                mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME);
+        Nl80211Utils.WiphyInfo originalWiphyInfo = info.wiphyInfo;
+        assertNotNull(originalWiphyInfo);
+
+        ArgumentCaptor<Nl80211BroadcastMonitor.Nl80211BroadcastCallback> callbackCaptor =
+                ArgumentCaptor.forClass(Nl80211BroadcastMonitor.Nl80211BroadcastCallback.class);
+        verify(mNl80211Proxy).registerBroadcastCallback(
+                eq(NL80211_CMD_REG_CHANGE), callbackCaptor.capture());
+
+        // Simulate getWiphyInfo failing
+        when(mNl80211Utils.getWiphyInfo(WIPHY_INDEX_0)).thenReturn(null);
+
+        GenericNetlinkMsg regChangeMsg = mock(GenericNetlinkMsg.class);
+        when(regChangeMsg.getAttributeValueAsByte(eq(NL80211_ATTR_REG_TYPE)))
+                .thenReturn((byte) NL80211_REGDOM_TYPE_WORLD);
+
+        // Trigger the regulatory change
+        callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, regChangeMsg);
+
+        // Verify that the original wiphyInfo was preserved (not replaced with null)
+        assertNotNull(info.wiphyInfo);
+        assertEquals(originalWiphyInfo, info.wiphyInfo);
     }
 
     @Test
@@ -2163,11 +2543,11 @@ public class Nl80211NativeTest {
         verify(mNl80211Proxy).registerBroadcastCallback(
                 eq(NL80211_CMD_REG_CHANGE), callbackCaptor.capture());
 
-        GenericNetlinkMsg msg = mock(GenericNetlinkMsg.class);
-        when(msg.getAttributeValueAsByte(eq(NL80211_ATTR_REG_TYPE)))
+        GenericNetlinkMsg regChangeMsg = mock(GenericNetlinkMsg.class);
+        when(regChangeMsg.getAttributeValueAsByte(eq(NL80211_ATTR_REG_TYPE)))
                 .thenReturn((byte) NL80211_REGDOM_TYPE_COUNTRY);
-        when(msg.getAttributeValueAsString(eq(NL80211_ATTR_REG_ALPHA2))).thenReturn("CA");
-        callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, msg);
+        when(regChangeMsg.getAttributeValueAsString(eq(NL80211_ATTR_REG_ALPHA2))).thenReturn("CA");
+        callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, regChangeMsg);
 
         verify(mNl80211Utils).clearWiphyInfoCaches();
         // The wiphy info in ClientInterfaceInfo should be updated to support 6Ghz.
@@ -2326,5 +2706,25 @@ public class Nl80211NativeTest {
                 genericNetlinkMessage);
 
         assertFalse(mDut.getClientInterfaceInfos().get(CLIENT_IFACE_NAME).scanning);
+    }
+
+    @Test
+    public void testSignalPollResultBuilder() {
+        int rssi = -65;
+        int txBitrate = 24;
+        int rxBitrate = 48;
+        int frequency = 5220;
+
+        Nl80211Native.SignalPollResult result = new Nl80211Native.SignalPollResult.Builder()
+                .setCurrentRssiDbm(rssi)
+                .setTxBitrateMbps(txBitrate)
+                .setRxBitrateMbps(rxBitrate)
+                .setAssociationFrequencyMHz(frequency)
+                .build();
+
+        assertEquals(rssi, result.currentRssiDbm);
+        assertEquals(txBitrate, result.txBitrateMbps);
+        assertEquals(rxBitrate, result.rxBitrateMbps);
+        assertEquals(frequency, result.associationFrequencyMHz);
     }
 }

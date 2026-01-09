@@ -5826,6 +5826,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     if (state == SupplicantState.COMPLETED) {
                         mWifiScoreReport.noteNudCheck();
                     }
+                    if (state == SupplicantState.ASSOCIATED) {
+                        boolean mIsDisconnect = mWifiConnectivityManager.disconnectSecondaryClientIfNecessary(isPrimary(), stateChangeResult.frequencyMhz);
+                        Log.d(TAG, "SecondarySTA should be disconnected: " + mIsDisconnect);
+                    }
                     break;
                 }
                 case WifiMonitor.ASSOCIATED_BSSID_EVENT: {

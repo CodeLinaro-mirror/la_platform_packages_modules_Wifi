@@ -63,6 +63,7 @@ public class WifiGlobals {
     private final AtomicBoolean mIsWepAllowed = new AtomicBoolean(false);
     private final AtomicBoolean mIsD2dStaConcurrencySupported = new AtomicBoolean(false);
     private final AtomicInteger mSendDhcpHostnameRestriction = new AtomicInteger();
+    private int mPreviouslyConnectedNetworkWrongPasswordThreshold = 3;
     private boolean mIsWpa3SaeUpgradeOffloadEnabled;
     private boolean mIsWpa3SaeH2eSupported;
     private boolean mDisableFirmwareRoamingInIdleMode = false;
@@ -91,6 +92,8 @@ public class WifiGlobals {
                 R.integer.config_wifiPollRssiIntervalMilliseconds));
         mPollRssiLongIntervalMillis.set(mWifiResourceCache.getInteger(
                 R.integer.config_wifiPollRssiLongIntervalMilliseconds));
+        mPreviouslyConnectedNetworkWrongPasswordThreshold = mWifiResourceCache.getInteger(
+                R.integer.config_wifiPreviouslyConnectedNetworkWrongPasswordThreshold);
         mIsDisconnectOnlyOnInitialIpReachability = mContext.getResources()
 // QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                 .getBoolean(R.bool.config_disconnectOnlyOnInitialIpReachability);
@@ -489,6 +492,10 @@ public class WifiGlobals {
     public boolean isP2pMacRandomizationSupported() {
         return mWifiResourceCache.getBoolean(
                 R.bool.config_wifi_p2p_mac_randomization_supported);
+    }
+
+    public int getPreviouslyConnectedNetworkWrongPasswordThreshold() {
+        return mPreviouslyConnectedNetworkWrongPasswordThreshold;
     }
 
     /** Get the regular (short) interval between RSSI polls, in milliseconds. */

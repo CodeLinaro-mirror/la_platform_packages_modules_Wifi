@@ -34,6 +34,7 @@ import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_MAX_
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_MAX_SCAN_PLAN_INTERVAL;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_MAX_SCAN_PLAN_ITERATIONS;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_PROTOCOL_FEATURES;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_REG_TYPE;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_SCAN_FLAGS;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_SCAN_FREQUENCIES;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_SCAN_SSIDS;
@@ -59,16 +60,22 @@ import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_BSS_STATU
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_BSS_TSF;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_INTERFACE;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_PROTOCOL_FEATURES;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_REG;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_SCAN;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_STATION;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_WIPHY;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_NEW_INTERFACE;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_NEW_SCAN_RESULTS;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_NEW_WIPHY;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_REG_CHANGE;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_START_SCHED_SCAN;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_STOP_SCHED_SCAN;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_TRIGGER_SCAN;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_FREQUENCY_ATTR_FREQ;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_PROTOCOL_FEATURE_SPLIT_WIPHY_DUMP;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_REGDOM_TYPE_COUNTRY;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_SCAN_FLAG_COLOCATED_6GHZ;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_SCAN_FLAG_HIGH_ACCURACY;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_SCAN_FLAG_LOW_POWER;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_SCAN_FLAG_RANDOM_ADDR;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_SCHED_SCAN_MATCH_ATTR_RSSI;
@@ -111,6 +118,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 public class Nl80211UtilsTest {
@@ -136,6 +144,11 @@ public class Nl80211UtilsTest {
             new GenericNetlinkMsg(NL80211_CMD_GET_INTERFACE, (short) 0, (short) 0, 0);
     private static final GenericNetlinkMsg TEST_NL80211_REQUEST_GET_SCAN =
             new GenericNetlinkMsg(NL80211_CMD_GET_SCAN, (short) 0, (short) 0, 0);
+    private static final GenericNetlinkMsg TEST_NL80211_REQUEST_GET_REG =
+            new GenericNetlinkMsg(NetlinkConstants.NL80211_CMD_GET_REG, (short) 0, (short) 0, 0);
+    private static final GenericNetlinkMsg TEST_NL80211_REQUEST_GET_STATION =
+            new GenericNetlinkMsg(NetlinkConstants.NL80211_CMD_GET_STATION, (short) 0, (short) 0,
+                    0);
 
     @Mock private Nl80211Proxy mNl80211Proxy;
     @Mock private NetworkInterface mNetworkInterface;
@@ -164,6 +177,10 @@ public class Nl80211UtilsTest {
                 .thenReturn(TEST_NL80211_REQUEST_GET_INTERFACE);
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_GET_SCAN), anyShort(), any()))
                 .thenReturn(TEST_NL80211_REQUEST_GET_SCAN);
+        when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_GET_REG)))
+                .thenReturn(TEST_NL80211_REQUEST_GET_REG);
+        when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_GET_STATION)))
+                .thenReturn(TEST_NL80211_REQUEST_GET_STATION);
     }
 
     @After
@@ -492,6 +509,66 @@ public class Nl80211UtilsTest {
     }
 
     @Test
+    public void testWiphyFeaturesBuilder_allFalse() {
+        Nl80211Utils.WiphyFeatures features = new Nl80211Utils.WiphyFeatures.Builder()
+                .setSupportsRandomMacOneShotScan(false)
+                .setSupportsRandomMacSchedScan(false)
+                .setSupportsLowSpanOneShotScan(false)
+                .setSupportsLowPowerOneShotScan(false)
+                .setSupportsHighAccuracyOneShotScan(false)
+                .setSupportsTxMgmtFrameMcs(false)
+                .setSupportsExtSchedScanRelativeRssi(false)
+                .build();
+        assertFalse(features.supportsRandomMacOneShotScan);
+        assertFalse(features.supportsRandomMacSchedScan);
+        assertFalse(features.supportsLowSpanOneShotScan);
+        assertFalse(features.supportsLowPowerOneShotScan);
+        assertFalse(features.supportsHighAccuracyOneShotScan);
+        assertFalse(features.supportsTxMgmtFrameMcs);
+        assertFalse(features.supportsExtSchedScanRelativeRssi);
+    }
+
+    @Test
+    public void testWiphyFeaturesBuilder_allTrue() {
+        Nl80211Utils.WiphyFeatures features = new Nl80211Utils.WiphyFeatures.Builder()
+                .setSupportsRandomMacOneShotScan(true)
+                .setSupportsRandomMacSchedScan(true)
+                .setSupportsLowSpanOneShotScan(true)
+                .setSupportsLowPowerOneShotScan(true)
+                .setSupportsHighAccuracyOneShotScan(true)
+                .setSupportsTxMgmtFrameMcs(true)
+                .setSupportsExtSchedScanRelativeRssi(true)
+                .build();
+        assertTrue(features.supportsRandomMacOneShotScan);
+        assertTrue(features.supportsRandomMacSchedScan);
+        assertTrue(features.supportsLowSpanOneShotScan);
+        assertTrue(features.supportsLowPowerOneShotScan);
+        assertTrue(features.supportsHighAccuracyOneShotScan);
+        assertTrue(features.supportsTxMgmtFrameMcs);
+        assertTrue(features.supportsExtSchedScanRelativeRssi);
+    }
+
+    @Test
+    public void testWiphyFeaturesBuilder_mixedValues() {
+        Nl80211Utils.WiphyFeatures features = new Nl80211Utils.WiphyFeatures.Builder()
+                .setSupportsRandomMacOneShotScan(true)
+                .setSupportsRandomMacSchedScan(false)
+                .setSupportsLowSpanOneShotScan(true)
+                .setSupportsLowPowerOneShotScan(false)
+                .setSupportsHighAccuracyOneShotScan(true)
+                .setSupportsTxMgmtFrameMcs(false)
+                .setSupportsExtSchedScanRelativeRssi(true)
+                .build();
+        assertTrue(features.supportsRandomMacOneShotScan);
+        assertFalse(features.supportsRandomMacSchedScan);
+        assertTrue(features.supportsLowSpanOneShotScan);
+        assertFalse(features.supportsLowPowerOneShotScan);
+        assertTrue(features.supportsHighAccuracyOneShotScan);
+        assertFalse(features.supportsTxMgmtFrameMcs);
+        assertTrue(features.supportsExtSchedScanRelativeRssi);
+    }
+
+    @Test
     public void testParseWiphyInfo_success() {
         GenericNetlinkMsg msg = createBasicWiphyInfoMsg();
         msg.addAttribute(createWiphyBandsAttribute());
@@ -809,31 +886,72 @@ public class Nl80211UtilsTest {
     }
 
     @Test
+    public void testGetCountryCode_success() {
+        GenericNetlinkMsg msg = new GenericNetlinkMsg(NL80211_CMD_REG_CHANGE,
+                (short) 0, (short) 0, 0);
+        msg.addAttribute(new StructNlAttr(NetlinkConstants.NL80211_ATTR_REG_ALPHA2, "US"));
+        msg.addAttribute(new StructNlAttr(NL80211_ATTR_REG_TYPE,
+                NL80211_REGDOM_TYPE_COUNTRY));
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_REG)))
+                .thenReturn(new Nl80211Response(msg));
+
+        assertEquals("US", mNl80211Utils.getCountryCode(TEST_WIPHY_INDEX));
+    }
+
+    @Test
+    public void testGetCountryCode_nullResponse() {
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_REG)))
+                .thenReturn(null);
+
+        assertNull(mNl80211Utils.getCountryCode(TEST_WIPHY_INDEX));
+    }
+
+    @Test
+    public void testGetCountryCode_emptyResponse() {
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_REG)))
+                .thenReturn(new Nl80211Response());
+
+        assertNull(mNl80211Utils.getCountryCode(TEST_WIPHY_INDEX));
+    }
+
+    @Test
+    public void testGetCountryCode_missingRegAlpha2Attribute() {
+        GenericNetlinkMsg msg = new GenericNetlinkMsg(NL80211_CMD_REG_CHANGE,
+                (short) 0, (short) 0, 0);
+        // Only add reg type, no alpha2
+        msg.addAttribute(new StructNlAttr(NL80211_ATTR_REG_TYPE, NL80211_REGDOM_TYPE_COUNTRY));
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_REG)))
+                .thenReturn(new Nl80211Response(msg));
+
+        assertNull(mNl80211Utils.getCountryCode(TEST_WIPHY_INDEX));
+    }
+
+    @Test
     public void testTriggerScan_success() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
                 .thenReturn(new Nl80211Response(0));
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_TRIGGER_SCAN), anyShort()))
                 .thenAnswer(i -> new GenericNetlinkMsg(
                         NL80211_CMD_TRIGGER_SCAN, (short) 0, (short) 0, 0));
 
         int result = mNl80211Utils.triggerScan(TEST_IF_INDEX, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
-                null, null, false, false, null);
+                null, null, null);
 
         assertEquals(WifiScanner.REASON_SUCCEEDED, result);
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
-        assertEquals(NL80211_CMD_TRIGGER_SCAN, msg.getCommand());
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
+        assertEquals(NL80211_CMD_TRIGGER_SCAN, request.getCommand());
         assertEquals(TEST_IF_INDEX,
-                (int) msg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX));
+                (int) request.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX));
     }
 
     @Test
     public void testTriggerScan_withFrequencies() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
                 .thenReturn(new Nl80211Response(0));
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_TRIGGER_SCAN), anyShort()))
                 .thenAnswer(i -> new GenericNetlinkMsg(
@@ -841,17 +959,17 @@ public class Nl80211UtilsTest {
         Set<Integer> freqs = Set.of(2412, 5180);
 
         mNl80211Utils.triggerScan(TEST_IF_INDEX, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
-                freqs, null, false, false, null);
+                freqs, null, null);
 
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
-        StructNlAttr freqsAttr = msg.getAttribute(
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
+        StructNlAttr freqsAttr = request.getAttribute(
                 StructNlAttr.makeNestedType(NL80211_ATTR_SCAN_FREQUENCIES));
         assertNotNull(freqsAttr);
     }
 
     @Test
-    public void testTriggerScan_withHiddenSsids() {
+    public void testTriggerScan_withNullHiddenSsids_noSsidsAttribute() {
         ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
         when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
@@ -859,23 +977,57 @@ public class Nl80211UtilsTest {
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_TRIGGER_SCAN), anyShort()))
                 .thenAnswer(i -> new GenericNetlinkMsg(
                         NL80211_CMD_TRIGGER_SCAN, (short) 0, (short) 0, 0));
-        List<byte[]> ssids = List.of("ssid".getBytes());
 
-        mNl80211Utils.triggerScan(TEST_IF_INDEX, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
-                null, ssids, false, false, null);
+        // Call triggerScan with null for hiddenNetworkSSIDs
+        mNl80211Utils.triggerScan(TEST_IF_INDEX, 0, null, null, null);
 
         GenericNetlinkMsg msg = msgCaptor.getValue();
         assertNotNull(msg);
         StructNlAttr ssidsAttr = msg.getAttribute(
                 StructNlAttr.makeNestedType(NL80211_ATTR_SCAN_SSIDS));
+        assertNull(ssidsAttr);
+    }
+
+    @Test
+    public void testTriggerScan_withHiddenSsids() {
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
+                ArgumentCaptor.forClass(GenericNetlinkMsg.class);
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
+                .thenReturn(new Nl80211Response(0));
+        when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_TRIGGER_SCAN), anyShort()))
+                .thenAnswer(i -> new GenericNetlinkMsg(
+                        NL80211_CMD_TRIGGER_SCAN, (short) 0, (short) 0, 0));
+        List<byte[]> ssids = List.of(TEST_SSID, TEST_SSID_2);
+
+        mNl80211Utils.triggerScan(TEST_IF_INDEX, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
+                null, ssids, null);
+
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
+        StructNlAttr ssidsAttr = request.getAttribute(
+                StructNlAttr.makeNestedType(NL80211_ATTR_SCAN_SSIDS));
         assertNotNull(ssidsAttr);
+
+        // Verify the contents of the nested SSID attributes
+        List<byte[]> capturedSsids = new ArrayList<>();
+        Map<Short, StructNlAttr> nestedSsidAttrs =
+                GenericNetlinkMsg.getInnerNestedAttributes(ssidsAttr);
+        // The nested attributes are indexed from 0, so we can iterate like this
+        for (short i = 0; i < nestedSsidAttrs.size(); i++) {
+            capturedSsids.add(nestedSsidAttrs.get(i).getValueAsByteBuffer().array());
+        }
+
+        assertEquals(ssids.size(), capturedSsids.size());
+        for (int i = 0; i < ssids.size(); i++) {
+            assertArrayEquals(ssids.get(i), capturedSsids.get(i));
+        }
     }
 
     @Test
     public void testTriggerScan_withVendorIes() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
                 .thenReturn(new Nl80211Response(0));
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_TRIGGER_SCAN), anyShort()))
                 .thenAnswer(i -> new GenericNetlinkMsg(
@@ -883,51 +1035,32 @@ public class Nl80211UtilsTest {
         byte[] vendorIes = new byte[]{4, 5, 6};
 
         mNl80211Utils.triggerScan(TEST_IF_INDEX, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
-                null, null, false, false, vendorIes);
+                null, null, vendorIes);
 
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
         // Vendor IEs are not a direct nl80211 attribute but are part of the request payload
     }
 
     @Test
-    public void testTriggerScan_withRandomMac() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+    public void testTriggerScan_withScanFlags() {
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
                 .thenReturn(new Nl80211Response(0));
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_TRIGGER_SCAN), anyShort()))
                 .thenAnswer(i -> new GenericNetlinkMsg(
                         NL80211_CMD_TRIGGER_SCAN, (short) 0, (short) 0, 0));
 
-        mNl80211Utils.triggerScan(TEST_IF_INDEX, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
-                null, null, true, false, null);
+        int scanFlags = NL80211_SCAN_FLAG_HIGH_ACCURACY | NL80211_SCAN_FLAG_RANDOM_ADDR
+                | NL80211_SCAN_FLAG_COLOCATED_6GHZ;
+        mNl80211Utils.triggerScan(TEST_IF_INDEX,
+                scanFlags,
+                null, null, null);
 
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
-        Integer scanFlags = msg.getAttributeValueAsInteger(NL80211_ATTR_SCAN_FLAGS);
-        assertNotNull(scanFlags);
-        assertTrue((scanFlags & NetlinkConstants.NL80211_SCAN_FLAG_RANDOM_ADDR) != 0);
-    }
-
-    @Test
-    public void testTriggerScan_with6GhzRnr() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
-                ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
-                .thenReturn(new Nl80211Response(0));
-        when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_TRIGGER_SCAN), anyShort()))
-                .thenAnswer(i -> new GenericNetlinkMsg(
-                        NL80211_CMD_TRIGGER_SCAN, (short) 0, (short) 0, 0));
-
-        mNl80211Utils.triggerScan(TEST_IF_INDEX, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
-                null, null, false, true, null);
-
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
-        Integer scanFlags = msg.getAttributeValueAsInteger(NL80211_ATTR_SCAN_FLAGS);
-        assertNotNull(scanFlags);
-        assertTrue((scanFlags & NetlinkConstants.NL80211_SCAN_FLAG_COLOCATED_6GHZ) != 0);
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
+        assertEquals(scanFlags, (int) request.getAttributeValueAsInteger(NL80211_ATTR_SCAN_FLAGS));
     }
 
     @Test
@@ -938,8 +1071,7 @@ public class Nl80211UtilsTest {
                 .thenAnswer(i -> new GenericNetlinkMsg(
                         NL80211_CMD_TRIGGER_SCAN, (short) 0, (short) 0, 0));
 
-        int result = mNl80211Utils.triggerScan(TEST_IF_INDEX, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
-                null, null, false, false, null);
+        int result = mNl80211Utils.triggerScan(TEST_IF_INDEX, 0, null, null, null);
 
         assertEquals(WifiScanner.REASON_BUSY, result);
     }
@@ -952,8 +1084,7 @@ public class Nl80211UtilsTest {
                 .thenAnswer(i -> new GenericNetlinkMsg(
                         NL80211_CMD_TRIGGER_SCAN, (short) 0, (short) 0, 0));
 
-        int result = mNl80211Utils.triggerScan(TEST_IF_INDEX, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
-                null, null, false, false, null);
+        int result = mNl80211Utils.triggerScan(TEST_IF_INDEX, 0, null, null, null);
 
         assertEquals(WifiScanner.REASON_NO_DEVICE, result);
     }
@@ -966,8 +1097,7 @@ public class Nl80211UtilsTest {
                 .thenAnswer(i -> new GenericNetlinkMsg(
                         NL80211_CMD_TRIGGER_SCAN, (short) 0, (short) 0, 0));
 
-        int result = mNl80211Utils.triggerScan(TEST_IF_INDEX, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
-                null, null, false, false, null);
+        int result = mNl80211Utils.triggerScan(TEST_IF_INDEX, 0, null, null, null);
 
         assertEquals(WifiScanner.REASON_UNSPECIFIED, result);
     }
@@ -981,10 +1111,10 @@ public class Nl80211UtilsTest {
 
         mNl80211Utils.abortScan(TEST_IF_INDEX);
 
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        verify(mNl80211Proxy).sendMessageAndReceiveResponse(msgCaptor.capture());
-        GenericNetlinkMsg capturedMsg = msgCaptor.getValue();
+        verify(mNl80211Proxy).sendMessageAndReceiveResponse(requestCaptor.capture());
+        GenericNetlinkMsg capturedMsg = requestCaptor.getValue();
         assertNotNull(capturedMsg);
         assertEquals(NetlinkConstants.NL80211_CMD_ABORT_SCAN, capturedMsg.getCommand());
         assertEquals(TEST_IF_INDEX,
@@ -993,9 +1123,9 @@ public class Nl80211UtilsTest {
 
     @Test
     public void testStartPnoScan_success_singleInterval() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
                 .thenReturn(new Nl80211Response(0));
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_START_SCHED_SCAN), anyShort()))
                 .thenAnswer(i -> new GenericNetlinkMsg(
@@ -1007,14 +1137,14 @@ public class Nl80211UtilsTest {
                 new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
         assertEquals(WifiScanner.REASON_SUCCEEDED, result);
 
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
-        assertEquals(NL80211_CMD_START_SCHED_SCAN, msg.getCommand());
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
+        assertEquals(NL80211_CMD_START_SCHED_SCAN, request.getCommand());
         assertEquals(TEST_IF_INDEX,
-                (int) msg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX));
+                (int) request.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX));
 
         // When no SSIDs are provided, a wildcard SSID is added.
-        StructNlAttr ssidsAttr = msg.getAttribute(
+        StructNlAttr ssidsAttr = request.getAttribute(
                 StructNlAttr.makeNestedType(NL80211_ATTR_SCAN_SSIDS));
         assertNotNull(ssidsAttr);
 
@@ -1022,15 +1152,15 @@ public class Nl80211UtilsTest {
                 .get((short) 0)
                 .getValueAsByteBuffer());
 
-        assertEquals(interval, (int) msg.getAttributeValueAsInteger(
+        assertEquals(interval, (int) request.getAttributeValueAsInteger(
                 NL80211_ATTR_SCHED_SCAN_INTERVAL));
     }
 
     @Test
     public void testStartPnoScan_success_multipleIntervals() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
                 .thenReturn(new Nl80211Response(0));
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_START_SCHED_SCAN), anyShort()))
                 .thenAnswer(i -> new GenericNetlinkMsg(
@@ -1044,9 +1174,9 @@ public class Nl80211UtilsTest {
                 new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
         assertEquals(WifiScanner.REASON_SUCCEEDED, result);
 
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
-        StructNlAttr plansAttr = msg.getAttribute(
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
+        StructNlAttr plansAttr = request.getAttribute(
                 StructNlAttr.makeNestedType(NL80211_ATTR_SCHED_SCAN_PLANS));
         assertNotNull(plansAttr);
 
@@ -1073,9 +1203,9 @@ public class Nl80211UtilsTest {
 
     @Test
     public void testStartPnoScan_withMatchSsids() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
                 .thenReturn(new Nl80211Response(0));
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_START_SCHED_SCAN), anyShort()))
                 .thenAnswer(i -> new GenericNetlinkMsg(
@@ -1087,9 +1217,9 @@ public class Nl80211UtilsTest {
                 -70, rssi, false, false, false,
                 new ArrayList<>(), matchSsids, new ArrayList<>());
 
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
-        StructNlAttr matchAttr = msg.getAttribute(
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
+        StructNlAttr matchAttr = request.getAttribute(
                 StructNlAttr.makeNestedType(NL80211_ATTR_SCHED_SCAN_MATCH));
         assertNotNull(matchAttr);
 
@@ -1113,9 +1243,9 @@ public class Nl80211UtilsTest {
 
     @Test
     public void testStartPnoScan_withRandomMac() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
                 .thenReturn(new Nl80211Response(0));
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_START_SCHED_SCAN), anyShort()))
                 .thenAnswer(i -> new GenericNetlinkMsg(
@@ -1125,18 +1255,18 @@ public class Nl80211UtilsTest {
                 -70, -80, true, false, false,
                 new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
 
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
-        Integer scanFlags = msg.getAttributeValueAsInteger(NL80211_ATTR_SCAN_FLAGS);
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
+        Integer scanFlags = request.getAttributeValueAsInteger(NL80211_ATTR_SCAN_FLAGS);
         assertNotNull(scanFlags);
         assertTrue((scanFlags & NL80211_SCAN_FLAG_RANDOM_ADDR) != 0);
     }
 
     @Test
     public void testStartPnoScan_withLowPower() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
                 .thenReturn(new Nl80211Response(0));
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_START_SCHED_SCAN), anyShort()))
                 .thenAnswer(i -> new GenericNetlinkMsg(
@@ -1146,18 +1276,18 @@ public class Nl80211UtilsTest {
                 -70, -80, false, true, false,
                 new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
 
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
-        Integer scanFlags = msg.getAttributeValueAsInteger(NL80211_ATTR_SCAN_FLAGS);
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
+        Integer scanFlags = request.getAttributeValueAsInteger(NL80211_ATTR_SCAN_FLAGS);
         assertNotNull(scanFlags);
         assertTrue((scanFlags & NL80211_SCAN_FLAG_LOW_POWER) != 0);
     }
 
     @Test
     public void testStartPnoScan_withRelativeRssi() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
                 .thenReturn(new Nl80211Response(0));
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_START_SCHED_SCAN), anyShort()))
                 .thenAnswer(i -> new GenericNetlinkMsg(
@@ -1169,9 +1299,9 @@ public class Nl80211UtilsTest {
                 min2gRssi, min5gRssi, false, false, true,
                 new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
 
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
-        StructNlAttr rssiAdjustAttr = msg.getAttribute(
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
+        StructNlAttr rssiAdjustAttr = request.getAttribute(
                 NL80211_ATTR_SCHED_SCAN_RSSI_ADJUST);
         assertNotNull(rssiAdjustAttr);
         ByteBuffer buf = rssiAdjustAttr.getValueAsByteBuffer();
@@ -1211,9 +1341,9 @@ public class Nl80211UtilsTest {
 
     @Test
     public void testStopPnoScan_success() {
-        ArgumentCaptor<GenericNetlinkMsg> msgCaptor =
+        ArgumentCaptor<GenericNetlinkMsg> requestCaptor =
                 ArgumentCaptor.forClass(GenericNetlinkMsg.class);
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(msgCaptor.capture()))
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(requestCaptor.capture()))
                 .thenReturn(new Nl80211Response(0));
         when(mNl80211Proxy.createNl80211Request(
                 eq(NL80211_CMD_STOP_SCHED_SCAN), anyShort(), any()))
@@ -1223,11 +1353,11 @@ public class Nl80211UtilsTest {
         boolean result = mNl80211Utils.stopPnoScan(TEST_IF_INDEX);
 
         assertTrue(result);
-        GenericNetlinkMsg msg = msgCaptor.getValue();
-        assertNotNull(msg);
-        assertEquals(NL80211_CMD_STOP_SCHED_SCAN, msg.getCommand());
+        GenericNetlinkMsg request = requestCaptor.getValue();
+        assertNotNull(request);
+        assertEquals(NL80211_CMD_STOP_SCHED_SCAN, request.getCommand());
         assertEquals(TEST_IF_INDEX,
-                (int) msg.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX));
+                (int) request.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX));
     }
 
     @Test
@@ -1242,5 +1372,123 @@ public class Nl80211UtilsTest {
         boolean result = mNl80211Utils.stopPnoScan(TEST_IF_INDEX);
 
         assertFalse(result);
+    }
+
+    private GenericNetlinkMsg createGetStationResponse(
+            Integer txGood, Integer txBad, Byte signal, Integer txBitrate, Integer rxBitrate) {
+        GenericNetlinkMsg msg = new GenericNetlinkMsg(NetlinkConstants.NL80211_CMD_NEW_STATION,
+                (short) 0, (short) 0, 0);
+        List<StructNlAttr> staInfoAttrs = new ArrayList<>();
+        if (txGood != null) {
+            staInfoAttrs.add(new StructNlAttr(
+                    NetlinkConstants.NL80211_STA_INFO_TX_PACKETS, txGood));
+        }
+        if (txBad != null) {
+            staInfoAttrs.add(new StructNlAttr(
+                    NetlinkConstants.NL80211_STA_INFO_TX_FAILED, txBad));
+        }
+        if (signal != null) {
+            staInfoAttrs.add(new StructNlAttr(
+                    NetlinkConstants.NL80211_STA_INFO_SIGNAL, new byte[]{signal}));
+        }
+
+        if (txBitrate != null) {
+            StructNlAttr rate32Attr = new StructNlAttr(
+                    NetlinkConstants.NL80211_RATE_INFO_BITRATE32, txBitrate);
+            ByteBuffer payload = ByteBuffer.allocate(rate32Attr.getAlignedLength());
+            rate32Attr.pack(payload);
+            staInfoAttrs.add(new StructNlAttr(
+                    NetlinkConstants.NL80211_STA_INFO_TX_BITRATE, payload.array()));
+        }
+
+        if (rxBitrate != null) {
+            StructNlAttr rate32Attr = new StructNlAttr(
+                    NetlinkConstants.NL80211_RATE_INFO_BITRATE32, rxBitrate);
+            ByteBuffer payload = ByteBuffer.allocate(rate32Attr.getAlignedLength());
+            rate32Attr.pack(payload);
+            staInfoAttrs.add(new StructNlAttr(
+                    NetlinkConstants.NL80211_STA_INFO_RX_BITRATE, payload.array()));
+        }
+
+        int staInfoPayloadLength = 0;
+        for (StructNlAttr attr : staInfoAttrs) {
+            staInfoPayloadLength += attr.getAlignedLength();
+        }
+
+        ByteBuffer staInfoPayload = ByteBuffer.allocate(staInfoPayloadLength);
+        for (StructNlAttr attr : staInfoAttrs) {
+            attr.pack(staInfoPayload);
+        }
+
+        msg.addAttribute(new StructNlAttr(
+                NetlinkConstants.NL80211_ATTR_STA_INFO, staInfoPayload.array()));
+        return msg;
+    }
+
+    @Test
+    public void testGetStationInfo_success() {
+        int txGood = 100, txBad = 10, txBitrate = 240, rxBitrate = 120;
+        byte signal = -50;
+        GenericNetlinkMsg response = createGetStationResponse(txGood, txBad, signal, txBitrate,
+                rxBitrate);
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_STATION)))
+                .thenReturn(new Nl80211Response(response));
+
+        Nl80211Utils.StationInfo stationInfo = mNl80211Utils.getStationInfo(TEST_IF_INDEX,
+                TEST_MAC_ADDR);
+
+        assertNotNull(stationInfo);
+        assertEquals(txGood, stationInfo.txPackets);
+        assertEquals(txBad, stationInfo.txFailed);
+        assertEquals(signal, stationInfo.signalDbm);
+        assertEquals(txBitrate, stationInfo.txBitrate100Kbps);
+        assertEquals(rxBitrate, stationInfo.rxBitrate100Kbps);
+    }
+
+    @Test
+    public void testGetStationInfo_errorResponse() {
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_STATION)))
+                .thenReturn(new Nl80211Response(ENODEV));
+        assertNull(mNl80211Utils.getStationInfo(TEST_IF_INDEX, TEST_MAC_ADDR));
+    }
+
+    @Test
+    public void testGetStationInfo_missingStaInfo() {
+        GenericNetlinkMsg response = new GenericNetlinkMsg(
+                NetlinkConstants.NL80211_CMD_NEW_STATION, (short) 0, (short) 0, 0);
+        // Missing NL80211_ATTR_STA_INFO
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_STATION)))
+                .thenReturn(new Nl80211Response(response));
+        assertNull(mNl80211Utils.getStationInfo(TEST_IF_INDEX, TEST_MAC_ADDR));
+    }
+
+    @Test
+    public void testGetStationInfo_partialData_bitratesMissing() {
+        int txGood = 100;
+        int txBad = 10;
+        byte signal = -50;
+        GenericNetlinkMsg response = createGetStationResponse(txGood, txBad, signal, null, null);
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_STATION)))
+                .thenReturn(new Nl80211Response(response));
+
+        Nl80211Utils.StationInfo stationInfo = mNl80211Utils.getStationInfo(TEST_IF_INDEX,
+                TEST_MAC_ADDR);
+
+        assertNotNull(stationInfo);
+        assertEquals(txGood, stationInfo.txPackets);
+        assertEquals(txBad, stationInfo.txFailed);
+        assertEquals(signal, stationInfo.signalDbm);
+        assertEquals(0, stationInfo.txBitrate100Kbps); // Should default to 0
+        assertEquals(0, stationInfo.rxBitrate100Kbps); // Should default to 0
+    }
+
+    @Test
+    public void testGetStationInfo_missingMandatoryField() {
+        // txBad and signal are missing, which are mandatory.
+        GenericNetlinkMsg response = createGetStationResponse(100, null, null, 240, 120);
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_STATION)))
+                .thenReturn(new Nl80211Response(response));
+
+        assertNull(mNl80211Utils.getStationInfo(TEST_IF_INDEX, TEST_MAC_ADDR));
     }
 }

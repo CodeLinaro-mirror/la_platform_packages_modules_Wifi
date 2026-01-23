@@ -35,6 +35,7 @@ import android.net.wifi.WifiContext;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiTwtSession;
 import android.net.wifi.nl80211.WifiNl80211Manager;
+import android.net.wifi.util.Environment;
 import android.os.BatteryManager;
 import android.os.BatteryStatsManager;
 import android.os.Handler;
@@ -77,6 +78,7 @@ import com.android.server.wifi.p2p.WifiP2pMetrics;
 import com.android.server.wifi.p2p.WifiP2pMonitor;
 import com.android.server.wifi.p2p.WifiP2pNative;
 import com.android.server.wifi.rtt.RttMetrics;
+import com.android.server.wifi.rtt.RttServiceImpl;
 import com.android.server.wifi.util.KeystoreWrapper;
 import com.android.server.wifi.util.LastCallerInfoManager;
 import com.android.server.wifi.util.LruConnectionTracker;
@@ -289,6 +291,7 @@ public class WifiInjector {
     @Nullable private final WepNetworkUsageController mWepNetworkUsageController;
     private final PairingConfigManager mPairingConfigManager;
     private final MainlineSupplicantAidlManager mMainlineSupplicant;
+    private RttServiceImpl mRttServiceImpl;
 
     public WifiInjector(WifiContext context) {
         if (context == null) {
@@ -311,7 +314,7 @@ public class WifiInjector {
         mWifiHandlerThread.start();
         Looper wifiLooper = mWifiHandlerThread.getLooper();
         mWifiHandlerLocalLog = new LocalLog(1024);
-        WifiAwareMetrics awareMetrics = new WifiAwareMetrics(mClock);
+        WifiAwareMetrics awareMetrics = new WifiAwareMetrics(mClock, mContext);
         RttMetrics rttMetrics = new RttMetrics(mClock);
         mDppMetrics = new DppMetrics();
         mWifiMonitor = new WifiMonitor();
@@ -372,13 +375,15 @@ public class WifiInjector {
                 mWifiGlobals, mSsidTranslator, this);
         mHostapdHal = new HostapdHal(mContext, mWifiHandler);
         Nl80211Proxy nl80211Proxy = new Nl80211Proxy(mWifiHandler, mWifiMetrics);
+        boolean isWificondMigrationEnabled = Environment.isSdkAtLeastB()
+                && mFeatureFlags.wificondToNl80211Migration();
         mNl80211Native = new Nl80211Native(
                 nl80211Proxy,
                 new Nl80211Utils(nl80211Proxy),
                 makeNetdWrapper(),
                 (WifiNl80211Manager) mContext.getSystemService(Context.WIFI_NL80211_SERVICE),
                 this,
-                /* useWificond */ true);
+                /* useWificond */ !isWificondMigrationEnabled);
         mWifiNative = new WifiNative(
                 mWifiVendorHal, mSupplicantStaIfaceHal, mHostapdHal, mNl80211Native,
                 mWifiMonitor, mPropertyService, mWifiMetrics,
@@ -1365,6 +1370,14 @@ public class WifiInjector {
 
     public TwtManager getTwtManager() {
         return mTwtManager;
+    }
+
+    public RttServiceImpl getRttServiceImpl() {
+        return mRttServiceImpl;
+    }
+
+    public void setRttServiceImpl(RttServiceImpl rttServiceImpl) {
+        mRttServiceImpl = rttServiceImpl;
     }
 
     @NonNull

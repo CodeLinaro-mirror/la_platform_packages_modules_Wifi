@@ -541,7 +541,6 @@ public class SoftApManager implements ActiveModeManager {
         mMaximumNumberOfMLDSupported = ApConfigUtil.getMaximumSupportedMLD(
                 mContext, mWifiNative.isMultipleMLDSupportedOnSap());
         mCurrentExistingMLD = mActiveModeWarden.getCurrentMLDAp();
-        mIsUsingMlo = useMultilinkMloSoftAp();
         enableVerboseLogging(verboseLoggingEnabled);
         mStateMachine.sendMessage(SoftApStateMachine.CMD_START, requestorWs);
     }
@@ -1337,11 +1336,14 @@ public class SoftApManager implements ActiveModeManager {
                                 == InterfaceConflictManager.ICM_SKIP_COMMAND_WAIT_FOR_USER) {
                             break;
                         }
+                        mIsUsingMlo = useMultilinkMloSoftAp();
                         mApInterfaceName = mWifiNative.setupInterfaceForSoftApMode(
                                 mWifiNativeInterfaceCallback, mRequestorWs,
                                 mCurrentSoftApConfiguration.getBand(), isBridgeRequired(),
                                 SoftApManager.this, getVendorData(), mIsUsingMlo,
+// QTI_BEGIN: 2021-07-18: WLAN: Softap: Add support for security type OWE.
                                 mCurrentSoftApConfiguration.getSecurityType());
+// QTI_END: 2021-07-18: WLAN: Softap: Add support for security type OWE.
                         if (TextUtils.isEmpty(mApInterfaceName)) {
                             Log.e(getTag(), "setup failure when creating ap interface.");
                             // Only check if it's possible to create single AP, since a DBS request
@@ -1985,6 +1987,7 @@ public class SoftApManager implements ActiveModeManager {
                 mConnectedClientWithApInfoMap.clear();
                 mPendingDisconnectClients.clear();
                 mEverReportMetricsForMaxClient = false;
+// QTI_BEGIN: 2022-10-06: WLAN: SoftAp: Schedule timeout for SoftAp in OWE and OWE transition mode
                 if (mWifiNative.useVendorHostapdHalForOwe(mCurrentSoftApConfiguration)) {
                         if (!mSoftApTimeoutMessageMap.containsKey(mApInterfaceName)) {
                             mSoftApTimeoutMessageMap.put(mApInterfaceName, new WakeupMessage(
@@ -1996,6 +1999,7 @@ public class SoftApManager implements ActiveModeManager {
                     Log.d(getTag(), "Use Vendor Hostapd Hal. Schedule timeout");
                     rescheduleTimeoutMessages(mApInterfaceName);
                 }
+// QTI_END: 2022-10-06: WLAN: SoftAp: Schedule timeout for SoftAp in OWE and OWE transition mode
                 writeSoftApStartedEvent(START_RESULT_SUCCESS);
             }
 

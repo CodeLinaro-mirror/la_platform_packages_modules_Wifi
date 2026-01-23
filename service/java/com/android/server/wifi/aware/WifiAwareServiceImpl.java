@@ -29,6 +29,7 @@ import android.net.wifi.IBooleanListener;
 import android.net.wifi.IIntegerListener;
 import android.net.wifi.IListListener;
 import android.net.wifi.WifiManager;
+import android.net.wifi.aware.AwareDataPathRequest;
 import android.net.wifi.aware.AwareParams;
 import android.net.wifi.aware.AwareResources;
 import android.net.wifi.aware.Characteristics;
@@ -662,6 +663,49 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
         enforceNetworkStackPermission();
 
         mStateManager.requestMacAddresses(uid, peerIds, callback);
+    }
+
+    @Override
+    public void requestDataPath(int clientId, int sessionId, int peerId,
+            AwareDataPathRequest request) {
+        enforceAccessPermission();
+        enforceChangePermission();
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "requestDataPath: clientId=" + clientId
+                    + ", sessionId=" + sessionId
+                    + ", peerId=" + peerId
+                    + ", request=" + request);
+        }
+    }
+
+    @Override
+    public void respondToDataPath(int clientId, int sessionId, int peerId,
+            AwareDataPathRequest request, boolean accept) {
+        enforceAccessPermission();
+        enforceChangePermission();
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "requestDatapath: clientId=" + clientId
+                    + ", sessionId=" + sessionId
+                    + ", peerId=" + peerId
+                    + ", request=" + request
+                    + ", accept=" + accept);
+        }
+    }
+
+    @Override
+    public void releaseDataPath(int clientId, int sessionId, int peerId) throws RemoteException {
+        enforceAccessPermission();
+        enforceChangePermission();
+        int uid = getMockableCallingUid();
+        enforceClientValidity(uid, clientId);
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "releaseDataPath: clientId=" + clientId + ", sessionId=" + sessionId
+                    + ", peerId=" + peerId);
+        }
     }
 
     @Override

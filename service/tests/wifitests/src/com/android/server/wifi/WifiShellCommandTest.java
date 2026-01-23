@@ -1848,4 +1848,77 @@ public class WifiShellCommandTest extends WifiBaseTest {
         verify(mNl80211Native).tearDownSoftApInterface(ifaceName);
         verify(mNl80211Native).setUseNl80211Override(false);
     }
+
+    @Test
+    public void testRegisterNl80211CcListener() {
+        BinderUtil.setUid(Process.ROOT_UID);
+
+        // Since there isn't a good way to interrupt the latch from unit testing, forcefully exit
+        // the try-catch block with an uncaught exception.
+        RuntimeException blockingException = new RuntimeException(
+                "Test Exception: Simulating interrupt/failure");
+        when(mNl80211Native.registerCountryCodeChangedListener(any(), any()))
+                .thenThrow(blockingException);
+
+        mWifiShellCommand.exec(
+                new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
+                new String[]{"register-nl80211-cc-listener", "-n"});
+
+        verify(mNl80211Native).setUseNl80211Override(true);
+        verify(mNl80211Native).registerCountryCodeChangedListener(any(), any());
+        verify(mNl80211Native).unregisterCountryCodeChangedListener(any());
+        verify(mNl80211Native).setUseNl80211Override(false);
+    }
+
+    @Test
+    public void testNl80211SignalPoll_success() {
+        BinderUtil.setUid(Process.ROOT_UID);
+        final String ifaceName = "wlan0";
+        when(mNl80211Native.signalPoll(any()))
+                .thenReturn(mock(Nl80211Native.SignalPollResult.class));
+
+        assertEquals(0, mWifiShellCommand.exec(
+                new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
+                new String[]{"nl80211-signal-poll", ifaceName}));
+        verify(mNl80211Native).signalPoll(eq(ifaceName));
+    }
+
+    @Test
+    public void testNl80211SignalPoll_failureNoInterfaceName() {
+        BinderUtil.setUid(Process.ROOT_UID);
+        when(mNl80211Native.signalPoll(any()))
+                .thenReturn(mock(Nl80211Native.SignalPollResult.class));
+
+        assertEquals(-1, mWifiShellCommand.exec(
+                new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
+                new String[]{"nl80211-signal-poll"}));
+        verify(mNl80211Native, never()).signalPoll(any());
+    }
+
+    @Test
+    public void testNl80211SignalPoll_failureNoResult() {
+        BinderUtil.setUid(Process.ROOT_UID);
+        final String ifaceName = "wlan0";
+        when(mNl80211Native.signalPoll(any())).thenReturn(null);
+
+        assertEquals(-1, mWifiShellCommand.exec(
+                new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
+                new String[]{"nl80211-signal-poll", ifaceName}));
+        verify(mNl80211Native).signalPoll(eq(ifaceName));
+    }
+
+    @Test
+    public void testNl80211SignalPoll_withNl80211Override() {
+        BinderUtil.setUid(Process.ROOT_UID);
+        final String ifaceName = "wlan0";
+        when(mNl80211Native.signalPoll(any()))
+                .thenReturn(mock(Nl80211Native.SignalPollResult.class));
+
+        assertEquals(0, mWifiShellCommand.exec(
+                new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
+                new String[]{"nl80211-signal-poll", ifaceName, "-n"}));
+        verify(mNl80211Native).setUseNl80211Override(true);
+        verify(mNl80211Native).signalPoll(eq(ifaceName));
+        verify(mNl80211Native).setUseNl80211Override(false);
+    }
 }

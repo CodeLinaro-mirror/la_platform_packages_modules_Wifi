@@ -220,7 +220,9 @@
     <string name="wifi_network_switch_dialog_negative_button" msgid="1496665895689498806">"Skift ikke"</string>
     <string name="wifi_disconnect_dialog_title" msgid="94664204061356025">"Vil du fjerne tilknytningen til <xliff:g id="APP_NAME">%1$s</xliff:g>?"</string>
     <string name="wifi_disconnect_dialog_message" msgid="523085058096307605">"Hvis du afbryder Wi-Fi-forbindelsen, fjernes tilknytningen til <xliff:g id="APP_NAME">%1$s</xliff:g>. Vil du fortsætte?"</string>
-    <string name="wifi_disconnect_dialog_new_connection_message" msgid="8091261552122047303">"Hvis du opretter forbindelse til et andet Wi-Fi-netværk, afbrydes forbindelsen til <xliff:g id="APP_NAME">%1$s</xliff:g>. Vil du fortsætte?"</string>
     <string name="wifi_disconnect_dialog_positive_button" msgid="81882845888322268">"Fortsæt"</string>
     <string name="wifi_disconnect_dialog_negative_button" msgid="5075682597077355859">"Annuller"</string>
+    <string name="wifi_disconnect_dialog_new_connection_title" msgid="624715160252254674">"Vil du oprette forbindelse til et nyt Wi-Fi-netværk?"</string>
+    <string name="wifi_disconnect_dialog_new_connection_message" msgid="534271497503164022">"Forbindelsen til <xliff:g id="APP_NAME">%1$s</xliff:g> afbrydes, når du opretter forbindelse til netværket <xliff:g id="SSID">%2$s</xliff:g>."</string>
+    <string name="wifi_disconnect_dialog_new_connection_positive_button" msgid="4891994857934666730">"Opret forbindelse"</string>
 </resources>

@@ -1875,7 +1875,7 @@ public class WifiAwareDataPathStateManagerTest extends WifiBaseTest {
                 mDut.onEndDataPathResponse(transactionId.getValue(), true, 0);
             } else {
                 inOrderStatic.verify(() -> NetlinkUtils.sendOneShotKernelMessage(eq(NETLINK_ROUTE),
-                        isNotNull()));
+                        isNotNull(), eq(NetlinkUtils.IO_TIMEOUT_MS)));
                 inOrder.verify(mMockNetworkInterface).setConnected(agentCaptor.capture());
                 networkAgent = agentCaptor.getValue();
                 inOrderM.verify(mAwareMetricsMock).recordNdpStatus(eq(NanStatusCode.SUCCESS),
@@ -2239,6 +2239,7 @@ public class WifiAwareDataPathStateManagerTest extends WifiBaseTest {
         } else {
             inOrder.verify(mMockNative).subscribe(transactionId.capture(), eq((byte) 0),
                     eq(subscribeConfig), isNull());
+            inOrderM.verify(mAwareMetricsMock).recordPeerFoundStart(clientId, doPublish);
         }
         mDut.onSessionConfigSuccessResponse(transactionId.getValue(), doPublish, pubSubId);
         mMockLooper.dispatchAll();
@@ -2301,7 +2302,7 @@ public class WifiAwareDataPathStateManagerTest extends WifiBaseTest {
 
         inOrder.verify(mMockCallback).onConnectSuccess(clientId);
         inOrderM.verify(mAwareMetricsMock).recordAttachSession(eq(Process.myUid()), eq(false),
-                any(),  eq(6), eq(TEST_FEATURE_ID));
+                any(),  eq(6), eq(TEST_FEATURE_ID), eq(clientId));
 
         if (startUpSequence) {
             inOrder.verify(mMockNative).getCapabilities(transactionId.capture());

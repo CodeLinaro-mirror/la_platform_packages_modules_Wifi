@@ -2779,6 +2779,14 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                                                 WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128,
                                                 pairingPw));
                                         }
+
+                                        @Override
+                                        public void onMessageReceived(PeerHandle peerHandle,
+                                                byte[] message) {
+                                            Log.d(TAG, "onMessageReceived: "
+                                                    + new String(message));
+                                            sPeerHandle = peerHandle;
+                                        }
                                     }, mWifiThreadRunner.getHandler());
                         } catch (Exception e) {
                             pw.println(e.getLocalizedMessage());
@@ -2787,6 +2795,20 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         return true;
                     }, false);
                     return success ? 0 : -1;
+                }
+                case "aware-send-message": {
+                    if (sDiscoverySession == null) {
+                        pw.println("null discover session");
+                        return -1;
+                    }
+                    if (sPeerHandle == null) {
+                        pw.println("null peer handle");
+                        return -1;
+                    }
+                    String serviceInfo = getNextArgRequired();
+                    mWifiThreadRunner.post(() -> sDiscoverySession.sendMessage(sPeerHandle,
+                            1, serviceInfo.getBytes(StandardCharsets.UTF_8)));
+                    return 0;
                 }
                 case "aware-stop-publish-subscribe": {
                     if (sDiscoverySession == null) {
@@ -3375,6 +3397,71 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         latch.await();
                     } finally {
                         mNl80211Native.tearDownSoftApInterface(ifaceName);
+                        mNl80211Native.setUseNl80211Override(false);
+                    }
+                    return 0;
+                }
+                case "register-nl80211-cc-listener": {
+                    boolean useNl80211Override = false;
+                    String option = getNextOption();
+                    while (option != null) {
+                        if (option.equals("-n")) {
+                            useNl80211Override = true;
+                            break;
+                        }
+                        option = getNextOption();
+                    }
+
+                    Nl80211Native.CountryCodeChangedListener listener =
+                            countryCode -> {
+                                pw.println("Country code changed to " + countryCode);
+                                pw.flush();
+                            };
+                    try {
+                        mNl80211Native.setUseNl80211Override(useNl80211Override);
+                        if (!mNl80211Native.registerCountryCodeChangedListener(
+                                Runnable::run, listener)) {
+                            pw.println("Failed to register country code listener");
+                            return -1;
+                        }
+                        CountDownLatch latch = new CountDownLatch(1);
+                        pw.println("Country code listener registered. Press Ctrl-C to exit.");
+                        pw.flush();
+                        // Wait indefinitely until the user cancels.
+                        latch.await();
+                    } finally {
+                        mNl80211Native.unregisterCountryCodeChangedListener(listener);
+                        mNl80211Native.setUseNl80211Override(false);
+                    }
+                    return 0;
+                }
+                case "nl80211-signal-poll": {
+                    String ifaceName = getNextArgRequired();
+                    boolean useNl80211Override = false;
+                    String option = getNextOption();
+                    while (option != null) {
+                        if (option.equals("-n")) {
+                            useNl80211Override = true;
+                            break;
+                        }
+                        option = getNextOption();
+                    }
+
+                    try {
+                        mNl80211Native.setUseNl80211Override(useNl80211Override);
+                        Nl80211Native.SignalPollResult pollResult =
+                                mNl80211Native.signalPoll(ifaceName);
+                        if (pollResult == null) {
+                            pw.println("Failed to get signal poll result");
+                            return -1;
+                        }
+
+                        pw.println("associationFrequencyMHz: "
+                                + pollResult.associationFrequencyMHz);
+                        pw.println("currentRssiDbm: " + pollResult.currentRssiDbm);
+                        pw.println("rxBitrateMbps: " + pollResult.rxBitrateMbps);
+                        pw.println("txBitrateMbps: " + pollResult.txBitrateMbps);
+                    } finally {
                         mNl80211Native.setUseNl80211Override(false);
                     }
                     return 0;
@@ -4641,6 +4728,13 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("    -n Use direct nl80211 implementation instead of wificond.");
         pw.println("  register-nl80211-ap-callback <iface> [-n]");
         pw.println("    Sets up an AP interface and registers a callback to listen for AP events.");
+        pw.println("    -n Use direct nl80211 implementation instead of wificond.");
+        pw.println("  register-nl80211-cc-listener [-n]");
+        pw.println("    Registers an Nl80211Native country code changed listener and continuously"
+                + " outputs listener events.");
+        pw.println("    -n Use direct nl80211 implementation instead of wificond.");
+        pw.println("  nl80211-signal-poll <iface> [-n]");
+        pw.println("    Prints out the result of Nl80211Native.signalPoll on the given interface.");
         pw.println("    -n Use direct nl80211 implementation instead of wificond.");
     }
 

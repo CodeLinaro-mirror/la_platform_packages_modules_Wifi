@@ -67,7 +67,9 @@ public class WifiGlobals {
     private boolean mIsWpa3SaeH2eSupported;
     private boolean mDisableFirmwareRoamingInIdleMode = false;
     // This is read from the overlay, cache it after boot up.
+// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
     private final boolean mIsDisconnectOnlyOnInitialIpReachability;
+// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
     private final Map<String, List<String>> mCountryCodeToAfcServers;
     // This is set by WifiManager#setVerboseLoggingEnabled(int).
     private int mVerboseLoggingLevel = WifiManager.VERBOSE_LOGGING_LEVEL_DISABLED;
@@ -90,7 +92,9 @@ public class WifiGlobals {
         mPollRssiLongIntervalMillis.set(mWifiResourceCache.getInteger(
                 R.integer.config_wifiPollRssiLongIntervalMilliseconds));
         mIsDisconnectOnlyOnInitialIpReachability = mContext.getResources()
+// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                 .getBoolean(R.bool.config_disconnectOnlyOnInitialIpReachability);
+// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
         mIsWpa3SaeH2eSupported = mWifiResourceCache
                 .getBoolean(R.bool.config_wifiSaeH2eSupported);
         Set<String> unsupportedSsidPrefixes = new ArraySet<>(mWifiResourceCache.getStringArray(
@@ -603,11 +607,13 @@ public class WifiGlobals {
                 R.integer.config_wifiNetworkNotFoundEventThreshold);
     }
 
+// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
     /** Check if IP Reachability lost need to be monitor for first 10 sec of connection/roam. */
     public boolean getDisconnectOnlyOnInitialIpReachability() {
         return mIsDisconnectOnlyOnInitialIpReachability;
     }
 
+// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
     /**
      * Set whether wep network is allowed by user.
      */
@@ -715,7 +721,9 @@ public class WifiGlobals {
                 + mIsUsingExternalScorer);
         pw.println("mIsWepAllowed=" + mIsWepAllowed.get());
         pw.println("mDisableFirmwareRoamingInIdleMode=" + mDisableFirmwareRoamingInIdleMode);
+// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
         pw.println("mIsDisconnectOnlyOnInitialIpReachability=" + mIsDisconnectOnlyOnInitialIpReachability);
+// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
         pw.println("IsD2dSupportedWhenInfraStaDisabled="
                 + isD2dSupportedWhenInfraStaDisabled());
         pw.println("mIsWpa3SaeH2eSupported=" + mIsWpa3SaeH2eSupported);

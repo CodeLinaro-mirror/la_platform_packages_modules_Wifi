@@ -140,6 +140,7 @@ import com.android.server.wifi.hal.HalTestUtils;
 import com.android.server.wifi.hotspot2.AnqpEvent;
 import com.android.server.wifi.hotspot2.IconEvent;
 import com.android.server.wifi.hotspot2.WnmData;
+import com.android.server.wifi.rtt.SupplicantWifiRttController;
 import com.android.server.wifi.util.NativeUtil;
 
 import org.junit.After;
@@ -2001,6 +2002,32 @@ public class SupplicantStaIfaceHalAidlVendorImplTest extends WifiBaseTest {
     }
 
     /**
+     * Test createRttController() function
+     */
+    @Test
+    public void testCreateRttController() throws Exception {
+        executeAndValidateInitializationSequence();
+        android.hardware.wifi.supplicant.ISupplicantWifiRttController rttControllerMock =
+                mock(android.hardware.wifi.supplicant.ISupplicantWifiRttController.class);
+        when(mISupplicantMock.createRttController(anyString())).thenReturn(rttControllerMock);
+
+        // Test successful creation
+        SupplicantWifiRttController controller = mDut.createRttController(WLAN0_IFACE_NAME);
+        assertNotNull(controller);
+        verify(mISupplicantMock).createRttController(eq(WLAN0_IFACE_NAME));
+
+        // Test null return from HAL
+        when(mISupplicantMock.createRttController(anyString())).thenReturn(null);
+        controller = mDut.createRttController(WLAN0_IFACE_NAME);
+        assertNull(controller);
+
+        // Test RemoteException
+        doThrow(new RemoteException()).when(mISupplicantMock).createRttController(anyString());
+        controller = mDut.createRttController(WLAN0_IFACE_NAME);
+        assertNull(controller);
+    }
+
+    /**
      * Test adding PMK cache entry is not called if there is no
      * valid PMK cache for a corresponding configuration.
      */
@@ -3263,6 +3290,9 @@ public class SupplicantStaIfaceHalAidlVendorImplTest extends WifiBaseTest {
      */
     @Test
     public void testGetConnectionMloLinksInfo() throws Exception {
+        // Mock the service version to be at least 5.
+        when(mISupplicantMock.getInterfaceVersion()).thenReturn(5);
+        assertTrue(mDut.startDaemon()); // retrieves and caches the interface version
         final int mDownlinkTid = 3;
         final int mUplinkTid = 6;
         // initialize MLO Links

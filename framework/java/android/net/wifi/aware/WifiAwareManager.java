@@ -1250,6 +1250,30 @@ public class WifiAwareManager {
             mHandler.post(() -> mOriginalCallback.onRangingResultsReceived(rangingResults));
         }
 
+        @Override
+        public void onDatapathConnected(int peerId, WifiAwareNetworkInfo info)
+                throws RemoteException {
+            mHandler.post(
+                    () -> mOriginalCallback.onDataPathConnected(new PeerHandle(peerId), info));
+        }
+
+        @Override
+        public void onDataPathRequestFailure(int peerId, int reason) throws RemoteException {
+            mHandler.post(() ->
+                    mOriginalCallback.onDataPathRequestFailed(new PeerHandle(peerId), reason));
+        }
+
+        @Override
+        public void onDataPathDisconnected(int peerId) throws RemoteException {
+            mHandler.post(() -> mOriginalCallback.onDataPathDisconnected(new PeerHandle(peerId)));
+        }
+
+        @Override
+        public void onDataPathRequestReceived(int peerId) {
+            mHandler.post(() -> mOriginalCallback
+                    .onDataPathRequestReceived(new PeerHandle(peerId)));
+        }
+
         /*
          * Proxies methods
          */
@@ -1431,6 +1455,42 @@ public class WifiAwareManager {
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
+    }
+
+    /**
+     * @hide
+     */
+    public void requestDataPath(int clientId, int sessionId, PeerHandle peerHandle,
+            AwareDataPathRequest request) {
+        try {
+            mService.requestDataPath(clientId, sessionId, peerHandle.peerId, request);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * @hide
+     */
+    public void respondToDataPath(int clientId, int sessionId, PeerHandle peerHandle,
+            AwareDataPathRequest request, boolean accept) {
+        try {
+            mService.respondToDataPath(clientId, sessionId, peerHandle.peerId, request, accept);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * @hide
+     */
+    public void releaseDataPath(int clientId, int sessionId, PeerHandle peerHandle) {
+        try {
+            mService.releaseDataPath(clientId, sessionId, peerHandle.peerId);
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+
     }
     /**
      * Attach to the Wi-Fi Aware service as an offload session. All discovery sessions and

@@ -518,6 +518,12 @@ public class WifiNanIfaceCallbackAidlImpl extends IWifiNanIfaceEventCallback.Stu
         if ((nativeMethods & NanBootstrappingMethod.BOOTSTRAPPING_NFC_READER_MASK) != 0) {
             publicMethods |= AwarePairingConfig.PAIRING_BOOTSTRAPPING_NFC_READER;
         }
+        if ((nativeMethods & NanBootstrappingMethod.BOOTSTRAPPING_SERVICE_MANAGED_MASK) != 0) {
+            publicMethods |= AwarePairingConfig.PAIRING_BOOTSTRAPPING_SERVICE_MANAGED;
+        }
+        if ((nativeMethods & NanBootstrappingMethod.BOOTSTRAPPING_HANDSHAKE_SHIP_MASK) != 0) {
+            publicMethods |= AwarePairingConfig.PAIRING_BOOTSTRAPPING_SKIPPED;
+        }
 
         return publicMethods;
     }
@@ -813,7 +819,7 @@ public class WifiNanIfaceCallbackAidlImpl extends IWifiNanIfaceEventCallback.Stu
         if ((nativeCipherSuites & NanCipherSuiteType.SHARED_KEY_256_MASK) != 0) {
             publicCipherSuites |= Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_SK_256;
         }
-        if ((nativeCipherSuites & NanCipherSuiteType.PUBLIC_KEY_2WDH_256_MASK) != 0) {
+        if ((nativeCipherSuites & NanCipherSuiteType.PUBLIC_KEY_2WDH_128_MASK) != 0) {
             publicCipherSuites |= Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_PK_128;
         }
         if ((nativeCipherSuites & NanCipherSuiteType.PUBLIC_KEY_2WDH_256_MASK) != 0) {

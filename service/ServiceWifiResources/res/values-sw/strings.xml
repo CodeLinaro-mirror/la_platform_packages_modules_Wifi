@@ -220,7 +220,9 @@
     <string name="wifi_network_switch_dialog_negative_button" msgid="1496665895689498806">"Usibadili"</string>
     <string name="wifi_disconnect_dialog_title" msgid="94664204061356025">"Ungependa kutenganisha <xliff:g id="APP_NAME">%1$s</xliff:g>?"</string>
     <string name="wifi_disconnect_dialog_message" msgid="523085058096307605">"Kutenganisha Wi‑Fi kutasababisha <xliff:g id="APP_NAME">%1$s</xliff:g> itenganishwe. Ungependa kuendelea?"</string>
-    <string name="wifi_disconnect_dialog_new_connection_message" msgid="8091261552122047303">"Kuunganisha kwenye mtandao mwingine wa Wi‑Fi kutasababisha kutenganishwa kwa <xliff:g id="APP_NAME">%1$s</xliff:g>. Ungependa kuendelea?"</string>
     <string name="wifi_disconnect_dialog_positive_button" msgid="81882845888322268">"Endelea"</string>
     <string name="wifi_disconnect_dialog_negative_button" msgid="5075682597077355859">"Acha"</string>
+    <string name="wifi_disconnect_dialog_new_connection_title" msgid="624715160252254674">"Ungependa kuunganisha kwenye mtandao mpya wa Wi‑Fi?"</string>
+    <string name="wifi_disconnect_dialog_new_connection_message" msgid="534271497503164022">"<xliff:g id="APP_NAME">%1$s</xliff:g> itatenganishwa ukiunganisha kwenye mtandao wa <xliff:g id="SSID">%2$s</xliff:g>."</string>
+    <string name="wifi_disconnect_dialog_new_connection_positive_button" msgid="4891994857934666730">"Unganisha"</string>
 </resources>

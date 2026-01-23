@@ -18,8 +18,8 @@ package android.net.wifi.aware;
 
 import static android.Manifest.permission.MANAGE_WIFI_NETWORK_SELECTION;
 import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128;
-import static android.net.wifi.util.Environment.isSdkNewerThanB;
 
+import static com.android.wifi.flags.Flags.FLAG_MULTI_PEER_AWARE_DATAPATH;
 import static com.android.wifi.flags.Flags.FLAG_SEND_SERVICE_SPECIFIC_INFO_IN_BOOTSTRAPPING_REQUEST;
 
 import android.annotation.FlaggedApi;
@@ -504,6 +504,31 @@ public class DiscoverySession implements AutoCloseable {
         }
 
         mgr.resume(mClientId, mSessionId);
+    }
+
+    /**
+     * Release the Aware data path to the specified peer. The datapath will be disconnected if no
+     * other applications are requesting it.
+     * {@link DiscoverySessionCallback#onDataPathDisconnected(PeerHandle)} will be called when the
+     * datapath is disconnected.
+     *
+     * @param peerHandle The peer's handle is used in
+     *                   {@link PublishDiscoverySession#acceptDataPathRequest(PeerHandle, AwareDataPathRequest)}
+     *                   or {@link SubscribeDiscoverySession#initiateDataPathRequest(PeerHandle, AwareDataPathRequest)}
+     * @return true if the data path is released successfully, false otherwise.
+     */
+    @FlaggedApi(FLAG_MULTI_PEER_AWARE_DATAPATH)
+    public boolean releaseDataPath(@NonNull PeerHandle peerHandle) {
+        if (mTerminated) {
+            return false;
+        }
+
+        WifiAwareManager mgr = mMgr.get();
+        if (mgr == null) {
+            return false;
+        }
+        mgr.releaseDataPath(mClientId, mSessionId, peerHandle);
+        return true;
     }
 
     /**

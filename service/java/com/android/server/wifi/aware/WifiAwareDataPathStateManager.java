@@ -436,7 +436,9 @@ public class WifiAwareDataPathStateManager {
                 }
             }
 
+// QTI_BEGIN: 2021-06-23: WLAN: Aware: Update peerDiscoveryMac for existing AwareNetworkRequestInformation
             ndpInfo.peerDiscoveryMac = mac;
+// QTI_END: 2021-06-23: WLAN: Aware: Update peerDiscoveryMac for existing AwareNetworkRequestInformation
             return false; //ignore this for NDP set up flow: it is used to obtain app_info from Resp
         }
 
@@ -778,7 +780,7 @@ public class WifiAwareDataPathStateManager {
         int index = networkInterface == null ? 0 : networkInterface.getIndex();
         byte[] msg = createAddNeighborRtNetlinkNeighborMessage(index, ndpInfo.peerIpv6, mac);
         try {
-            NetlinkUtils.sendOneShotKernelMessage(NETLINK_ROUTE, msg);
+            NetlinkUtils.sendOneShotKernelMessage(NETLINK_ROUTE, msg, NetlinkUtils.IO_TIMEOUT_MS);
         } catch (ErrnoException e) {
             Log.e(TAG, "Add IPv6 neighbor failed: " + e);
         }

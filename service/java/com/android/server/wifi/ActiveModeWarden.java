@@ -25,6 +25,7 @@ import static android.net.wifi.WifiManager.WIFI_STATE_DISABLING;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLED;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLING;
 import static android.net.wifi.WifiManager.WIFI_STATE_UNKNOWN;
+import static android.net.wifi.WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY;
 import static android.net.wifi.WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY;
 
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_LOCAL_ONLY;
@@ -3160,8 +3161,12 @@ public class ActiveModeWarden {
         }
         int numberMLD = 0;
         for (SoftApManager manager : mSoftApManagers) {
+            int targetMode = manager.getSoftApModeConfiguration()
+                        .getTargetMode();
             if (manager.isStarted() && manager.getSoftApModeConfiguration()
-                    .getSoftApConfiguration().isIeee80211beEnabled()) {
+                    .getSoftApConfiguration().isIeee80211beEnabled() &&
+                    targetMode != LOCAL_ONLY_HOTSPOT_TYPE_PRIMARY &&
+                    targetMode != LOCAL_ONLY_HOTSPOT_TYPE_SECONDARY) {
                 if (manager.isBridgedMode() && !manager.isUsingMlo()) {
                     // Non MLO bridged mode, it occupies two MLD APs.
                     numberMLD += 2;

@@ -2430,6 +2430,14 @@ public class WifiNative {
                 Log.e(TAG, "Failed to register ap hal event callback from wificond");
                 return SoftApManager.START_RESULT_FAILURE_REGISTER_AP_CALLBACK_WIFICOND;
             }
+            if (mHostapdHal.useVendorHostapdHal()) {
+                if (!mHostapdHal.registerApVendorCallback(ifaceName, callback)) {
+                    Log.e(TAG, "Failed to register vendor ap hal event callback");
+                    return SoftApManager.START_RESULT_FAILURE_REGISTER_AP_CALLBACK_HOSTAPD;
+                }
+            } else {
+                Log.e(TAG, "VendorHostapdHal is not available to register");
+            }
         }
 
         if (!addAccessPoint(ifaceName, config, isMetered, callback)) {

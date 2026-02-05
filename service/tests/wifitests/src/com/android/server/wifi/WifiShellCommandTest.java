@@ -1510,8 +1510,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
     public void testGetDeviceWiphyCapabilities_success() {
         BinderUtil.setUid(Process.ROOT_UID);
         final String ifaceName = "wlan0";
-        DeviceWiphyCapabilities caps = new DeviceWiphyCapabilities();
-        caps.setWifiStandardSupport(ScanResult.WIFI_STANDARD_11AX, true);
+        DeviceWiphyCapabilities caps = new DeviceWiphyCapabilities.Builder()
+                .setWifiStandardSupport(ScanResult.WIFI_STANDARD_11AX, true)
+                .build();
         when(mNl80211Native.getDeviceWiphyCapabilities(ifaceName)).thenReturn(caps);
         assertEquals(
                 0,
@@ -1920,5 +1921,18 @@ public class WifiShellCommandTest extends WifiBaseTest {
         verify(mNl80211Native).setUseNl80211Override(true);
         verify(mNl80211Native).signalPoll(eq(ifaceName));
         verify(mNl80211Native).setUseNl80211Override(false);
+    }
+
+    @Test
+    public void testGetPowerStats() throws Exception {
+        WifiPowerStatsManager powerStatsManager = mock(WifiPowerStatsManager.class);
+        when(mWifiInjector.getWifiPowerStatsManager()).thenReturn(powerStatsManager);
+        WifiChipStats chipStats = mock(WifiChipStats.class);
+        when(powerStatsManager.getWlanPwrStats()).thenReturn(chipStats);
+
+        assertEquals(0, mWifiShellCommand.exec(
+                new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
+                new String[]{"get-power-stats"}));
+        verify(powerStatsManager).getWlanPwrStats();
     }
 }

@@ -16,7 +16,7 @@
 
 /**
  * Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -3641,7 +3641,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         mLog.info("stopAllLocalOnlyHotspotRequests package=% uid=% pid=%").c(packageName)
                 .c(uid).c(pid).flush();
         for (LohsSoftApTracker mApTracker : mLohsSoftApTrackers)
-             mApTracker.stopAll();
+            mApTracker.stopAllRequests();
         return true;
     }
 

@@ -31,7 +31,11 @@ import static com.android.server.wifi.nl80211.NetlinkConstants.CTRL_CMD_GETFAMIL
 import static com.android.server.wifi.nl80211.NetlinkConstants.CTRL_CMD_NEWFAMILY;
 import static com.android.server.wifi.nl80211.NetlinkConstants.GENL_ID_CTRL;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NETLINK_GENERIC;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_IFINDEX;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_GENL_NAME;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_VENDOR_ID;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_VENDOR_SUBCMD;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_VENDOR;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_MULTICAST_GROUP_MLME;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_MULTICAST_GROUP_REG;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_MULTICAST_GROUP_SCAN;
@@ -76,6 +80,8 @@ public class Nl80211Proxy {
             NL80211_MULTICAST_GROUP_SCAN,
             NL80211_MULTICAST_GROUP_REG,
             NL80211_MULTICAST_GROUP_MLME};
+
+    private static final long RECEIVE_MESSAGE_TIMEOUT_MS = 4000;
 
     private WifiMetrics mWifiMetrics;
     private boolean mIsInitialized;
@@ -140,6 +146,12 @@ public class Nl80211Proxy {
     private @Nullable Nl80211Response receiveNl80211Response(@NonNull GenericNetlinkMsg sent) {
         List<GenericNetlinkMsg> messages = new ArrayList<>();
         boolean isAck = sent.isFlagEnabled(NLM_F_ACK);
+        if (sent.nlHeader == null) {
+            Log.wtf(TAG, "Sent message has no header!");
+            return null;
+        }
+        int expectedSeq = sent.nlHeader.nlmsg_seq;
+
         try {
             // The response may arrive in several batches, where each batch
             // can contain several individual messages.
@@ -150,7 +162,7 @@ public class Nl80211Proxy {
                         NetlinkUtils.recvMessage(
                                 mNetlinkFd,
                                 NetlinkUtils.DEFAULT_RECV_BUFSIZE,
-                                NetlinkUtils.IO_TIMEOUT_MS);
+                                RECEIVE_MESSAGE_TIMEOUT_MS);
                 // Netlink requires native order
                 recvBuffer.order(ByteOrder.nativeOrder());
 
@@ -165,6 +177,22 @@ public class Nl80211Proxy {
                         mWifiMetrics.reportNl80211CommandResult(sent,
                                 WifiStatsLog.WIFI_NL80211_COMMAND_RESULT_REPORTED__REASON_CODE__RESPONSE_NLMSG_NULL);
                         return null;
+                    }
+
+                    // Skip if the sequence number does not match. This may happen if the buffer
+                    // receives a reply after we've already timed out, which is then consumed by the
+                    // next command.
+                    if (nlMsgHdr.nlmsg_seq != expectedSeq) {
+                        Log.e(TAG, "Received a message with a mismatched sequence number. "
+                                + "Expected: " + expectedSeq
+                                + ", got: " + nlMsgHdr.nlmsg_seq + ". Skipping.");
+                        int payloadLength = nlMsgHdr.nlmsg_len - StructNlMsgHdr.STRUCT_SIZE;
+                        if (payloadLength < 0 || payloadLength > recvBuffer.remaining()) {
+                            Log.e(TAG, "Invalid payload length, unable to skip. " + payloadLength);
+                            break;
+                        }
+                        recvBuffer.position(recvBuffer.position() + payloadLength);
+                        continue;
                     }
 
                     // Error should terminate the response and return the error code.
@@ -221,7 +249,7 @@ public class Nl80211Proxy {
         } catch (ErrnoException | IllegalArgumentException | InterruptedIOException e) {
             mWifiMetrics.reportNl80211CommandResult(sent,
                     WifiStatsLog.WIFI_NL80211_COMMAND_RESULT_REPORTED__REASON_CODE__RESPONSE_NLMSG_EXCEPTION);
-            Log.i(TAG, "Unable to receive Nl80211 messages. " + e);
+            Log.i(TAG, "Unable to receive Nl80211 messages. ", e);
             return null;
         }
         return new Nl80211Response(messages.toArray(new GenericNetlinkMsg[0]));
@@ -473,5 +501,50 @@ public class Nl80211Proxy {
         }
         mBroadcastMonitor.unregisterBroadcastCallback(command, callback);
         return true;
+    }
+
+    /**
+     * Creates a vendor-specific Nl80211 request with the given vendor ID and subcommand.
+     *
+     * @param ifIndex The interface index
+     * @param vendorId The vendor-specific ID (NL80211_ATTR_VENDOR_ID).
+     * @param subcmd The vendor-specific subcommand (NL80211_ATTR_VENDOR_SUBCMD).
+     * @param additionalAttributes Optional additional attributes to include in the vendor message.
+     * @return The constructed GenericNetlinkMsg, or null if the proxy is not initialized
+     * or the request creation fails.
+     */
+    public @Nullable GenericNetlinkMsg createVendorRequest(
+            int ifIndex, int vendorId, int subcmd, StructNlAttr... additionalAttributes) {
+        if (!mIsInitialized) {
+            Log.e(TAG, "Instance has not been initialized");
+            return null;
+        }
+
+        ByteBuffer ifIndexBuffer = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN);
+        ifIndexBuffer.putInt(ifIndex);
+        StructNlAttr ifIndexAttr = new StructNlAttr(
+                     NL80211_ATTR_IFINDEX, ifIndexBuffer.array());
+
+        ByteBuffer vendorIdBuffer = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN);
+        vendorIdBuffer.putInt(vendorId);
+        StructNlAttr vendorIdAttr = new StructNlAttr(
+                     NL80211_ATTR_VENDOR_ID, vendorIdBuffer.array());
+
+        ByteBuffer subcmdBuffer = ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN);
+        subcmdBuffer.putInt(subcmd);
+        StructNlAttr subcmdAttr = new StructNlAttr(
+                     NL80211_ATTR_VENDOR_SUBCMD, subcmdBuffer.array());
+
+        List<StructNlAttr> attributes = new ArrayList<>();
+        attributes.add(ifIndexAttr);
+        attributes.add(vendorIdAttr);
+        attributes.add(subcmdAttr);
+
+        for (StructNlAttr attr : additionalAttributes) {
+            attributes.add(attr);
+        }
+
+        return createNl80211Request(NL80211_CMD_VENDOR,
+                attributes.toArray(new StructNlAttr[0]));
     }
 }

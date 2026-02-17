@@ -64,6 +64,7 @@ import android.net.wifi.usd.SubscribeConfig;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Parcel;
 import android.os.SystemClock;
 import android.os.WorkSource;
 import android.text.TextUtils;
@@ -2649,7 +2650,6 @@ public class WifiNative {
      * @return true on success
      */
     public boolean setStaMacAddress(String interfaceName, MacAddress mac) {
-        // TODO(b/72459123): Suppress interface down/up events from this call
         // Trigger an explicit disconnect to avoid losing the disconnect event reason (if currently
         // connected) from supplicant if the interface is brought down for MAC address change.
         disconnect(interfaceName);
@@ -3583,6 +3583,15 @@ public class WifiNative {
      */
     public void registerDppEventCallback(DppEventCallback dppEventCallback) {
         mSupplicantStaIfaceHal.registerDppCallback(dppEventCallback);
+    }
+
+    /**
+     * Check whether the supplicant HAL service is using AIDL mainline supplicant implementation.
+     *
+     * @return true if the mainline supplicant service is being used, false otherwise.
+     */
+    public boolean isUsingAidlMainlineSupplicantService() {
+        return mSupplicantStaIfaceHal.isUsingAidlMainlineSupplicantService();
     }
 
     /**
@@ -5253,12 +5262,59 @@ public class WifiNative {
      * If the interface is not associated with one,
      * it will be read from the device through nl80211
      *
+     * @deprecated This method is kept for backwards compatibility. New callers should use
+     * {@link #getDeviceWiphyCapabilities(String, boolean)} )}.
+     *
      * @param ifaceName name of the interface
      * @return the device capabilities for this interface
      */
+    @Deprecated
     @Keep
-    public DeviceWiphyCapabilities getDeviceWiphyCapabilities(@NonNull String ifaceName) {
-        return getDeviceWiphyCapabilities(ifaceName, false);
+    public android.net.wifi.nl80211.DeviceWiphyCapabilities getDeviceWiphyCapabilities(
+            @NonNull String ifaceName) {
+        DeviceWiphyCapabilities capabilities = getDeviceWiphyCapabilities(
+                ifaceName, /* isBridgedAp */ false);
+        if (capabilities == null) return null;
+
+        // Note: android.net.wifi.nl80211.DeviceWiphyCapabilities setters are @hide, so construct
+        // one using the parcel API instead. This allows us to return the correct object even if
+        // we've started with com.android.wifi.nl80211.DeviceWiphyCapabilities after the wificond
+        // migration.
+        Parcel parcel = Parcel.obtain();
+        try {
+            parcel.writeBoolean(
+                    capabilities.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11N));
+            parcel.writeBoolean(
+                    capabilities.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11AC));
+            parcel.writeBoolean(
+                    capabilities.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11AX));
+            if (SdkLevel.isAtLeastT()) {
+                parcel.writeBoolean(
+                        capabilities.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11BE));
+            }
+
+            parcel.writeBoolean(
+                    capabilities.isChannelWidthSupported(ScanResult.CHANNEL_WIDTH_160MHZ));
+            parcel.writeBoolean(
+                    capabilities.isChannelWidthSupported(ScanResult.CHANNEL_WIDTH_80MHZ_PLUS_MHZ));
+            if (SdkLevel.isAtLeastT()) {
+                parcel.writeBoolean(
+                        capabilities.isChannelWidthSupported(ScanResult.CHANNEL_WIDTH_320MHZ));
+            }
+            parcel.writeInt(capabilities.getMaxNumberTxSpatialStreams());
+            parcel.writeInt(capabilities.getMaxNumberRxSpatialStreams());
+
+            if (SdkLevel.isAtLeastV()) {
+                parcel.writeInt(capabilities.getMaxNumberAkms());
+            }
+
+            parcel.setDataPosition(0);
+
+            return android.net.wifi.nl80211.DeviceWiphyCapabilities.CREATOR
+                    .createFromParcel(parcel);
+        } finally {
+            parcel.recycle();
+        }
     }
 
     /**
@@ -5305,19 +5361,24 @@ public class WifiNative {
     /**
      * Set the Wiphy capabilities of a device for a given interface
      *
+     * @deprecated This method is kept for backwards compatibility.
+     *
      * @param ifaceName name of the interface
      * @param capabilities the wiphy capabilities to set for this interface
      */
+    @Deprecated
     @Keep
     public void setDeviceWiphyCapabilities(@NonNull String ifaceName,
-            DeviceWiphyCapabilities capabilities) {
+            android.net.wifi.nl80211.DeviceWiphyCapabilities capabilities) {
         synchronized (mLock) {
             Iface iface = mIfaceMgr.getIface(ifaceName);
             if (iface == null) {
                 Log.e(TAG, "Failed to set device capabilities, interface not found: " + ifaceName);
                 return;
             }
-            iface.phyCapabilities = capabilities;
+            iface.phyCapabilities =
+                    DeviceWiphyCapabilities.Builder.createFromWificondCapabilities(capabilities)
+                            .build();
         }
     }
 

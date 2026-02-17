@@ -233,6 +233,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             "get-overlay-config-values",
             "get-carrier-network-offload",
             "list-interface-names",
+            "get-power-stats",
     };
 
     private static final Map<String, Pair<NetworkRequest, ConnectivityManager.NetworkCallback>>
@@ -1343,7 +1344,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         return -1;
                     }
                     int errorCode = mWifiService.addNetworkSuggestions(
-                            new ParceledListSlice(List.of(suggestion)), SHELL_PACKAGE_NAME, null);
+                            List.of(suggestion), SHELL_PACKAGE_NAME, null);
                     if (errorCode != WifiManager.STATUS_NETWORK_SUGGESTIONS_SUCCESS) {
                         pw.println("Add network suggestion failed with error code: " + errorCode);
                         return -1;
@@ -1393,8 +1394,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         pw.println("No matching suggestion to remove");
                         return -1;
                     }
-                    mWifiService.removeNetworkSuggestions(
-                            new ParceledListSlice<>(List.of(suggestion)),
+                    mWifiService.removeNetworkSuggestions(List.of(suggestion),
                             SHELL_PACKAGE_NAME, actionCode);
                     // untrusted/oem-paid networks need a corresponding NetworkRequest.
                     if (suggestion.isUntrusted()
@@ -1412,9 +1412,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     return 0;
                 }
                 case "remove-all-suggestions":
-                    mWifiService.removeNetworkSuggestions(
-                            new ParceledListSlice<>(Collections.emptyList()), SHELL_PACKAGE_NAME,
-                            WifiManager.ACTION_REMOVE_SUGGESTION_DISCONNECT);
+                    mWifiService.removeNetworkSuggestions(Collections.emptyList(),
+                            SHELL_PACKAGE_NAME, WifiManager.ACTION_REMOVE_SUGGESTION_DISCONNECT);
                     return 0;
                 case "clear-all-suggestions":
                     mWifiThreadRunner.post(() -> mWifiNetworkSuggestionsManager.clear(),
@@ -3098,6 +3097,23 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     pw.println(Arrays.toString(channels));
                     return 0;
                 }
+                case "get-wiphy-info": {
+                    int wiphyIndex;
+                    try {
+                        wiphyIndex = Integer.parseInt(getNextArgRequired());
+                    } catch (NumberFormatException e) {
+                        pw.println("Invalid wiphy index: " + e.getMessage());
+                        return -1;
+                    }
+                    Nl80211Utils.WiphyInfo wiphyInfo = mNl80211Native.getWiphyInfo(wiphyIndex);
+                    if (wiphyInfo == null) {
+                        pw.println("Failed to get wiphy info for index " + wiphyIndex
+                                + ". (Is wificond migration enabled?)");
+                        return -1;
+                    }
+                    pw.println(wiphyInfo);
+                    return 0;
+                }
                 case "start-nl80211-scan": {
                     String ifaceName = getNextArgRequired();
                     int scanType = WifiScanner.SCAN_TYPE_HIGH_ACCURACY;
@@ -3466,6 +3482,24 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     }
                     return 0;
                 }
+                case "get-power-stats":
+                    WifiPowerStatsManager pwrManager = mWifiInjector.getWifiPowerStatsManager();
+                    if (pwrManager == null) {
+                        pw.println("FAILURE: WifiPowerStatsManager is not initialized.");
+                        return -1;
+                    }
+
+                    WifiChipStats stats = pwrManager.getWlanPwrStats();
+
+                    if (stats != null) {
+                        pw.println("SUCCESS: Wi-Fi Power Stats:");
+                        pw.println(stats.toString());
+                    } else {
+                        pw.println("FAILURE: Could not retrieve stats."
+                                + "(Native layer returned null)");
+                        return -1;
+                    }
+                    return 0;
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -3952,19 +3986,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
     }
 
     private int getInterfaces(PrintWriter pw) {
-        int wiphyIndex = -1;
-        String wiphyArg = getNextArg();
-        if (wiphyArg != null) {
-            try {
-                wiphyIndex = Integer.parseInt(wiphyArg);
-            } catch (NumberFormatException e) {
-                pw.println("Invalid wiphyIndex specified.");
-                return -1;
-            }
-        }
-
         List<Nl80211Utils.InterfaceInfo> interfaces =
-                mNl80211Native.getInterfaces(wiphyIndex);
+                mNl80211Native.getInterfaces();
         if (interfaces == null || interfaces.isEmpty()) {
             pw.println("No interfaces found.");
         } else {
@@ -4679,8 +4702,8 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("  get-max-scan-ssids <interface>");
         pw.println("    Gets the max scan ssids of the interface.");
         pw.println("    -n Force use nl80211 implementation.");
-        pw.println("  get-interfaces <wiphyIndex>");
-        pw.println("    Lists all interfaces for the given wiphy index.");
+        pw.println("  get-interfaces");
+        pw.println("    Lists all interfaces.");
         pw.println("  setup-client-interface <interface>");
         pw.println("    For debugging. Sets up an interface via"
                 + " Nl80211Native.setupInterfaceForClientMode and outputs to logcat whenever scan"
@@ -4696,6 +4719,9 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("  get-nl80211-channels-mhz 2|5|dbs|6|60");
         pw.println("    For debugging. Dumps the result of Nl80211Native.getChannelsMhzForBand");
         pw.println("    -n Use direct nl80211 implementation instead of wificond.");
+        pw.println("  get-wiphy-info <wiphy index>");
+        pw.println("    For debugging. Dumps the result of Nl80211Native.getWiphyInfo.");
+        pw.println("    Note: wificond migration must be enabled for this to work.");
         pw.println("  stop-nl80211-scan <iface>");
         pw.println("    For debugging. Aborts an ongoing scan via Nl80211Native.abortScan.");
         pw.println("    -n Use direct nl80211 implementation instead of wificond.");

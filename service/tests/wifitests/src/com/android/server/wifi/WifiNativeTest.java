@@ -73,6 +73,7 @@ import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.coex.CoexManager;
 import com.android.server.wifi.hal.WifiChip;
+import com.android.server.wifi.nl80211.DeviceWiphyCapabilities;
 import com.android.server.wifi.nl80211.NativeScanResult;
 import com.android.server.wifi.nl80211.Nl80211Native;
 import com.android.server.wifi.nl80211.RadioChainInfo;
@@ -277,6 +278,7 @@ public class WifiNativeTest extends WifiBaseTest {
     private static final int USD_MAX_MATCH_FILTER_LEN = 255;
     private static final int USD_MAX_NUM_PUBLISH_SESSIONS = 10;
     private static final int USD_MAX_NUM_SUBSCRIBE_SESSIONS = 10;
+    private static final boolean USD_RANGING_SUPPORTED = false;
 
     MockResources mResources;
 
@@ -2077,7 +2079,8 @@ public class WifiNativeTest extends WifiBaseTest {
         SupplicantStaIfaceHal.UsdCapabilitiesInternal usdCapabilities =
                 new SupplicantStaIfaceHal.UsdCapabilitiesInternal(true, true, USD_MAX_SSI_LEN,
                         USD_MAX_SERVICE_NAME_LEN, USD_MAX_MATCH_FILTER_LEN,
-                        USD_MAX_NUM_PUBLISH_SESSIONS, USD_MAX_NUM_SUBSCRIBE_SESSIONS);
+                        USD_MAX_NUM_PUBLISH_SESSIONS, USD_MAX_NUM_SUBSCRIBE_SESSIONS,
+                        USD_RANGING_SUPPORTED);
 
         when(mStaIfaceHal.getUsdCapabilities(WIFI_IFACE_NAME)).thenReturn(usdCapabilities);
         mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE,
@@ -2097,7 +2100,8 @@ public class WifiNativeTest extends WifiBaseTest {
         SupplicantStaIfaceHal.UsdCapabilitiesInternal usdCapabilities =
                 new SupplicantStaIfaceHal.UsdCapabilitiesInternal(true, true, USD_MAX_SSI_LEN,
                         USD_MAX_SERVICE_NAME_LEN, USD_MAX_MATCH_FILTER_LEN,
-                        USD_MAX_NUM_PUBLISH_SESSIONS, USD_MAX_NUM_SUBSCRIBE_SESSIONS);
+                        USD_MAX_NUM_PUBLISH_SESSIONS, USD_MAX_NUM_SUBSCRIBE_SESSIONS,
+                        USD_RANGING_SUPPORTED);
 
         when(mStaIfaceHal.getUsdCapabilities(WIFI_IFACE_NAME)).thenReturn(usdCapabilities);
         mWifiNative.setupInterfaceForClientInScanMode(null, TEST_WORKSOURCE,
@@ -2112,6 +2116,88 @@ public class WifiNativeTest extends WifiBaseTest {
         assertEquals(USD_MAX_MATCH_FILTER_LEN, halUsdCapabilities.maxMatchFilterLengthBytes);
         assertEquals(USD_MAX_NUM_PUBLISH_SESSIONS, halUsdCapabilities.maxNumPublishSessions);
         assertEquals(USD_MAX_NUM_SUBSCRIBE_SESSIONS, halUsdCapabilities.maxNumSubscribeSessions);
+    }
+
+    /**
+     * Verifies that the legacy getDeviceWiphyCapabilities correctly maps data from the
+     * internal DeviceWiphyCapabilities (com.android.server.wifi) to the legacy
+     * version (android.net.wifi.nl80211).
+     */
+    @Test
+    public void testGetDeviceWiphyCapabilitiesLegacyMapping() {
+        mWifiNative.setupInterfaceForClientInScanMode(
+                mInterfaceCallback, TEST_WORKSOURCE, mConcreteClientModeManager);
+        // Value here doesn't matter as long as it's non-null
+        when(mSettingsConfigStore.get(WifiSettingsConfigStore.WIFI_WIPHY_11BE_SUPPORTED))
+                .thenReturn(true);
+
+        // Create an internal cap with specific values.
+        DeviceWiphyCapabilities internalCap = mock(DeviceWiphyCapabilities.class);
+        when(internalCap.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11N)).thenReturn(true);
+        when(internalCap.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11AC)).thenReturn(true);
+        when(internalCap.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11AX)).thenReturn(false);
+        when(internalCap.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11BE)).thenReturn(true);
+        when(internalCap.isChannelWidthSupported(ScanResult.CHANNEL_WIDTH_160MHZ))
+                .thenReturn(true);
+        when(internalCap.isChannelWidthSupported(ScanResult.CHANNEL_WIDTH_80MHZ_PLUS_MHZ))
+                .thenReturn(false);
+        when(internalCap.isChannelWidthSupported(ScanResult.CHANNEL_WIDTH_320MHZ))
+                .thenReturn(true);
+        when(internalCap.getMaxNumberTxSpatialStreams()).thenReturn(4);
+        when(internalCap.getMaxNumberRxSpatialStreams()).thenReturn(2);
+        when(internalCap.getMaxNumberAkms()).thenReturn(10);
+        when(mNl80211Native.getDeviceWiphyCapabilities(WIFI_IFACE_NAME)).thenReturn(internalCap);
+
+        android.net.wifi.nl80211.DeviceWiphyCapabilities legacyCap =
+                mWifiNative.getDeviceWiphyCapabilities(WIFI_IFACE_NAME);
+
+        // Verify the legacy cap is equivalent to the internal cap
+        assertNotNull(legacyCap);
+        assertTrue(legacyCap.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11N));
+        assertTrue(legacyCap.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11AC));
+        assertFalse(legacyCap.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11AX));
+        if (SdkLevel.isAtLeastT()) {
+            assertTrue(legacyCap.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11BE));
+        }
+        assertTrue(legacyCap.isChannelWidthSupported(ScanResult.CHANNEL_WIDTH_160MHZ));
+        assertFalse(legacyCap.isChannelWidthSupported(ScanResult.CHANNEL_WIDTH_80MHZ_PLUS_MHZ));
+        if (SdkLevel.isAtLeastT()) {
+            assertTrue(legacyCap.isChannelWidthSupported(ScanResult.CHANNEL_WIDTH_320MHZ));
+        }
+        assertEquals(4, legacyCap.getMaxNumberTxSpatialStreams());
+        assertEquals(2, legacyCap.getMaxNumberRxSpatialStreams());
+        if (SdkLevel.isAtLeastV()) {
+            assertEquals(10, legacyCap.getMaxNumberAkms());
+        }
+    }
+
+    /**
+     * Verifies the legacy setDeviceWiphyCapabilities correctly converts
+     * the legacy capabilities to internal capabilities and updates the interface state.
+     */
+    @Test
+    public void testSetDeviceWiphyCapabilitiesLegacyMapping() {
+        mWifiNative.setupInterfaceForClientInScanMode(
+                mInterfaceCallback, TEST_WORKSOURCE, mConcreteClientModeManager);
+        // Value here doesn't matter as long as it's non-null
+        when(mSettingsConfigStore.get(WifiSettingsConfigStore.WIFI_WIPHY_11BE_SUPPORTED))
+                .thenReturn(true);
+
+        android.net.wifi.nl80211.DeviceWiphyCapabilities legacyCap =
+                new android.net.wifi.nl80211.DeviceWiphyCapabilities();
+        legacyCap.setWifiStandardSupport(ScanResult.WIFI_STANDARD_11BE, true);
+        legacyCap.setMaxNumberTxSpatialStreams(8);
+        if (SdkLevel.isAtLeastV()) {
+            legacyCap.setMaxNumberAkms(15);
+        }
+
+        mWifiNative.setDeviceWiphyCapabilities(WIFI_IFACE_NAME, legacyCap);
+
+        // Verify the internal cap is equivalent to the legacy cap
+        DeviceWiphyCapabilities internalCap = mWifiNative.getDeviceWiphyCapabilities(
+                WIFI_IFACE_NAME, /* isBridgedAp */ false);
+        assertEquals(internalCap,
+                DeviceWiphyCapabilities.Builder.createFromWificondCapabilities(legacyCap).build());
     }
 
     /**

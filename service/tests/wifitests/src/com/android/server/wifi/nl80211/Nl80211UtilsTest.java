@@ -23,6 +23,7 @@ import static android.system.OsConstants.ENOENT;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_BSS;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_EXT_FEATURES;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_FEATURE_FLAGS;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_FRAME;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_IFINDEX;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_IFNAME;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_MAC;
@@ -58,6 +59,7 @@ import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_BSS_SIGNA
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_BSS_STATUS;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_BSS_STATUS_ASSOCIATED;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_BSS_TSF;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_FRAME;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_INTERFACE;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_PROTOCOL_FEATURES;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_REG;
@@ -90,30 +92,23 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyShort;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.withSettings;
 
 import android.net.wifi.WifiScanner;
 
-import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import com.android.net.module.util.netlink.StructNlAttr;
 
-import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
-import org.mockito.MockitoSession;
-import org.mockito.quality.Strictness;
 
-import java.net.NetworkInterface;
-import java.net.SocketException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -149,22 +144,17 @@ public class Nl80211UtilsTest {
     private static final GenericNetlinkMsg TEST_NL80211_REQUEST_GET_STATION =
             new GenericNetlinkMsg(NetlinkConstants.NL80211_CMD_GET_STATION, (short) 0, (short) 0,
                     0);
+    private static final GenericNetlinkMsg TEST_NL80211_REQUEST_FRAME =
+            new GenericNetlinkMsg(NetlinkConstants.NL80211_CMD_FRAME, (short) 0, (short) 0,
+                    0);
 
     @Mock private Nl80211Proxy mNl80211Proxy;
-    @Mock private NetworkInterface mNetworkInterface;
     private Nl80211Utils mNl80211Utils;
-    private MockitoSession mSession;
 
     @Before
     public void setUp() throws Exception {
         MockitoAnnotations.initMocks(this);
-        mSession = ExtendedMockito.mockitoSession()
-                .strictness(Strictness.LENIENT)
-                .mockStatic(NetworkInterface.class, withSettings().lenient())
-                .startMocking();
         mNl80211Utils = new Nl80211Utils(mNl80211Proxy);
-        when(NetworkInterface.getByName(anyString())).thenReturn(mNetworkInterface);
-        when(mNetworkInterface.getIndex()).thenReturn(TEST_IF_INDEX);
 
         // Mock createNl80211Request calls
         when(mNl80211Proxy.createNl80211Request(NL80211_CMD_GET_PROTOCOL_FEATURES))
@@ -173,7 +163,8 @@ public class Nl80211UtilsTest {
                 .thenReturn(TEST_NL80211_REQUEST_GET_WIPHY);
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_GET_WIPHY), any()))
                 .thenReturn(TEST_NL80211_REQUEST_GET_WIPHY);
-        when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_GET_INTERFACE), anyShort(), any()))
+        when(mNl80211Proxy.createNl80211Request(
+                eq(NL80211_CMD_GET_INTERFACE), anyShort()))
                 .thenReturn(TEST_NL80211_REQUEST_GET_INTERFACE);
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_GET_SCAN), anyShort(), any()))
                 .thenReturn(TEST_NL80211_REQUEST_GET_SCAN);
@@ -181,13 +172,28 @@ public class Nl80211UtilsTest {
                 .thenReturn(TEST_NL80211_REQUEST_GET_REG);
         when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_GET_STATION)))
                 .thenReturn(TEST_NL80211_REQUEST_GET_STATION);
+
+        setupWiphyIndexResponse();
+        setupInterfaceInfoResponse();
     }
 
-    @After
-    public void cleanup() {
-        if (mSession != null) {
-            mSession.finishMocking();
-        }
+    private void setupWiphyIndexResponse() {
+        GenericNetlinkMsg msg = new GenericNetlinkMsg(NL80211_CMD_NEW_WIPHY, (short) 0,
+                (short) 0, 0);
+        msg.addAttribute(new StructNlAttr(NL80211_ATTR_WIPHY, TEST_WIPHY_INDEX));
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_GET_WIPHY))
+                .thenReturn(new Nl80211Response(msg));
+    }
+
+    private void setupInterfaceInfoResponse() {
+        GenericNetlinkMsg msg = new GenericNetlinkMsg(NL80211_CMD_NEW_INTERFACE, (short) 0,
+                (short) 0, 0);
+        msg.addAttribute(new StructNlAttr(NL80211_ATTR_WIPHY, TEST_WIPHY_INDEX));
+        msg.addAttribute(new StructNlAttr(NL80211_ATTR_IFINDEX, TEST_IF_INDEX));
+        msg.addAttribute(new StructNlAttr(NL80211_ATTR_IFNAME, TEST_IF_NAME));
+        msg.addAttribute(new StructNlAttr(NL80211_ATTR_MAC, TEST_MAC_ADDR));
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_GET_INTERFACE))
+                .thenReturn(new Nl80211Response(msg));
     }
 
     private void setupProtocolFeaturesResponse(int features) {
@@ -398,38 +404,13 @@ public class Nl80211UtilsTest {
 
     @Test
     public void testGetWiphyIndex_success() {
-        GenericNetlinkMsg msg = new GenericNetlinkMsg(NL80211_CMD_NEW_WIPHY, (short) 0,
-                (short) 0, 0);
-        msg.addAttribute(new StructNlAttr(NL80211_ATTR_WIPHY, TEST_WIPHY_INDEX));
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_GET_WIPHY))
-                .thenReturn(new Nl80211Response(msg));
-
         assertEquals(TEST_WIPHY_INDEX, mNl80211Utils.getWiphyIndex(TEST_IF_NAME));
     }
 
     @Test
-    public void testGetWiphyIndex_socketException() throws Exception {
-        when(NetworkInterface.getByName(TEST_IF_NAME)).thenThrow(new SocketException());
-        assertEquals(-1, mNl80211Utils.getWiphyIndex(TEST_IF_NAME));
-    }
-
-    @Test
-    public void testGetWiphyIndex_noNetworkInterface() throws Exception {
-        when(NetworkInterface.getByName(TEST_IF_NAME)).thenReturn(null);
-        assertEquals(-1, mNl80211Utils.getWiphyIndex(TEST_IF_NAME));
-    }
-
-    @Test
-    public void testGetWiphyIndex_noResponse() {
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_GET_WIPHY))
+    public void testGetWiphyIndex_getInterfaceInfoFails() throws Exception {
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_GET_INTERFACE))
                 .thenReturn(null);
-        assertEquals(-1, mNl80211Utils.getWiphyIndex(TEST_IF_NAME));
-    }
-
-    @Test
-    public void testGetWiphyIndex_emptyResponse() {
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_GET_WIPHY))
-                .thenReturn(new Nl80211Response());
         assertEquals(-1, mNl80211Utils.getWiphyIndex(TEST_IF_NAME));
     }
 
@@ -581,6 +562,26 @@ public class Nl80211UtilsTest {
         assertTrue(info.bandInfo.is80211nSupported);
         assertTrue(info.bandInfo.is80211acSupported);
         assertEquals(16, info.scanCapabilities.maxNumScanSsids);
+    }
+
+    @Test
+    public void testParseWiphyInfo_antennas_success() {
+        GenericNetlinkMsg msg = createBasicWiphyInfoMsg();
+        msg.addAttribute(createWiphyBandsAttribute());
+        msg.addAttribute(new StructNlAttr(NetlinkConstants.NL80211_ATTR_WIPHY_ANTENNA_AVAIL_TX,
+                0x3));
+        msg.addAttribute(new StructNlAttr(NetlinkConstants.NL80211_ATTR_WIPHY_ANTENNA_AVAIL_RX,
+                0x7));
+        msg.addAttribute(new StructNlAttr(NetlinkConstants.NL80211_ATTR_WIPHY_ANTENNA_TX, 0x1));
+        msg.addAttribute(new StructNlAttr(NetlinkConstants.NL80211_ATTR_WIPHY_ANTENNA_RX, 0x1));
+
+        Nl80211Utils.WiphyInfo info = mNl80211Utils.parseWiphyInfo(List.of(msg));
+
+        assertNotNull(info);
+        assertEquals(0x3, info.availableAntennasTx);
+        assertEquals(0x7, info.availableAntennasRx);
+        assertEquals(0x1, info.configuredAntennasTx);
+        assertEquals(0x1, info.configuredAntennasRx);
     }
 
     @Test
@@ -741,7 +742,7 @@ public class Nl80211UtilsTest {
         when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_GET_INTERFACE))
                 .thenReturn(new Nl80211Response(msg));
 
-        List<Nl80211Utils.InterfaceInfo> interfaces = mNl80211Utils.getInterfaces(TEST_WIPHY_INDEX);
+        List<Nl80211Utils.InterfaceInfo> interfaces = mNl80211Utils.getInterfaces();
 
         assertNotNull(interfaces);
         assertEquals(1, interfaces.size());
@@ -775,7 +776,7 @@ public class Nl80211UtilsTest {
         when(mNl80211Proxy.sendMessageAndReceiveResponse(requestAllInterfaces))
                 .thenReturn(new Nl80211Response(msg1, msg2));
 
-        List<Nl80211Utils.InterfaceInfo> interfaces = mNl80211Utils.getInterfaces(-1);
+        List<Nl80211Utils.InterfaceInfo> interfaces = mNl80211Utils.getInterfaces();
 
         assertNotNull(interfaces);
         assertEquals(2, interfaces.size());
@@ -791,7 +792,7 @@ public class Nl80211UtilsTest {
     public void testGetInterfaces_failure() {
         when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_GET_INTERFACE))
                 .thenReturn(null);
-        assertNull(mNl80211Utils.getInterfaces(TEST_WIPHY_INDEX));
+        assertNull(mNl80211Utils.getInterfaces());
     }
 
     @Test
@@ -804,7 +805,7 @@ public class Nl80211UtilsTest {
         when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_GET_INTERFACE))
                 .thenReturn(new Nl80211Response(msg));
 
-        List<Nl80211Utils.InterfaceInfo> interfaces = mNl80211Utils.getInterfaces(TEST_WIPHY_INDEX);
+        List<Nl80211Utils.InterfaceInfo> interfaces = mNl80211Utils.getInterfaces();
 
         assertNotNull(interfaces);
         assertTrue(interfaces.isEmpty());
@@ -812,27 +813,6 @@ public class Nl80211UtilsTest {
 
     @Test
     public void testGetInterfaceInfo_success() throws Exception {
-        // Mock NetworkInterface.getByName for the getWiphyIndex() call
-        when(NetworkInterface.getByName(TEST_IF_NAME)).thenReturn(mNetworkInterface);
-        when(mNetworkInterface.getIndex()).thenReturn(TEST_IF_INDEX);
-        when(mNetworkInterface.getHardwareAddress()).thenReturn(TEST_MAC_ADDR);
-
-        // Mock the response for the getWiphyIndex() call
-        GenericNetlinkMsg wiphyMsg = new GenericNetlinkMsg(NL80211_CMD_NEW_WIPHY, (short) 0,
-                (short) 0, 0);
-        wiphyMsg.addAttribute(new StructNlAttr(NL80211_ATTR_WIPHY, TEST_WIPHY_INDEX));
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_WIPHY)))
-                .thenReturn(new Nl80211Response(wiphyMsg));
-
-        // Mock the response for the getInterfaces() call
-        GenericNetlinkMsg ifaceMsg = new GenericNetlinkMsg(NL80211_CMD_NEW_INTERFACE, (short) 0,
-                (short) 0, 0);
-        ifaceMsg.addAttribute(new StructNlAttr(NL80211_ATTR_WIPHY, TEST_WIPHY_INDEX));
-        ifaceMsg.addAttribute(new StructNlAttr(NL80211_ATTR_IFINDEX, TEST_IF_INDEX));
-        ifaceMsg.addAttribute(new StructNlAttr(NL80211_ATTR_IFNAME, TEST_IF_NAME));
-        ifaceMsg.addAttribute(new StructNlAttr(NL80211_ATTR_MAC, TEST_MAC_ADDR));
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_INTERFACE)))
-                .thenReturn(new Nl80211Response(ifaceMsg));
 
         Nl80211Utils.InterfaceInfo info = mNl80211Utils.getInterfaceInfo(TEST_IF_NAME);
 
@@ -845,40 +825,8 @@ public class Nl80211UtilsTest {
 
     @Test
     public void testGetInterfaceInfo_ifaceNotFound() throws Exception {
-        when(NetworkInterface.getByName(TEST_IF_NAME)).thenReturn(null);
-
-        Nl80211Utils.InterfaceInfo info = mNl80211Utils.getInterfaceInfo(TEST_IF_NAME);
-
-        assertNull(info);
-    }
-
-    @Test
-    public void testGetInterfaceInfo_wiphyIndexFailure() throws Exception {
-        when(NetworkInterface.getByName(TEST_IF_NAME)).thenReturn(mNetworkInterface);
-        when(mNetworkInterface.getIndex()).thenReturn(TEST_IF_INDEX);
-        when(mNetworkInterface.getHardwareAddress()).thenReturn(TEST_MAC_ADDR);
-
-        // Mock Nl80211Proxy to return null for wiphy index, simulating failure
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_WIPHY)))
-                .thenReturn(null);
-
-        Nl80211Utils.InterfaceInfo info = mNl80211Utils.getInterfaceInfo(TEST_IF_NAME);
-
-        assertNull(info);
-    }
-
-    @Test
-    public void testGetInterfaceInfo_macAddressFailure() throws Exception {
-        when(NetworkInterface.getByName(TEST_IF_NAME)).thenReturn(mNetworkInterface);
-        when(mNetworkInterface.getIndex()).thenReturn(TEST_IF_INDEX);
-        when(mNetworkInterface.getHardwareAddress()).thenReturn(null);
-
-        // Mock Nl80211Proxy to return a valid wiphy index
-        GenericNetlinkMsg wiphyMsg = new GenericNetlinkMsg(NL80211_CMD_NEW_WIPHY, (short) 0,
-                (short) 0, 0);
-        wiphyMsg.addAttribute(new StructNlAttr(NL80211_ATTR_WIPHY, TEST_WIPHY_INDEX));
-        when(mNl80211Proxy.sendMessageAndReceiveResponse(eq(TEST_NL80211_REQUEST_GET_WIPHY)))
-                .thenReturn(new Nl80211Response(wiphyMsg));
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_GET_INTERFACE))
+                .thenReturn(new Nl80211Response()); // Empty response
 
         Nl80211Utils.InterfaceInfo info = mNl80211Utils.getInterfaceInfo(TEST_IF_NAME);
 
@@ -1490,5 +1438,80 @@ public class Nl80211UtilsTest {
                 .thenReturn(new Nl80211Response(response));
 
         assertNull(mNl80211Utils.getStationInfo(TEST_IF_INDEX, TEST_MAC_ADDR));
+    }
+
+    @Test
+    public void testSendMgmtFrame_success() {
+        long expectedCookie = 54321L;
+        GenericNetlinkMsg responseMsg =
+                new GenericNetlinkMsg(NL80211_CMD_FRAME, (short) 0, (short) 0, 0);
+        responseMsg.addAttribute(
+                new StructNlAttr(NetlinkConstants.NL80211_ATTR_COOKIE, expectedCookie));
+        Nl80211Response response = new Nl80211Response(responseMsg);
+
+        when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_FRAME)))
+                .thenReturn(TEST_NL80211_REQUEST_FRAME);
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_FRAME))
+                .thenReturn(response);
+
+        Long cookie = mNl80211Utils.sendMgmtFrame(TEST_IF_INDEX, TEST_SSID, /* mcs */ 5);
+
+        assertNotNull(cookie);
+        assertEquals(expectedCookie, cookie.longValue());
+
+        assertEquals(NL80211_CMD_FRAME, TEST_NL80211_REQUEST_FRAME.getCommand());
+        assertEquals(TEST_IF_INDEX,
+                (int) TEST_NL80211_REQUEST_FRAME.getAttributeValueAsInteger(NL80211_ATTR_IFINDEX));
+        assertArrayEquals(TEST_SSID,
+                TEST_NL80211_REQUEST_FRAME.getAttributeValueAsByteArray(NL80211_ATTR_FRAME));
+    }
+
+    @Test
+    public void testSendMgmtFrame_proxyFailure() {
+        when(mNl80211Proxy.createNl80211Request(eq(NL80211_CMD_FRAME)))
+                .thenReturn(TEST_NL80211_REQUEST_FRAME);
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_FRAME))
+                .thenReturn(null);
+
+        Long cookie = mNl80211Utils.sendMgmtFrame(TEST_IF_INDEX, TEST_SSID, /* mcs */ 5);
+
+        assertNull(cookie);
+    }
+
+    /**
+     * Test that wifi chip stats can be successfully retrieved.
+     */
+    @Test
+    public void testGetWifiChipStatsSuccess() throws Exception {
+        final byte[] payload = new byte[]{1, 2, 3, 4};
+
+        // Prepare the response for the vendor command (chip stats).
+        GenericNetlinkMsg statsResponse = new GenericNetlinkMsg(
+                NetlinkConstants.NL80211_CMD_VENDOR, (short) 0, (short) 0, 0);
+        statsResponse.addAttribute(
+                new StructNlAttr(NetlinkConstants.NL80211_ATTR_VENDOR_DATA, payload));
+
+        when(mNl80211Proxy.createVendorRequest(anyInt(), anyInt(), anyInt()))
+                .thenReturn(new GenericNetlinkMsg(NetlinkConstants.NL80211_CMD_VENDOR, (short) 0,
+                        (short) 0, 0));
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(any(GenericNetlinkMsg.class)))
+                .thenReturn(new Nl80211Response(statsResponse));
+
+        // Mock getInterfaceInfo
+        Nl80211Utils.InterfaceInfo mockInfo = new Nl80211Utils.InterfaceInfo(
+                TEST_IF_INDEX, 0, TEST_IF_NAME, new byte[6]);
+        GenericNetlinkMsg interfaceResponse = new GenericNetlinkMsg(
+                NL80211_CMD_NEW_INTERFACE, (short) 0, (short) 0, 0);
+        interfaceResponse.addAttribute(new StructNlAttr(NL80211_ATTR_WIPHY, TEST_WIPHY_INDEX));
+        interfaceResponse.addAttribute(new StructNlAttr(NL80211_ATTR_IFINDEX, TEST_IF_INDEX));
+        interfaceResponse.addAttribute(new StructNlAttr(NL80211_ATTR_IFNAME, TEST_IF_NAME));
+        interfaceResponse.addAttribute(new StructNlAttr(NL80211_ATTR_MAC, TEST_MAC_ADDR));
+        when(mNl80211Proxy.sendMessageAndReceiveResponse(TEST_NL80211_REQUEST_GET_INTERFACE))
+                .thenReturn(new Nl80211Response(interfaceResponse));
+
+        ByteBuffer result = mNl80211Utils.getWifiChipStats(TEST_IF_NAME);
+
+        assertNotNull(result);
+        assertEquals(ByteBuffer.wrap(payload), result);
     }
 }

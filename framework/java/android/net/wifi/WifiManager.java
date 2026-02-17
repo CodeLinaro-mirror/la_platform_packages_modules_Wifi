@@ -87,6 +87,7 @@ import android.os.RemoteException;
 import android.os.WorkSource;
 import android.os.connectivity.WifiActivityEnergyInfo;
 import android.security.advancedprotection.AdvancedProtectionFeature;
+import android.security.advancedprotection.AdvancedProtectionManager;
 import android.telephony.SubscriptionInfo;
 import android.text.TextUtils;
 import android.util.ArraySet;
@@ -101,7 +102,6 @@ import com.android.internal.annotations.GuardedBy;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.HandlerExecutor;
 import com.android.modules.utils.ParceledListSlice;
-import com.android.modules.utils.StringParceledListSlice;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.wifi.flags.Flags;
 
@@ -2501,14 +2501,12 @@ public class WifiManager {
         List<Pair<WifiConfiguration, Map<Integer, List<ScanResult>>>> configs = new ArrayList<>();
         try {
             Map<String, Map<Integer, List<ScanResult>>> results =
-                    mService.getAllMatchingPasspointProfilesForScanResults(
-                            new ParceledListSlice<>(scanResults));
+                    mService.getAllMatchingPasspointProfilesForScanResults(scanResults);
             if (results.isEmpty()) {
                 return configs;
             }
             List<WifiConfiguration> wifiConfigurations =
-                    mService.getWifiConfigsForPasspointProfiles(
-                            new StringParceledListSlice(new ArrayList<>(results.keySet())))
+                    mService.getWifiConfigsForPasspointProfiles(new ArrayList<>(results.keySet()))
                             .getList();
             for (WifiConfiguration configuration : wifiConfigurations) {
                 Map<Integer, List<ScanResult>> scanResultsPerNetworkType =
@@ -3009,8 +3007,8 @@ public class WifiManager {
     public List<WifiConfiguration> getWifiConfigForMatchedNetworkSuggestionsSharedWithUser(
             @NonNull List<ScanResult> scanResults) {
         try {
-            return mService.getWifiConfigForMatchedNetworkSuggestionsSharedWithUser(
-                    new ParceledListSlice<>(scanResults)).getList();
+            return mService.getWifiConfigForMatchedNetworkSuggestionsSharedWithUser(scanResults)
+                    .getList();
         } catch (RemoteException e) {
             throw e.rethrowAsRuntimeException();
         }
@@ -3038,7 +3036,7 @@ public class WifiManager {
         }
         try {
             mService.setSsidsAllowlist(mContext.getOpPackageName(),
-                    new ParceledListSlice<>(new ArrayList<>(ssids)));
+                    new ArrayList<>(ssids));
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -3087,7 +3085,7 @@ public class WifiManager {
             return new HashMap<>();
         }
         try {
-            return mService.getMatchingOsuProviders(new ParceledListSlice<>(scanResults));
+            return mService.getMatchingOsuProviders(scanResults);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -3115,7 +3113,7 @@ public class WifiManager {
             @NonNull Set<OsuProvider> osuProviders) {
         try {
             return mService.getMatchingPasspointConfigsForOsuProviders(
-                    new ParceledListSlice<>(new ArrayList<>(osuProviders)));
+                    new ArrayList<>(osuProviders));
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -3717,7 +3715,7 @@ public class WifiManager {
     public @NetworkSuggestionsStatusCode int addNetworkSuggestions(
             @NonNull List<WifiNetworkSuggestion> networkSuggestions) {
         try {
-            return mService.addNetworkSuggestions(new ParceledListSlice<>(networkSuggestions),
+            return mService.addNetworkSuggestions(networkSuggestions,
                     mContext.getOpPackageName(), mContext.getAttributionTag());
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
@@ -3770,7 +3768,7 @@ public class WifiManager {
             @NonNull List<WifiNetworkSuggestion> networkSuggestions,
             @ActionAfterRemovingSuggestion int action) {
         try {
-            return mService.removeNetworkSuggestions(new ParceledListSlice<>(networkSuggestions),
+            return mService.removeNetworkSuggestions(networkSuggestions,
                     mContext.getOpPackageName(), action);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
@@ -4900,9 +4898,7 @@ public class WifiManager {
             throw new IllegalArgumentException("networkSuggestions must not be null.");
         }
         try {
-            return mService.getMatchingScanResults(
-                    new ParceledListSlice<>(networkSuggestionsToMatch),
-                    new ParceledListSlice<>(scanResults),
+            return mService.getMatchingScanResults(networkSuggestionsToMatch, scanResults,
                     mContext.getOpPackageName(), mContext.getAttributionTag());
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
@@ -6212,9 +6208,9 @@ public class WifiManager {
      * <p>
      * This will return {@code false} if a non-null BSSID is set but the caller does not have any of
      * <ul>
-     *     <li>{@link android.Manifest.permission.NETWORK_SETTINGS}</li>
-     *     <li>{@link android.Manifest.permission.NETWORK_STACK}</li>
-     *     <li>{@link NetworkStack.PERMISSION_MAINLINE_NETWORK_STACK}</li>
+     *     <li>{@link android.Manifest.permission#NETWORK_SETTINGS}</li>
+     *     <li>{@link android.Manifest.permission#NETWORK_STACK}</li>
+     *     <li>{@link NetworkStack#PERMISSION_MAINLINE_NETWORK_STACK}</li>
      * </ul>
      * @param config a configuration would like to be checked.
      * @return true if config is valid, otherwise false.
@@ -10310,8 +10306,7 @@ public class WifiManager {
         Objects.requireNonNull(executor, "executor cannot be null");
         Objects.requireNonNull(resultListener, "resultsCallback cannot be null");
         try {
-            mService.getBssidBlocklist(
-                    new ParceledListSlice<>(ssids),
+            mService.getBssidBlocklist(ssids,
                     new IMacAddressListListener.Stub() {
                         @Override
                         public void onResult(ParceledListSlice<MacAddress> value) {
@@ -12224,7 +12219,7 @@ public class WifiManager {
         try {
             if (policy != null) {
                 mService.notifyWifiSsidPolicyChanged(policy.getPolicyType(),
-                        new ParceledListSlice<>(new ArrayList<>(policy.getSsids())));
+                        new ArrayList<>(policy.getSsids()));
             }
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
@@ -12566,7 +12561,7 @@ public class WifiManager {
     public void addCustomDhcpOptions(@NonNull WifiSsid ssid, @NonNull byte[] oui,
             @NonNull List<DhcpOption> options) {
         try {
-            mService.addCustomDhcpOptions(ssid, oui, new ParceledListSlice<>(options));
+            mService.addCustomDhcpOptions(ssid, oui, options);
         } catch (RemoteException e) {
             throw e.rethrowFromSystemServer();
         }
@@ -12826,7 +12821,7 @@ public class WifiManager {
         Objects.requireNonNull(executor, "executor cannot be null");
         Objects.requireNonNull(resultsCallback, "resultsCallback cannot be null");
         try {
-            mService.addQosPolicies(new ParceledListSlice<>(policyParamsList),
+            mService.addQosPolicies(policyParamsList,
                     new Binder(), mContext.getOpPackageName(),
                     new IListListener.Stub() {
                         @Override
@@ -13918,6 +13913,11 @@ public class WifiManager {
             throw new UnsupportedOperationException();
         }
         List<AdvancedProtectionFeature> features = new ArrayList<>();
+        if (android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin()) {
+            features.add(
+                    new AdvancedProtectionFeature(
+                            AdvancedProtectionManager.FEATURE_ID_DISALLOW_INSECURE_WIFI_AUTOJOIN));
+        }
         return features;
     }
 

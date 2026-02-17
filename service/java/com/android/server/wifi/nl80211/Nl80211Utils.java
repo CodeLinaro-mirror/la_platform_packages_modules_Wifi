@@ -22,9 +22,13 @@ import static android.system.OsConstants.ENODEV;
 import static android.system.OsConstants.ENOENT;
 
 import static com.android.net.module.util.netlink.StructNlMsgHdr.NLM_F_ACK;
+import static com.android.server.wifi.nl80211.NetlinkConstants.ANDROID_NL80211_SUBCMD_GET_PWRSTATS;
+import static com.android.server.wifi.nl80211.NetlinkConstants.ANDROID_OUI;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_BSS;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_COOKIE;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_EXT_FEATURES;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_FEATURE_FLAGS;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_FRAME;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_IFINDEX;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_IFNAME;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_MAC;
@@ -45,7 +49,12 @@ import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_SCHE
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_SCHED_SCAN_PLANS;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_SPLIT_WIPHY_DUMP;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_STA_INFO;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_VENDOR_DATA;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_WIPHY;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_WIPHY_ANTENNA_AVAIL_RX;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_WIPHY_ANTENNA_AVAIL_TX;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_WIPHY_ANTENNA_RX;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_WIPHY_ANTENNA_TX;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_ATTR_WIPHY_BANDS;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_BAND_ATTR_FREQS;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_BAND_ATTR_HT_CAPA;
@@ -69,6 +78,7 @@ import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_BSS_STATU
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_BSS_STATUS_AUTHENTICATED;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_BSS_TSF;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_ABORT_SCAN;
+import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_FRAME;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_INTERFACE;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_PROTOCOL_FEATURES;
 import static com.android.server.wifi.nl80211.NetlinkConstants.NL80211_CMD_GET_REG;
@@ -119,8 +129,6 @@ import com.android.internal.annotations.VisibleForTesting;
 import com.android.net.module.util.netlink.StructNlAttr;
 import com.android.net.module.util.netlink.StructNlMsgHdr;
 
-import java.net.NetworkInterface;
-import java.net.SocketException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
@@ -172,6 +180,19 @@ public class Nl80211Utils {
             this.supportsHighAccuracyOneShotScan = builder.mSupportsHighAccuracyOneShotScan;
             this.supportsTxMgmtFrameMcs = builder.mSupportsTxMgmtFrameMcs;
             this.supportsExtSchedScanRelativeRssi = builder.mSupportsExtSchedScanRelativeRssi;
+        }
+
+        @Override
+        public String toString() {
+            return "WiphyFeatures {"
+                    + "\n  supportsRandomMacOneShotScan: " + supportsRandomMacOneShotScan
+                    + "\n  supportsRandomMacSchedScan: " + supportsRandomMacSchedScan
+                    + "\n  supportsLowSpanOneShotScan: " + supportsLowSpanOneShotScan
+                    + "\n  supportsLowPowerOneShotScan: " + supportsLowPowerOneShotScan
+                    + "\n  supportsHighAccuracyOneShotScan: " + supportsHighAccuracyOneShotScan
+                    + "\n  supportsTxMgmtFrameMcs: " + supportsTxMgmtFrameMcs
+                    + "\n  supportsExtSchedScanRelativeRssi: " + supportsExtSchedScanRelativeRssi
+                    + "\n}";
         }
 
         public static class Builder {
@@ -249,25 +270,173 @@ public class Nl80211Utils {
     }
 
     public static class BandInfo {
-        @NonNull
-        public List<Integer> band2g = new ArrayList<>();
-        @NonNull
-        public List<Integer> band5g = new ArrayList<>();
-        @NonNull
-        public List<Integer> band6g = new ArrayList<>();
-        @NonNull
-        public List<Integer> band60g = new ArrayList<>();
-        @NonNull
-        public List<Integer> bandDfs = new ArrayList<>();
-        public boolean is80211nSupported = false;
-        public boolean is80211acSupported = false;
-        public boolean is80211axSupported = false;
-        public boolean is80211beSupported = false;
-        public boolean is160MhzSupported = false;
-        public boolean is80p80MhzSupported = false;
-        public boolean is320MhzSupported = false;
-        public int maxTxStreams = 0;
-        public int maxRxStreams = 0;
+        @NonNull public final List<Integer> band2g;
+        @NonNull public final List<Integer> band5g;
+        @NonNull public final List<Integer> band6g;
+        @NonNull public final List<Integer> band60g;
+        @NonNull public final List<Integer> bandDfs;
+        public final boolean is80211nSupported;
+        public final boolean is80211acSupported;
+        public final boolean is80211axSupported;
+        public final boolean is80211beSupported;
+        public final boolean is160MhzSupported;
+        public final boolean is80p80MhzSupported;
+        public final boolean is320MhzSupported;
+        public final int maxTxStreams;
+        public final int maxRxStreams;
+
+        private BandInfo(Builder builder) {
+            this.band2g = builder.mBand2g;
+            this.band5g = builder.mBand5g;
+            this.band6g = builder.mBand6g;
+            this.band60g = builder.mBand60g;
+            this.bandDfs = builder.mBandDfs;
+            this.is80211nSupported = builder.mIs80211nSupported;
+            this.is80211acSupported = builder.mIs80211acSupported;
+            this.is80211axSupported = builder.mIs80211axSupported;
+            this.is80211beSupported = builder.mIs80211beSupported;
+            this.is160MhzSupported = builder.mIs160MhzSupported;
+            this.is80p80MhzSupported = builder.mIs80p80MhzSupported;
+            this.is320MhzSupported = builder.mIs320MhzSupported;
+            this.maxTxStreams = builder.mMaxTxStreams;
+            this.maxRxStreams = builder.mMaxRxStreams;
+        }
+
+        @Override
+        public String toString() {
+            return "BandInfo {"
+                    + "\n  band2g: " + band2g
+                    + "\n  band5g: " + band5g
+                    + "\n  band6g: " + band6g
+                    + "\n  band60g: " + band60g
+                    + "\n  bandDfs: " + bandDfs
+                    + "\n  is80211nSupported: " + is80211nSupported
+                    + "\n  is80211acSupported: " + is80211acSupported
+                    + "\n  is80211axSupported: " + is80211axSupported
+                    + "\n  is80211beSupported: " + is80211beSupported
+                    + "\n  is160MhzSupported: " + is160MhzSupported
+                    + "\n  is80p80MhzSupported: " + is80p80MhzSupported
+                    + "\n  is320MhzSupported: " + is320MhzSupported
+                    + "\n  maxTxStreams: " + maxTxStreams
+                    + "\n  maxRxStreams: " + maxRxStreams
+                    + "\n}";
+        }
+
+        public static class Builder {
+            @NonNull private final List<Integer> mBand2g = new ArrayList<>();
+            @NonNull private final List<Integer> mBand5g = new ArrayList<>();
+            @NonNull private final List<Integer> mBand6g = new ArrayList<>();
+            @NonNull private final List<Integer> mBand60g = new ArrayList<>();
+            @NonNull private final List<Integer> mBandDfs = new ArrayList<>();
+            private boolean mIs80211nSupported = false;
+            private boolean mIs80211acSupported = false;
+            private boolean mIs80211axSupported = false;
+            private boolean mIs80211beSupported = false;
+            private boolean mIs160MhzSupported = false;
+            private boolean mIs80p80MhzSupported = false;
+            private boolean mIs320MhzSupported = false;
+            private int mMaxTxStreams = 0;
+            private int mMaxRxStreams = 0;
+
+            /** Adds a 2.4 GHz frequency. */
+            public Builder addBand2gFrequency(int freq) {
+                mBand2g.add(freq);
+                return this;
+            }
+
+            /** Adds a 5 GHz frequency. */
+            public Builder addBand5gFrequency(int freq) {
+                mBand5g.add(freq);
+                return this;
+            }
+
+            /** Adds a 6 GHz frequency. */
+            public Builder addBand6gFrequency(int freq) {
+                mBand6g.add(freq);
+                return this;
+            }
+
+            /** Adds a 60 GHz frequency. */
+            public Builder addBand60gFrequency(int freq) {
+                mBand60g.add(freq);
+                return this;
+            }
+
+            /** Adds a DFS frequency. */
+            public Builder addBandDfsFrequency(int freq) {
+                mBandDfs.add(freq);
+                return this;
+            }
+
+            /** Sets whether 802.11n is supported. */
+            public Builder setIs80211nSupported(boolean val) {
+                mIs80211nSupported = val;
+                return this;
+            }
+
+            /** Sets whether 802.11ac is supported. */
+            public Builder setIs80211acSupported(boolean val) {
+                mIs80211acSupported = val;
+                return this;
+            }
+
+            /** Sets whether 802.11ax is supported. */
+            public Builder setIs80211axSupported(boolean val) {
+                mIs80211axSupported = val;
+                return this;
+            }
+
+            /** Sets whether 802.11be is supported. */
+            public Builder setIs80211beSupported(boolean val) {
+                mIs80211beSupported = val;
+                return this;
+            }
+
+            /** Sets whether 160 MHz is supported. */
+            public Builder setIs160MhzSupported(boolean val) {
+                mIs160MhzSupported = val;
+                return this;
+            }
+
+            /** Sets whether 80+80 MHz is supported. */
+            public Builder setIs80p80MhzSupported(boolean val) {
+                mIs80p80MhzSupported = val;
+                return this;
+            }
+
+            /** Sets whether 320 MHz is supported. */
+            public Builder setIs320MhzSupported(boolean val) {
+                mIs320MhzSupported = val;
+                return this;
+            }
+
+            /** Gets max TX streams. */
+            public int getMaxTxStreams() {
+                return mMaxTxStreams;
+            }
+
+            /** Sets max TX streams. */
+            public Builder setMaxTxStreams(int val) {
+                mMaxTxStreams = val;
+                return this;
+            }
+
+            /** Gets max RX streams. */
+            public int getMaxRxStreams() {
+                return mMaxRxStreams;
+            }
+
+            /** Sets max RX streams. */
+            public Builder setMaxRxStreams(int val) {
+                mMaxRxStreams = val;
+                return this;
+            }
+
+            /** Builds a new BandInfo object. */
+            public BandInfo build() {
+                return new BandInfo(this);
+            }
+        }
     }
 
     public static class ScanCapabilities {
@@ -278,23 +447,105 @@ public class Nl80211Utils {
         public final int maxScanPlanIntervalSeconds;
         public final int maxScanPlanIterations;
 
-        public ScanCapabilities(int maxNumScanSsids, int maxNumSchedScanSsids,
-                int maxMatchSets, int maxNumScanPlans, int maxScanPlanIntervalSeconds,
-                int maxScanPlanIterations) {
-            this.maxNumScanSsids = maxNumScanSsids;
-            this.maxNumSchedScanSsids = maxNumSchedScanSsids;
-            this.maxMatchSets = maxMatchSets;
-            this.maxNumScanPlans = maxNumScanPlans;
-            this.maxScanPlanIntervalSeconds = maxScanPlanIntervalSeconds;
-            this.maxScanPlanIterations = maxScanPlanIterations;
+        private ScanCapabilities(Builder builder) {
+            this.maxNumScanSsids = builder.mMaxNumScanSsids;
+            this.maxNumSchedScanSsids = builder.mMaxNumSchedScanSsids;
+            this.maxMatchSets = builder.mMaxMatchSets;
+            this.maxNumScanPlans = builder.mMaxNumScanPlans;
+            this.maxScanPlanIntervalSeconds = builder.mMaxScanPlanIntervalSeconds;
+            this.maxScanPlanIterations = builder.mMaxScanPlanIterations;
+        }
+
+        @Override
+        public String toString() {
+            return "ScanCapabilities {"
+                    + "\n  maxNumScanSsids: " + maxNumScanSsids
+                    + "\n  maxNumSchedScanSsids: " + maxNumSchedScanSsids
+                    + "\n  maxMatchSets: " + maxMatchSets
+                    + "\n  maxNumScanPlans: " + maxNumScanPlans
+                    + "\n  maxScanPlanIntervalSeconds: " + maxScanPlanIntervalSeconds
+                    + "\n  maxScanPlanIterations: " + maxScanPlanIterations
+                    + "\n}";
+        }
+
+        public static class Builder {
+            private int mMaxNumScanSsids;
+            private int mMaxNumSchedScanSsids;
+            private int mMaxMatchSets;
+            private int mMaxNumScanPlans;
+            private int mMaxScanPlanIntervalSeconds;
+            private int mMaxScanPlanIterations;
+
+            /** Sets the maximum number of scan SSIDs. */
+            public Builder setMaxNumScanSsids(int val) {
+                mMaxNumScanSsids = val;
+                return this;
+            }
+
+            /** Sets the maximum number of scheduled scan SSIDs. */
+            public Builder setMaxNumSchedScanSsids(int val) {
+                mMaxNumSchedScanSsids = val;
+                return this;
+            }
+
+            /** Sets the maximum number of match sets. */
+            public Builder setMaxMatchSets(int val) {
+                mMaxMatchSets = val;
+                return this;
+            }
+
+            /** Sets the maximum number of scan plans. */
+            public Builder setMaxNumScanPlans(int val) {
+                mMaxNumScanPlans = val;
+                return this;
+            }
+
+            /** Sets the maximum scan plan interval in seconds. */
+            public Builder setMaxScanPlanIntervalSeconds(int val) {
+                mMaxScanPlanIntervalSeconds = val;
+                return this;
+            }
+
+            /** Sets the maximum scan plan iterations. */
+            public Builder setMaxScanPlanIterations(int val) {
+                mMaxScanPlanIterations = val;
+                return this;
+            }
+
+            /** Builds a new ScanCapabilities object. */
+            public ScanCapabilities build() {
+                return new ScanCapabilities(this);
+            }
         }
     }
 
     public static class DriverCapabilities {
         public final int maxNumAkmSuites;
 
-        public DriverCapabilities(int maxNumAkmSuites) {
-            this.maxNumAkmSuites = maxNumAkmSuites;
+        private DriverCapabilities(Builder builder) {
+            this.maxNumAkmSuites = builder.mMaxNumAkmSuites;
+        }
+
+        @Override
+        public String toString() {
+            return "DriverCapabilities {"
+                    + "\n  maxNumAkmSuites: " + maxNumAkmSuites
+                    + "\n}";
+        }
+
+        public static class Builder {
+            private int mMaxNumAkmSuites;
+
+            /** Sets the maximum number of AKM suites. */
+            public Builder setMaxNumAkmSuites(int val) {
+                mMaxNumAkmSuites = val;
+                return this;
+            }
+
+            /** Builds a new DriverCapabilities object. */
+            public DriverCapabilities build() {
+                return new DriverCapabilities(this);
+            }
         }
     }
 
@@ -310,16 +561,118 @@ public class Nl80211Utils {
         public final WiphyFeatures wiphyFeatures;
         @NonNull
         public final DriverCapabilities driverCapabilities;
+        public final int availableAntennasTx;
+        public final int availableAntennasRx;
+        public final int configuredAntennasTx;
+        public final int configuredAntennasRx;
 
-        public WiphyInfo(
-                @NonNull BandInfo bandInfo,
-                @NonNull ScanCapabilities scanCapabilities,
-                @NonNull WiphyFeatures wiphyFeatures,
-                @NonNull DriverCapabilities driverCapabilities) {
-            this.bandInfo = bandInfo;
-            this.scanCapabilities = scanCapabilities;
-            this.wiphyFeatures = wiphyFeatures;
-            this.driverCapabilities = driverCapabilities;
+        private WiphyInfo(Builder builder) {
+            this.bandInfo = builder.mBandInfo;
+            this.scanCapabilities = builder.mScanCapabilities;
+            this.wiphyFeatures = builder.mWiphyFeatures;
+            this.driverCapabilities = builder.mDriverCapabilities;
+            this.availableAntennasTx = builder.mAvailableAntennasTx;
+            this.availableAntennasRx = builder.mAvailableAntennasRx;
+            this.configuredAntennasTx = builder.mConfiguredAntennasTx;
+            this.configuredAntennasRx = builder.mConfiguredAntennasRx;
+        }
+
+        @Override
+        public String toString() {
+            return "WiphyInfo {"
+                    + "\n  bandInfo: " + bandInfo.toString().replace("\n", "\n  ")
+                    + "\n  scanCapabilities: "
+                    + scanCapabilities.toString().replace("\n", "\n  ")
+                    + "\n  wiphyFeatures: " + wiphyFeatures.toString().replace("\n", "\n  ")
+                    + "\n  driverCapabilities: "
+                    + driverCapabilities.toString().replace("\n", "\n  ")
+                    + "\n  availableAntennasTx: 0x" + Integer.toHexString(availableAntennasTx)
+                    + "\n  availableAntennasRx: 0x" + Integer.toHexString(availableAntennasRx)
+                    + "\n  configuredAntennasTx: 0x" + Integer.toHexString(configuredAntennasTx)
+                    + "\n  configuredAntennasRx: 0x" + Integer.toHexString(configuredAntennasRx)
+                    + "\n}";
+        }
+
+        public static class Builder {
+            @NonNull private BandInfo mBandInfo = new BandInfo.Builder().build();
+            @NonNull private ScanCapabilities mScanCapabilities =
+                    new ScanCapabilities.Builder().build();
+            @NonNull private WiphyFeatures mWiphyFeatures = new WiphyFeatures.Builder().build();
+            @NonNull private DriverCapabilities mDriverCapabilities =
+                    new DriverCapabilities.Builder().build();
+            private int mAvailableAntennasTx = 0;
+            private int mAvailableAntennasRx = 0;
+            private int mConfiguredAntennasTx = 0;
+            private int mConfiguredAntennasRx = 0;
+
+            /** Sets the BandInfo. */
+            public Builder setBandInfo(@NonNull BandInfo val) {
+                if (val == null) {
+                    Log.e(TAG, "WiphyInfo.Builder.setBandInfo: Ignoring null val");
+                    return this;
+                }
+                mBandInfo = val;
+                return this;
+            }
+
+            /** Sets the ScanCapabilities. */
+            public Builder setScanCapabilities(@NonNull ScanCapabilities val) {
+                if (val == null) {
+                    Log.e(TAG, "WiphyInfo.Builder.setScanCapabilities: Ignoring null val");
+                    return this;
+                }
+                mScanCapabilities = val;
+                return this;
+            }
+
+            /** Sets the WiphyFeatures. */
+            public Builder setWiphyFeatures(@NonNull WiphyFeatures val) {
+                if (val == null) {
+                    Log.e(TAG, "WiphyInfo.Builder.setWiphyFeatures: Ignoring null val");
+                    return this;
+                }
+                mWiphyFeatures = val;
+                return this;
+            }
+
+            /** Sets the DriverCapabilities. */
+            public Builder setDriverCapabilities(@NonNull DriverCapabilities val) {
+                if (val == null) {
+                    Log.e(TAG, "WiphyInfo.Builder.setDriverCapabilities: Ignoring null val");
+                    return this;
+                }
+                mDriverCapabilities = val;
+                return this;
+            }
+
+            /** Sets the available TX antennas bitmap. */
+            public Builder setAvailableAntennasTx(int val) {
+                mAvailableAntennasTx = val;
+                return this;
+            }
+
+            /** Sets the available RX antennas bitmap. */
+            public Builder setAvailableAntennasRx(int val) {
+                mAvailableAntennasRx = val;
+                return this;
+            }
+
+            /** Sets the configured TX antennas bitmap. */
+            public Builder setConfiguredAntennasTx(int val) {
+                mConfiguredAntennasTx = val;
+                return this;
+            }
+
+            /** Sets the configured RX antennas bitmap. */
+            public Builder setConfiguredAntennasRx(int val) {
+                mConfiguredAntennasRx = val;
+                return this;
+            }
+
+            /** Builds a new WiphyInfo object. */
+            public WiphyInfo build() {
+                return new WiphyInfo(this);
+            }
         }
     }
 
@@ -381,6 +734,17 @@ public class Nl80211Utils {
         public int hashCode() {
             return java.util.Objects.hash(txPackets, txFailed, signalDbm, txBitrate100Kbps,
                     rxBitrate100Kbps);
+        }
+
+        @Override
+        public String toString() {
+            return "StationInfo {"
+                    + "\n  txPackets: " + txPackets
+                    + "\n  txFailed: " + txFailed
+                    + "\n  signalDbm: " + signalDbm
+                    + "\n  txBitrate100Kbps: " + txBitrate100Kbps
+                    + "\n  rxBitrate100Kbps: " + rxBitrate100Kbps
+                    + "\n}";
         }
 
         /**
@@ -459,6 +823,14 @@ public class Nl80211Utils {
         public PnoScanPlan(int intervalMs, int iterations) {
             this.intervalMs = intervalMs;
             this.iterations = iterations;
+        }
+
+        @Override
+        public String toString() {
+            return "PnoScanPlan {"
+                    + "\n  intervalMs: " + intervalMs
+                    + "\n  iterations: " + iterations
+                    + "\n}";
         }
     }
 
@@ -542,17 +914,13 @@ public class Nl80211Utils {
     private int getIfaceIndex(@NonNull String ifaceName) {
         Objects.requireNonNull(ifaceName);
 
-        try {
-            NetworkInterface netIface = NetworkInterface.getByName(ifaceName);
-            if (netIface == null) {
-                Log.e(TAG, "Failed to get NetworkInterface for " + ifaceName);
-                return -1;
-            }
-            return netIface.getIndex();
-        } catch (SocketException e) {
-            Log.e(TAG, "Failed to get iface index for " + ifaceName, e);
+        InterfaceInfo ifaceInfo = getInterfaceInfo(ifaceName);
+        if (ifaceInfo == null) {
+            Log.e(TAG, "Failed to get interface info for " + ifaceName);
             return -1;
         }
+
+        return ifaceInfo.ifIndex;
     }
 
     /**
@@ -567,41 +935,13 @@ public class Nl80211Utils {
             return mCachedWiphyIndexes.get(ifaceName);
         }
 
-        int ifIndex = getIfaceIndex(ifaceName);
-        if (ifIndex == -1) {
+        InterfaceInfo info = getInterfaceInfo(ifaceName);
+        if (info == null) {
             return -1;
         }
 
-        StructNlAttr ifIndexAttr = new StructNlAttr(NL80211_ATTR_IFINDEX, ifIndex);
-
-        GenericNetlinkMsg request = mNl80211Proxy.createNl80211Request(NL80211_CMD_GET_WIPHY,
-                StructNlMsgHdr.NLM_F_DUMP, ifIndexAttr);
-
-        if (request == null) {
-            Log.e(TAG, "Failed to create GET_WIPHY request");
-            return -1;
-        }
-
-        Nl80211Response response = mNl80211Proxy.sendMessageAndReceiveResponse(request);
-        if (response == null || response.isError()) {
-            Log.e(TAG, "Failed to get response for GET_WIPHY");
-            return -1;
-        }
-
-        for (GenericNetlinkMsg msg : response.getMessages()) {
-            if (msg.getCommand() != NL80211_CMD_NEW_WIPHY) {
-                Log.e(TAG, "Wrong command in response: " + msg.getCommand());
-                continue;
-            }
-            Integer wiphyIndex = msg.getAttributeValueAsInteger(NL80211_ATTR_WIPHY);
-            if (wiphyIndex != null) {
-                mCachedWiphyIndexes.put(ifaceName, wiphyIndex);
-                return wiphyIndex;
-            }
-        }
-
-        Log.e(TAG, "Failed to get wiphy index from reply message");
-        return -1;
+        mCachedWiphyIndexes.put(ifaceName, info.wiphyIndex);
+        return info.wiphyIndex;
     }
 
     /**
@@ -638,6 +978,10 @@ public class Nl80211Utils {
         Integer featureFlags = null;
         byte[] extFeatureFlagsBytes = null;
         Short maxNumAkms = null;
+        Integer availTx = null;
+        Integer availRx = null;
+        Integer confTx = null;
+        Integer confRx = null;
 
         for (GenericNetlinkMsg packet : packets) {
             if (featureFlags == null) {
@@ -649,6 +993,18 @@ public class Nl80211Utils {
             }
             if (maxNumAkms == null) {
                 maxNumAkms = packet.getAttributeValueAsShort(NL80211_ATTR_MAX_NUM_AKM_SUITES);
+            }
+            if (availTx == null) {
+                availTx = packet.getAttributeValueAsInteger(NL80211_ATTR_WIPHY_ANTENNA_AVAIL_TX);
+            }
+            if (availRx == null) {
+                availRx = packet.getAttributeValueAsInteger(NL80211_ATTR_WIPHY_ANTENNA_AVAIL_RX);
+            }
+            if (confTx == null) {
+                confTx = packet.getAttributeValueAsInteger(NL80211_ATTR_WIPHY_ANTENNA_TX);
+            }
+            if (confRx == null) {
+                confRx = packet.getAttributeValueAsInteger(NL80211_ATTR_WIPHY_ANTENNA_RX);
             }
         }
 
@@ -665,9 +1021,20 @@ public class Nl80211Utils {
         if (maxNumAkms == null) {
             maxNumAkms = 1; // Default value
         }
-        DriverCapabilities driverCapabilities = new DriverCapabilities(maxNumAkms);
+        DriverCapabilities driverCapabilities = new DriverCapabilities.Builder()
+                .setMaxNumAkmSuites(maxNumAkms)
+                .build();
 
-        return new WiphyInfo(bandInfo, scanCapabilities, wiphyFeatures, driverCapabilities);
+        return new WiphyInfo.Builder()
+                .setBandInfo(bandInfo)
+                .setScanCapabilities(scanCapabilities)
+                .setWiphyFeatures(wiphyFeatures)
+                .setDriverCapabilities(driverCapabilities)
+                .setAvailableAntennasTx(availTx != null ? availTx : 0)
+                .setAvailableAntennasRx(availRx != null ? availRx : 0)
+                .setConfiguredAntennasTx(confTx != null ? confTx : 0)
+                .setConfiguredAntennasRx(confRx != null ? confRx : 0)
+                .build();
     }
 
     /**
@@ -676,7 +1043,7 @@ public class Nl80211Utils {
      */
     @Nullable
     private BandInfo parseBandInfo(List<GenericNetlinkMsg> packets) {
-        BandInfo bandInfo = new BandInfo();
+        BandInfo.Builder bandInfoBuilder = new BandInfo.Builder();
         boolean foundBandAttr = false;
         for (GenericNetlinkMsg packet : packets) {
             StructNlAttr bandsAttr = packet.getAttribute(NL80211_ATTR_WIPHY_BANDS);
@@ -696,7 +1063,7 @@ public class Nl80211Utils {
             for (Map.Entry<Short, StructNlAttr> bandAttrEntry : nestedBandsAttrs.entrySet()) {
                 // Each of the nested attributes of NL80211_ATTR_WIPHY_BANDS contain further nested
                 // attributes indexed by one of NL80211_BAND_ATTR_*.
-                parseNestedBandAttr(bandAttrEntry.getValue(), bandInfo);
+                parseNestedBandAttr(bandAttrEntry.getValue(), bandInfoBuilder);
             }
         }
 
@@ -705,13 +1072,14 @@ public class Nl80211Utils {
             return null;
         }
 
-        return bandInfo;
+        return bandInfoBuilder.build();
     }
 
     /**
      * Parse the contents of a nested entry of NL80211_ATTR_WIPHY_BANDS.
      */
-    private void parseNestedBandAttr(StructNlAttr nestedBandAttr, BandInfo bandInfo) {
+    private void parseNestedBandAttr(
+            StructNlAttr nestedBandAttr, BandInfo.Builder bandInfoBuilder) {
         Map<Short, StructNlAttr> innerBandAttrs =
                 GenericNetlinkMsg.getInnerNestedAttributes(nestedBandAttr);
         if (innerBandAttrs == null) {
@@ -721,23 +1089,23 @@ public class Nl80211Utils {
         // Frequencies
         StructNlAttr freqsAttr = innerBandAttrs.get(NL80211_BAND_ATTR_FREQS);
         if (freqsAttr != null) {
-            parseFrequencies(freqsAttr, bandInfo);
+            parseFrequencies(freqsAttr, bandInfoBuilder);
         }
 
         // PHY Standard Support
         if (innerBandAttrs.containsKey(NL80211_BAND_ATTR_HT_CAPA)) {
-            bandInfo.is80211nSupported = true;
+            bandInfoBuilder.setIs80211nSupported(true);
         }
         if (innerBandAttrs.containsKey(NL80211_BAND_ATTR_VHT_CAPA)) {
-            bandInfo.is80211acSupported = true;
+            bandInfoBuilder.setIs80211acSupported(true);
         }
 
         // Detailed PHY Capabilities (MCS, Channel Width, etc.)
-        parseBandCapabilities(innerBandAttrs, bandInfo);
+        parseBandCapabilities(innerBandAttrs, bandInfoBuilder);
     }
 
     private void add5gFrequency(int frequency, Map<Short, StructNlAttr> freqProperties,
-            BandInfo bandInfo) {
+            BandInfo.Builder bandInfoBuilder) {
         StructNlAttr dfsStateAttr =
                 freqProperties.get(NL80211_FREQUENCY_ATTR_DFS_STATE);
         Integer dfsState = (dfsStateAttr != null) ? dfsStateAttr.getValueAsInteger() : null;
@@ -748,13 +1116,13 @@ public class Nl80211Utils {
                 || freqProperties.containsKey(NL80211_FREQUENCY_ATTR_NO_IR);
 
         if (isDfs) {
-            bandInfo.bandDfs.add(frequency);
+            bandInfoBuilder.addBandDfsFrequency(frequency);
         } else {
-            bandInfo.band5g.add(frequency);
+            bandInfoBuilder.addBand5gFrequency(frequency);
         }
     }
 
-    private void parseFrequencies(StructNlAttr freqsAttr, BandInfo bandInfo) {
+    private void parseFrequencies(StructNlAttr freqsAttr, BandInfo.Builder bandInfoBuilder) {
         // NL80211_BAND_ATTR_FREQS contains a nested array of attributes, where each attribute
         // is sequentially indexed and represents a single frequency.
         Map<Short, StructNlAttr> freqs = GenericNetlinkMsg.getInnerNestedAttributes(freqsAttr);
@@ -777,39 +1145,43 @@ public class Nl80211Utils {
             }
 
             if (ScanResult.is24GHz(frequencyValue)) {
-                bandInfo.band2g.add(frequencyValue);
+                bandInfoBuilder.addBand2gFrequency(frequencyValue);
             } else if (ScanResult.is5GHz(frequencyValue)) {
-                add5gFrequency(frequencyValue, freqProperties, bandInfo);
+                add5gFrequency(frequencyValue, freqProperties, bandInfoBuilder);
             } else if (ScanResult.is6GHz(frequencyValue)) {
-                bandInfo.band6g.add(frequencyValue);
+                bandInfoBuilder.addBand6gFrequency(frequencyValue);
             } else if (ScanResult.is60GHz(frequencyValue)) {
-                bandInfo.band60g.add(frequencyValue);
+                bandInfoBuilder.addBand60gFrequency(frequencyValue);
             }
         }
     }
 
     private void parseBandCapabilities(Map<Short, StructNlAttr> bandProperties,
-            BandInfo bandInfo) {
+            BandInfo.Builder bandInfoBuilder) {
         // HT/VHT parsing
         StructNlAttr htMcsAttr = bandProperties.get(NL80211_BAND_ATTR_HT_MCS_SET);
         if (htMcsAttr != null) {
             Pair<Integer, Integer> htStreams = parseHtMcsSetAttribute(htMcsAttr.nla_value);
-            bandInfo.maxTxStreams = Math.max(bandInfo.maxTxStreams, htStreams.first);
-            bandInfo.maxRxStreams = Math.max(bandInfo.maxRxStreams, htStreams.second);
+            bandInfoBuilder.setMaxTxStreams(
+                    Math.max(bandInfoBuilder.getMaxTxStreams(), htStreams.first));
+            bandInfoBuilder.setMaxRxStreams(
+                    Math.max(bandInfoBuilder.getMaxRxStreams(), htStreams.second));
         }
 
         StructNlAttr vhtMcsAttr = bandProperties.get(NL80211_BAND_ATTR_VHT_MCS_SET);
         if (vhtMcsAttr != null) {
             Pair<Integer, Integer> vhtStreams = parseVhtMcsSetAttribute(vhtMcsAttr.nla_value);
-            bandInfo.maxTxStreams = Math.max(bandInfo.maxTxStreams, vhtStreams.first);
-            bandInfo.maxRxStreams = Math.max(bandInfo.maxRxStreams, vhtStreams.second);
+            bandInfoBuilder.setMaxTxStreams(
+                    Math.max(bandInfoBuilder.getMaxTxStreams(), vhtStreams.first));
+            bandInfoBuilder.setMaxRxStreams(
+                    Math.max(bandInfoBuilder.getMaxRxStreams(), vhtStreams.second));
         }
 
         StructNlAttr vhtCapaAttr = bandProperties.get(NL80211_BAND_ATTR_VHT_CAPA);
         if (vhtCapaAttr != null) {
             Pair<Boolean, Boolean> vhtCaps = parseVhtCapAttribute(vhtCapaAttr.getValueAsInteger());
-            if (vhtCaps.first) bandInfo.is160MhzSupported = true;
-            if (vhtCaps.second) bandInfo.is80p80MhzSupported = true;
+            if (vhtCaps.first) bandInfoBuilder.setIs160MhzSupported(true);
+            if (vhtCaps.second) bandInfoBuilder.setIs80p80MhzSupported(true);
         }
 
         // HE/EHT parsing from IFTYPE_DATA
@@ -828,24 +1200,26 @@ public class Nl80211Utils {
 
         StructNlAttr heCapaPhyAttr = iftypeProperties.get(NL80211_BAND_IFTYPE_ATTR_HE_CAP_PHY);
         if (heCapaPhyAttr != null) {
-            bandInfo.is80211axSupported = true;
+            bandInfoBuilder.setIs80211axSupported(true);
             Pair<Boolean, Boolean> heCaps = parseHeCapPhyAttribute(heCapaPhyAttr.nla_value);
-            if (heCaps.first) bandInfo.is160MhzSupported = true;
-            if (heCaps.second) bandInfo.is80p80MhzSupported = true;
+            if (heCaps.first) bandInfoBuilder.setIs160MhzSupported(true);
+            if (heCaps.second) bandInfoBuilder.setIs80p80MhzSupported(true);
         }
 
         StructNlAttr heMcsAttr = iftypeProperties.get(NL80211_BAND_IFTYPE_ATTR_HE_CAP_MCS_SET);
         if (heMcsAttr != null) {
             Pair<Integer, Integer> heStreams = parseHeMcsSetAttribute(heMcsAttr.nla_value);
-            bandInfo.maxTxStreams = Math.max(bandInfo.maxTxStreams, heStreams.first);
-            bandInfo.maxRxStreams = Math.max(bandInfo.maxRxStreams, heStreams.second);
+            bandInfoBuilder.setMaxTxStreams(
+                    Math.max(bandInfoBuilder.getMaxTxStreams(), heStreams.first));
+            bandInfoBuilder.setMaxRxStreams(
+                    Math.max(bandInfoBuilder.getMaxRxStreams(), heStreams.second));
         }
 
         StructNlAttr ehtCapaPhyAttr = iftypeProperties.get(NL80211_BAND_IFTYPE_ATTR_EHT_CAP_PHY);
         if (ehtCapaPhyAttr != null) {
-            bandInfo.is80211beSupported = true;
+            bandInfoBuilder.setIs80211beSupported(true);
             if (parseEhtCapPhyAttribute(ehtCapaPhyAttr.nla_value)) {
-                bandInfo.is320MhzSupported = true;
+                bandInfoBuilder.setIs320MhzSupported(true);
             }
         }
     }
@@ -1003,8 +1377,14 @@ public class Nl80211Utils {
             maxScanPlanIterations = maxScanPlanIterationsAttr;
         }
 
-        return new ScanCapabilities(maxNumScanSsids, maxNumSchedScanSsids, maxMatchSets,
-                maxNumScanPlans, maxScanPlanIntervalSeconds, maxScanPlanIterations);
+        return new ScanCapabilities.Builder()
+                .setMaxNumScanSsids(maxNumScanSsids)
+                .setMaxNumSchedScanSsids(maxNumSchedScanSsids)
+                .setMaxMatchSets(maxMatchSets)
+                .setMaxNumScanPlans(maxNumScanPlans)
+                .setMaxScanPlanIntervalSeconds(maxScanPlanIntervalSeconds)
+                .setMaxScanPlanIterations(maxScanPlanIterations)
+                .build();
     }
 
     @Nullable
@@ -1061,22 +1441,13 @@ public class Nl80211Utils {
     }
 
     /**
-     * Gets information about all interfaces associated with a given wiphy.
-     * @param wiphyIndex The index of the wiphy device, or -1 to query all wiphys.
+     * Gets information about all interfaces.
      * @return A list of {@link InterfaceInfo} objects, or null on failure.
      */
     @Nullable
-    public List<InterfaceInfo> getInterfaces(int wiphyIndex) {
-        GenericNetlinkMsg request;
-        if (wiphyIndex != -1) {
-            StructNlAttr wiphyIndexAttr = new StructNlAttr(NL80211_ATTR_WIPHY, wiphyIndex);
-            request = mNl80211Proxy.createNl80211Request(NL80211_CMD_GET_INTERFACE,
-                    StructNlMsgHdr.NLM_F_DUMP,
-                    wiphyIndexAttr);
-        } else {
-            request = mNl80211Proxy.createNl80211Request(NL80211_CMD_GET_INTERFACE,
-                    StructNlMsgHdr.NLM_F_DUMP);
-        }
+    public List<InterfaceInfo> getInterfaces() {
+        GenericNetlinkMsg request = mNl80211Proxy.createNl80211Request(NL80211_CMD_GET_INTERFACE,
+                StructNlMsgHdr.NLM_F_DUMP);
 
         if (request == null) {
             Log.e(TAG, "Failed to create GET_INTERFACE request");
@@ -1117,27 +1488,18 @@ public class Nl80211Utils {
      */
     @Nullable
     public InterfaceInfo getInterfaceInfo(@NonNull String ifaceName) {
-        int wiphyIndex = getWiphyIndex(ifaceName);
-        if (wiphyIndex == -1) {
-            Log.e(TAG, "Failed to get wiphy index for " + ifaceName);
-            return null;
-        }
-
-        List<Nl80211Utils.InterfaceInfo> interfaces = getInterfaces(wiphyIndex);
+        List<Nl80211Utils.InterfaceInfo> interfaces = getInterfaces();
         if (interfaces == null) {
-            Log.e(TAG, "Failed to get interfaces for wiphy " + wiphyIndex);
+            Log.e(TAG, "Failed to get interfaces");
             return null;
         }
 
-        Nl80211Utils.InterfaceInfo foundInterface = null;
         for (Nl80211Utils.InterfaceInfo info : interfaces) {
             if (ifaceName.equals(info.name)) {
-                foundInterface = info;
-                break;
+                return info;
             }
         }
-
-        return foundInterface;
+        return null;
     }
 
     /**
@@ -1748,6 +2110,38 @@ public class Nl80211Utils {
     }
 
     /**
+     * Sends a management frame on the given interface and returns a cookie upon success.
+     * @param ifaceIndex Index of interface to send the frame on.
+     * @param frame The raw byte array of the management frame to transmit.
+     * @param mcs The MCS (modulation and coding scheme), i.e. rate, at which to transmit the
+     *            frame. Specified per IEEE 802.11.
+     * @return Cookie upon success, or null on failure.
+     */
+    public Long sendMgmtFrame(int ifaceIndex, @NonNull byte[] frame, int mcs) {
+        GenericNetlinkMsg request = mNl80211Proxy.createNl80211Request(NL80211_CMD_FRAME);
+        request.addAttribute(new StructNlAttr(NL80211_ATTR_IFINDEX, ifaceIndex));
+        request.addAttribute(new StructNlAttr(NL80211_ATTR_FRAME, frame));
+        if (mcs >= 0) {
+            // Left unimplemented to match wificond. Note that the only user of sendMgmtFrame comes
+            // from WifiShellCommand, which passes a hardcoded value of -1.
+        }
+
+        Nl80211Response response = mNl80211Proxy.sendMessageAndReceiveResponse(request);
+        if (response == null || response.isError() || response.getMessage() == null) {
+            Log.e(TAG, "Failed to send NL80211_CMD_FRAME");
+            return null;
+        }
+
+        Long cookie = response.getMessage().getAttributeValueAsLong(NL80211_ATTR_COOKIE);
+        if (cookie == null) {
+            Log.e(TAG, "Failed to get cookie from NL80211_CMD_FRAME");
+            return null;
+        }
+
+        return cookie;
+    }
+
+    /**
      * Clears the internal wiphy information caches.
      */
     @VisibleForTesting
@@ -1772,5 +2166,53 @@ public class Nl80211Utils {
         }
 
         return buf.getShort();
+    }
+
+    /**
+     * Retrieves Wi-Fi chip statistics from the driver via a vendor-specific Netlink command.
+     *
+     * @return A {@link ByteBuffer} containing the raw chip statistics payload from the driver,
+     */
+    public @Nullable ByteBuffer getWifiChipStats(String interfaceName) {
+        final int vendorId = ANDROID_OUI;
+        final int subcmd = ANDROID_NL80211_SUBCMD_GET_PWRSTATS;
+        InterfaceInfo info = getInterfaceInfo(interfaceName);
+        if (info == null) {
+            Log.e(TAG, "Failed to get interface info for " + interfaceName);
+            return null;
+        }
+        final int ifIndex = info.ifIndex;
+
+        GenericNetlinkMsg vendorRequest = mNl80211Proxy.createVendorRequest(
+                ifIndex, vendorId, subcmd);
+
+        if (vendorRequest == null) {
+            Log.e(TAG, "Failed to create vendor request for chip statistics.");
+            return null;
+        }
+
+        Nl80211Response vendorResponse = mNl80211Proxy.sendMessageAndReceiveResponse(vendorRequest);
+
+        if (vendorResponse == null || vendorResponse.isError()
+                || vendorResponse.getMessage() == null) {
+            Log.e(TAG, "Failed to send Wi-Fi chip statistics vendor command.");
+            return null;
+        }
+
+        GenericNetlinkMsg msg = vendorResponse.getMessage();
+        StructNlAttr payloadAttr = msg.getAttribute(NL80211_ATTR_VENDOR_DATA);
+
+        if (payloadAttr == null) {
+            Log.e(TAG, "NL80211_ATTR_VENDOR_DATA attribute not found in vendor response.");
+            return null;
+        }
+        ByteBuffer payloadBuffer = payloadAttr.getValueAsByteBuffer();
+
+        if (payloadBuffer == null) {
+            Log.e(TAG, "Chip statistics payload is null in the vendor data attribute.");
+            return null;
+        }
+
+        return payloadBuffer;
     }
 }

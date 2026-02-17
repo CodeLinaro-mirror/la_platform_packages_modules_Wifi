@@ -18,7 +18,7 @@
     xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="wifiResourcesAppLabel" product="default" msgid="3120115613525263696">"‏منابع Wi-Fi سیستم"</string>
     <string name="wifi_available_title" msgid="3899472737467127635">"‏اتصال به شبکه Wi‑Fi باز"</string>
-    <string name="wifi_available_title_connecting" msgid="7233590022728579868">"‏درحال اتصال به شبکه Wi‑Fi..."</string>
+    <string name="wifi_available_title_connecting" msgid="7233590022728579868">"‏درحال متصل شدن به شبکه Wi‑Fi..."</string>
     <string name="wifi_available_title_connected" msgid="6329493859989844201">"‏به شبکه Wi‑Fi متصل شد"</string>
     <string name="wifi_available_title_failed_to_connect" msgid="4840833680513368639">"‏به شبکه Wi-Fi متصل نشد"</string>
     <string name="wifi_available_content_failed_to_connect" msgid="4330035988269701861">"برای دیدن همه شبکه‌ها تک‌ضرب بزنید"</string>
@@ -218,11 +218,11 @@
     <string name="wifi_network_switch_dialog_title_bad_internet" msgid="6013385270249705547">"<xliff:g id="SSID_0">%1$s</xliff:g> کیفیت پایینی دارد. به <xliff:g id="SSID_1">%2$s</xliff:g> جابه‌جا می‌شوید؟"</string>
     <string name="wifi_network_switch_dialog_positive_button" msgid="7845507995422722454">"جابه‌جا شود"</string>
     <string name="wifi_network_switch_dialog_negative_button" msgid="1496665895689498806">"جابه‌جا نشود"</string>
-    <string name="wifi_disconnect_dialog_title" msgid="94664204061356025">"اتصال «<xliff:g id="APP_NAME">%1$s</xliff:g>» قطع شود؟"</string>
-    <string name="wifi_disconnect_dialog_message" msgid="523085058096307605">"‏قطع کردن اتصال Wi-Fi باعث قطع شدن اتصال «<xliff:g id="APP_NAME">%1$s</xliff:g>» خواهد شد. ادامه می‌دهید؟"</string>
-    <string name="wifi_disconnect_dialog_positive_button" msgid="81882845888322268">"ادامه"</string>
+    <string name="wifi_disconnect_dialog_title" msgid="7541989406466882747">"اتصال به <xliff:g id="APP_NAME">%1$s</xliff:g> قطع شود؟"</string>
+    <string name="wifi_disconnect_dialog_message" msgid="5116841532118842227">"قطع اتصال از این شبکه باعث قطع اتصال <xliff:g id="APP_NAME">%1$s</xliff:g> خواهد شد."</string>
+    <string name="wifi_disconnect_dialog_positive_button" msgid="1193888906224230855">"قطع اتصال"</string>
     <string name="wifi_disconnect_dialog_negative_button" msgid="5075682597077355859">"لغو"</string>
-    <string name="wifi_disconnect_dialog_new_connection_title" msgid="624715160252254674">"‏به شبکه Wi-Fi جدیدی متصل می‌شوید؟"</string>
-    <string name="wifi_disconnect_dialog_new_connection_message" msgid="534271497503164022">"با متصل شدن به شبکه <xliff:g id="SSID">%2$s</xliff:g>، اتصال «<xliff:g id="APP_NAME">%1$s</xliff:g>» قطع خواهد شد."</string>
+    <string name="wifi_disconnect_dialog_new_connection_title" msgid="6276398076311281426">"‏به شبکه Wi-Fi دیگری متصل می‌شوید؟"</string>
+    <string name="wifi_disconnect_dialog_new_connection_message" msgid="2830348590173029295">"با متصل شدن به <xliff:g id="SSID">%2$s</xliff:g>، اتصال <xliff:g id="APP_NAME">%1$s</xliff:g> قطع خواهد شد."</string>
     <string name="wifi_disconnect_dialog_new_connection_positive_button" msgid="4891994857934666730">"متصل کردن"</string>
 </resources>

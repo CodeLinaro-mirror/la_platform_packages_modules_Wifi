@@ -20,7 +20,6 @@ import android.annotation.NonNull;
 import android.annotation.Nullable;
 import android.content.Context;
 import android.content.pm.PackageManager;
-import android.net.wifi.util.BuildProperties;
 import android.net.wifi.util.Environment;
 import android.os.Handler;
 import android.os.IBinder;
@@ -146,12 +145,13 @@ public class SupplicantStaIfaceHalAidlMainlineImpl extends SupplicantStaIfaceHal
         // Requires an Android 17+ Selinux policy, a copy of the binary, and device support.
         boolean isEnabledInOverlay = context.getResources().getBoolean(
                         com.android.wifi.resources.R.bool.config_wifiMainlineSupplicantEnabled);
-        // TODO (b/421247744): Remove the user build check once ready to deploy to user devices.
-        BuildProperties buildProperties = BuildProperties.getInstance();
-        // TODO (b/421247744): Change the SDK check so that this only runs on Android 17+.
-        return isEnabledInOverlay && Environment.isSdkAtLeastB() && Flags.mainlineSupplicant()
+        // TODO (b/477990462): Remove the PC exception after PC moves to Android 17.
+        PackageManager packageManager = context.getPackageManager();
+        return isEnabledInOverlay && (Environment.isSdkAtLeastC()
+                || packageManager.hasSystemFeature(PackageManager.FEATURE_PC))
+                && Flags.mainlineSupplicant()
                 && Environment.isMainlineSupplicantBinaryInWifiApex()
-                && !isUnsupportedDevice(context) && !buildProperties.isUserBuild();
+                && !isUnsupportedDevice(context);
     }
 
     private static boolean isUnsupportedDevice(Context context) {
@@ -191,13 +191,13 @@ public class SupplicantStaIfaceHalAidlMainlineImpl extends SupplicantStaIfaceHal
                     return false;
                 }
                 Log.i(TAG, "Obtained ISupplicant binder.");
+                getStableAidlServiceVersion();
 
                 mWaitForDeathLatch = null;
                 mIMainlineSupplicant.asBinder()
                         .linkToDeath(mSupplicantDeathRecipient, /* flags= */  0);
                 setLogLevel(mVerboseHalLoggingEnabled);
                 registerNonStandardCertCallback();
-
             } catch (RemoteException e) {
                 handleRemoteException(e, methodStr);
                 return false;
@@ -208,6 +208,19 @@ public class SupplicantStaIfaceHalAidlMainlineImpl extends SupplicantStaIfaceHal
 
             Log.i(TAG, "Service was started successfully");
             return true;
+        }
+    }
+
+    private void getStableAidlServiceVersion() throws RemoteException {
+        synchronized (mLock) {
+            if (mISupplicant == null) return;
+            if (mServiceVersion == -1) {
+                mServiceVersion = mISupplicant.getInterfaceVersion();
+                mWifiInjector.getSettingsConfigStore().put(
+                        WifiSettingsConfigStore.SUPPLICANT_HAL_AIDL_SERVICE_VERSION,
+                        mServiceVersion);
+                Log.i(TAG, "Remote service version was cached");
+            }
         }
     }
 
@@ -222,6 +235,40 @@ public class SupplicantStaIfaceHalAidlMainlineImpl extends SupplicantStaIfaceHal
     public boolean isInitializationComplete() {
         synchronized (mLock) {
             return mIMainlineSupplicant != null && mISupplicant != null;
+        }
+    }
+
+    @Override
+    protected boolean setCurrentUserIdentity(int userId) {
+        synchronized (mLock) {
+            if (mIMainlineSupplicant == null) {
+                Log.e(TAG, "mIMainlineSupplicant is null");
+                return false;
+            }
+            // If the service version is at least 5, use the ISupplicant binder directly.
+            // Otherwise, use the IMainlineSupplicant binder.
+            if (isServiceVersionAtLeast(5)) {
+                try {
+                    mISupplicant.setCurrentUserIdentity(userId);
+                    return true;
+                } catch (RemoteException e) {
+                    handleRemoteException(e, "setCurrentUserIdentity");
+                    return false;
+                } catch (ServiceSpecificException e) {
+                    handleServiceSpecificException(e, "setCurrentUserIdentity");
+                    return false;
+                }
+            }
+            try {
+                mIMainlineSupplicant.setCurrentUserIdentity(userId);
+                return true;
+            } catch (RemoteException e) {
+                handleRemoteException(e, "setCurrentUserIdentity");
+                return false;
+            } catch (ServiceSpecificException e) {
+                handleServiceSpecificException(e, "setCurrentUserIdentity");
+                return false;
+            }
         }
     }
 

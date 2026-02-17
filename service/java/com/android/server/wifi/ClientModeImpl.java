@@ -714,14 +714,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     private final WifiInjector mWifiInjector;
 
-    // Permanently disable a network due to no internet if the estimated probability of having
-    // internet is less than this value.
-    @VisibleForTesting
-    public static final int PROBABILITY_WITH_INTERNET_TO_PERMANENTLY_DISABLE_NETWORK = 60;
-    // Disable a network permanently due to wrong password even if the network had successfully
-    // connected before wrong password failure on this network reached this threshold.
-    public static final int THRESHOLD_TO_PERM_WRONG_PASSWORD = 3;
-
     @Nullable
     private StateMachineObituary mObituary = null;
 
@@ -914,7 +906,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mCmiMonitor = cmiMonitor;
         mTelephonyManager = telephonyManager;
         mSettingsConfigStore = settingsConfigStore;
-        updateInterfaceCapabilities();
+        initCapabilitiesAndSecuritySettings();
         mWifiDeviceStateChangeManager = wifiInjector.getWifiDeviceStateChangeManager();
 
         PowerManager powerManager = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
@@ -1613,11 +1605,14 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 continueConnectToUserSelectNetwork(connectedConfig, attributionTag, netId, uid);
             };
             String appName = mNetworkFactory.getConnectedAppName();
+            if (appName.isEmpty()) {
+                appName = "Unknown App";
+            }
             String title = mContext.getString(R.string.wifi_disconnect_dialog_new_connection_title);
             WifiConfiguration config = mWifiConfigManager.getConfiguredNetwork(netId);
             String message = mContext.getString(
                     R.string.wifi_disconnect_dialog_new_connection_message,
-                    appName, config.SSID);
+                    config.SSID, appName);
             String positiveButton = mContext.getString(
                     R.string.wifi_disconnect_dialog_new_connection_positive_button);
             String negativeButton = mContext.getString(
@@ -1789,21 +1784,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return getSupportedFeaturesBitSet().get(WIFI_FEATURE_WPA3_SAE);
     }
 
-    /**
-     * Update interface capabilities
-     * This method is used to update some of interface capabilities defined in overlay
-     */
-    private void updateInterfaceCapabilities() {
+    private void initCapabilitiesAndSecuritySettings() {
         DeviceWiphyCapabilities cap = getDeviceWiphyCapabilities();
         if (cap != null) {
-            // Some devices don't have support of 11ax/be indicated by the chip,
-            // so an override config value is used
-            if (mContext.getResources().getBoolean(R.bool.config_wifi11beSupportOverride)) {
-                cap.setWifiStandardSupport(ScanResult.WIFI_STANDARD_11BE, true);
-            }
-            if (mContext.getResources().getBoolean(R.bool.config_wifi11axSupportOverride)) {
-                cap.setWifiStandardSupport(ScanResult.WIFI_STANDARD_11AX, true);
-            }
             // The Wi-Fi Alliance has introduced the WPA3 security update for Wi-Fi 7, which
             // mandates cross-AKM (Authenticated Key Management) roaming between three AKMs
             // (AKM: 24(SAE-EXT-KEY), AKM:8(SAE) and AKM:2(PSK)). If the station supports
@@ -1818,14 +1801,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     && isWpa3SaeSupported()) {
                 mWifiGlobals.enableWpa3SaeH2eSupport();
             }
-
-            mWifiNative.setDeviceWiphyCapabilities(mInterfaceName, cap);
         }
     }
 
     @Override
     public DeviceWiphyCapabilities getDeviceWiphyCapabilities() {
-        return mWifiNative.getDeviceWiphyCapabilities(mInterfaceName);
+        return mWifiNative.getDeviceWiphyCapabilities(mInterfaceName, /* isBridgedAp */ false);
     }
 
     /**
@@ -2145,8 +2126,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     disconnect();
                 };
                 String appName = mNetworkFactory.getConnectedAppName();
-                String title = mContext.getString(R.string.wifi_disconnect_dialog_title,
-                        appName.isEmpty() ? config.SSID : appName);
+                if (appName.isEmpty()) {
+                    appName = "Unknown App";
+                }
+                String title = mContext.getString(R.string.wifi_disconnect_dialog_title, appName);
                 String message = mContext.getString(
                         R.string.wifi_disconnect_dialog_message, appName);
                 String positiveButton = mContext.getString(
@@ -3156,20 +3139,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         int [] reportedKbps = {mLastTxKbps, mLastRxKbps};
         int [] l2Kbps = {l2TxKbps, l2RxKbps};
         network.updateBwMetrics(reportedKbps, l2Kbps);
-    }
-
-    // Polling has completed, hence we won't have a score anymore
-    private void cleanWifiScore() {
-        mWifiInfo.setLostTxPacketsPerSecond(0);
-        mWifiInfo.setSuccessfulTxPacketsPerSecond(0);
-        mWifiInfo.setRetriedTxPacketsRate(0);
-        mWifiInfo.setSuccessfulRxPacketsPerSecond(0);
-        mWifiScoreReport.reset();
-        mLastLinkLayerStats = null;
-        if (isPrimary()) {
-            mWifiMetrics.resetWifiUnusableEvent();
-        }
-        updateCurrentConnectionInfo();
     }
 
     private void updateLinkProperties(LinkProperties newLp) {
@@ -4191,7 +4160,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             WifiConfiguration.NetworkSelectionStatus.DISABLED_CONSECUTIVE_FAILURES);
                 }
                 if (recentStats.getCount(WifiScoreCard.CNT_CONSECUTIVE_WRONG_PASSWORD_FAILURE)
-                        >= THRESHOLD_TO_PERM_WRONG_PASSWORD) {
+                        >= mWifiGlobals.getPreviouslyConnectedNetworkWrongPasswordThreshold()) {
                     mWifiConfigManager.updateNetworkSelectionStatus(mTargetNetworkId,
                             WifiConfiguration.NetworkSelectionStatus.DISABLED_BY_WRONG_PASSWORD);
                 }
@@ -7158,7 +7127,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     break;
                 }
                 case CMD_ENABLE_RSSI_POLL: {
-                    cleanWifiScore();
                     mEnableRssiPolling = (message.arg1 == 1);
                     mRssiPollToken++;
                     if (mEnableRssiPolling) {
@@ -8011,10 +7979,15 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         WifiConfiguration config = getConnectedWifiConfigurationInternal();
                         if (config != null) {
                             // re-enable autojoin
-                            mWifiConfigManager.updateNetworkSelectionStatus(
-                                    config.networkId,
-                                    WifiConfiguration.NetworkSelectionStatus
-                                            .DISABLED_NONE);
+                            int networkDisableReason = config.getNetworkSelectionStatus()
+                                    .getNetworkSelectionDisableReason();
+                            if (networkDisableReason == DISABLED_NO_INTERNET_TEMPORARY
+                                    || networkDisableReason == DISABLED_NO_INTERNET_PERMANENT) {
+                                mWifiConfigManager.updateNetworkSelectionStatus(
+                                        config.networkId,
+                                        WifiConfiguration.NetworkSelectionStatus
+                                                .DISABLED_NONE);
+                            }
                             mWifiConfigManager.setNetworkValidatedInternetAccess(
                                     config.networkId, true);
                             if (config.isPasspoint()

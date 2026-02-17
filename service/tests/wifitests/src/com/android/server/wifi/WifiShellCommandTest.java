@@ -197,6 +197,29 @@ public class WifiShellCommandTest extends WifiBaseTest {
     }
 
     @Test
+    public void testGetWiphyInfo_success() {
+        BinderUtil.setUid(Process.ROOT_UID);
+        Nl80211Utils.WiphyInfo wiphyInfo = mock(Nl80211Utils.WiphyInfo.class);
+        when(mNl80211Native.getWiphyInfo(0)).thenReturn(wiphyInfo);
+
+        assertEquals(0, mWifiShellCommand.exec(
+                new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
+                new String[]{"get-wiphy-info", "0"}));
+        verify(mNl80211Native).getWiphyInfo(0);
+    }
+
+    @Test
+    public void testGetWiphyInfo_failure() {
+        BinderUtil.setUid(Process.ROOT_UID);
+        when(mNl80211Native.getWiphyInfo(0)).thenReturn(null);
+
+        assertEquals(-1, mWifiShellCommand.exec(
+                new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
+                new String[]{"get-wiphy-info", "0"}));
+        verify(mNl80211Native).getWiphyInfo(0);
+    }
+
+    @Test
     public void testSetIpReachDisconnect() {
         mWifiShellCommand.exec(
                 new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
@@ -686,9 +709,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
                 new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
                 new String[]{"add-suggestion", "ssid1234", "open", "-u"});
         verify(mWifiService).addNetworkSuggestions(argThat(sL -> {
-            return (sL.getList().size() == 1)
-                    && (sL.getList().get(0).getSsid().equals("ssid1234"))
-                    && (sL.getList().get(0).isUntrusted());
+            return (sL.size() == 1)
+                    && (sL.get(0).getSsid().equals("ssid1234"))
+                    && (sL.get(0).isUntrusted());
         }), eq(SHELL_PACKAGE_NAME), any());
         verify(mConnectivityManager).requestNetwork(argThat(nR -> {
             return (nR.hasTransport(TRANSPORT_WIFI))
@@ -705,9 +728,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
                 new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
                 new String[]{"remove-suggestion", "ssid1234"});
         verify(mWifiService).removeNetworkSuggestions(argThat(sL -> {
-            return (sL.getList().size() == 1)
-                    && (sL.getList().get(0).getSsid().equals("ssid1234"))
-                    && (sL.getList().get(0).isUntrusted());
+            return (sL.size() == 1)
+                    && (sL.get(0).getSsid().equals("ssid1234"))
+                    && (sL.get(0).isUntrusted());
         }), eq(SHELL_PACKAGE_NAME), eq(ACTION_REMOVE_SUGGESTION_DISCONNECT));
         verify(mConnectivityManager).unregisterNetworkCallback(
                 any(ConnectivityManager.NetworkCallback.class));
@@ -721,9 +744,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
                 new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
                 new String[]{"add-suggestion", "ssid1234", "open", "-o"});
         verify(mWifiService).addNetworkSuggestions(argThat(sL -> {
-            return (sL.getList().size() == 1)
-                    && (sL.getList().get(0).getSsid().equals("ssid1234"))
-                    && (sL.getList().get(0).isOemPaid());
+            return (sL.size() == 1)
+                    && (sL.get(0).getSsid().equals("ssid1234"))
+                    && (sL.get(0).isOemPaid());
         }), eq(SHELL_PACKAGE_NAME), any());
         verify(mConnectivityManager).requestNetwork(argThat(nR -> {
             return (nR.hasTransport(TRANSPORT_WIFI))
@@ -740,9 +763,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
                 new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
                 new String[]{"remove-suggestion", "ssid1234"});
         verify(mWifiService).removeNetworkSuggestions(argThat(sL -> {
-            return (sL.getList().size() == 1)
-                    && (sL.getList().get(0).getSsid().equals("ssid1234"))
-                    && (sL.getList().get(0).isOemPaid());
+            return (sL.size() == 1)
+                    && (sL.get(0).getSsid().equals("ssid1234"))
+                    && (sL.get(0).isOemPaid());
         }), eq(SHELL_PACKAGE_NAME), eq(ACTION_REMOVE_SUGGESTION_DISCONNECT));
         verify(mConnectivityManager).unregisterNetworkCallback(
                 any(ConnectivityManager.NetworkCallback.class));
@@ -756,9 +779,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
                 new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
                 new String[]{"add-suggestion", "ssid1234", "open", "-p"});
         verify(mWifiService).addNetworkSuggestions(argThat(sL -> {
-            return (sL.getList().size() == 1)
-                    && (sL.getList().get(0).getSsid().equals("ssid1234"))
-                    && (sL.getList().get(0).isOemPrivate());
+            return (sL.size() == 1)
+                    && (sL.get(0).getSsid().equals("ssid1234"))
+                    && (sL.get(0).isOemPrivate());
         }), eq(SHELL_PACKAGE_NAME), any());
         verify(mConnectivityManager).requestNetwork(argThat(nR -> {
             return (nR.hasTransport(TRANSPORT_WIFI))
@@ -775,9 +798,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
                 new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
                 new String[]{"remove-suggestion", "ssid1234"});
         verify(mWifiService).removeNetworkSuggestions(argThat(sL -> {
-            return (sL.getList().size() == 1)
-                    && (sL.getList().get(0).getSsid().equals("ssid1234"))
-                    && (sL.getList().get(0).isOemPrivate());
+            return (sL.size() == 1)
+                    && (sL.get(0).getSsid().equals("ssid1234"))
+                    && (sL.get(0).isOemPrivate());
         }), eq(SHELL_PACKAGE_NAME), eq(ACTION_REMOVE_SUGGESTION_DISCONNECT));
         verify(mConnectivityManager).unregisterNetworkCallback(
                 any(ConnectivityManager.NetworkCallback.class));
@@ -790,9 +813,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
                 new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
                 new String[]{"add-suggestion", "ssid1234", "open"});
         verify(mWifiService).addNetworkSuggestions(argThat(sL -> {
-            return (sL.getList().size() == 1)
-                    && (sL.getList().get(0).getSsid().equals("ssid1234"))
-                    && (sL.getList().get(0).getWifiConfiguration().macRandomizationSetting
+            return (sL.size() == 1)
+                    && (sL.get(0).getSsid().equals("ssid1234"))
+                    && (sL.get(0).getWifiConfiguration().macRandomizationSetting
                     == WifiConfiguration.RANDOMIZATION_PERSISTENT);
         }), eq(SHELL_PACKAGE_NAME), any());
 
@@ -802,9 +825,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
                     new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
                     new String[]{"add-suggestion", "ssid1234", "open", "-r"});
             verify(mWifiService).addNetworkSuggestions(argThat(sL -> {
-                return (sL.getList().size() == 1)
-                        && (sL.getList().get(0).getSsid().equals("ssid1234"))
-                        && (sL.getList().get(0).getWifiConfiguration().macRandomizationSetting
+                return (sL.size() == 1)
+                        && (sL.get(0).getSsid().equals("ssid1234"))
+                        && (sL.get(0).getWifiConfiguration().macRandomizationSetting
                         == WifiConfiguration.RANDOMIZATION_NON_PERSISTENT);
             }), eq(SHELL_PACKAGE_NAME), any());
         }
@@ -1510,8 +1533,9 @@ public class WifiShellCommandTest extends WifiBaseTest {
     public void testGetDeviceWiphyCapabilities_success() {
         BinderUtil.setUid(Process.ROOT_UID);
         final String ifaceName = "wlan0";
-        DeviceWiphyCapabilities caps = new DeviceWiphyCapabilities();
-        caps.setWifiStandardSupport(ScanResult.WIFI_STANDARD_11AX, true);
+        DeviceWiphyCapabilities caps = new DeviceWiphyCapabilities.Builder()
+                .setWifiStandardSupport(ScanResult.WIFI_STANDARD_11AX, true)
+                .build();
         when(mNl80211Native.getDeviceWiphyCapabilities(ifaceName)).thenReturn(caps);
         assertEquals(
                 0,
@@ -1564,7 +1588,7 @@ public class WifiShellCommandTest extends WifiBaseTest {
         List<Nl80211Utils.InterfaceInfo> interfaces = new ArrayList<>();
         interfaces.add(new Nl80211Utils.InterfaceInfo(
                 ifaceIndex, wiphyIndex, ifaceName, macAddress));
-        when(mNl80211Native.getInterfaces(wiphyIndex)).thenReturn(interfaces);
+        when(mNl80211Native.getInterfaces()).thenReturn(interfaces);
 
         assertEquals(
                 0,
@@ -1573,15 +1597,15 @@ public class WifiShellCommandTest extends WifiBaseTest {
                         new FileDescriptor(),
                         new FileDescriptor(),
                         new FileDescriptor(),
-                        new String[] {"get-interfaces", String.valueOf(wiphyIndex)}));
-        verify(mNl80211Native).getInterfaces(wiphyIndex);
+                        new String[] {"get-interfaces"}));
+        verify(mNl80211Native).getInterfaces();
     }
 
     @Test
     public void testGetInterfaces_noInterfaces() {
         BinderUtil.setUid(Process.ROOT_UID);
         final int wiphyIndex = 0;
-        when(mNl80211Native.getInterfaces(wiphyIndex)).thenReturn(null);
+        when(mNl80211Native.getInterfaces()).thenReturn(null);
 
         assertEquals(
                 0,
@@ -1590,8 +1614,8 @@ public class WifiShellCommandTest extends WifiBaseTest {
                         new FileDescriptor(),
                         new FileDescriptor(),
                         new FileDescriptor(),
-                        new String[] {"get-interfaces", String.valueOf(wiphyIndex)}));
-        verify(mNl80211Native).getInterfaces(wiphyIndex);
+                        new String[] {"get-interfaces"}));
+        verify(mNl80211Native).getInterfaces();
     }
 
     @Test
@@ -1920,5 +1944,18 @@ public class WifiShellCommandTest extends WifiBaseTest {
         verify(mNl80211Native).setUseNl80211Override(true);
         verify(mNl80211Native).signalPoll(eq(ifaceName));
         verify(mNl80211Native).setUseNl80211Override(false);
+    }
+
+    @Test
+    public void testGetPowerStats() throws Exception {
+        WifiPowerStatsManager powerStatsManager = mock(WifiPowerStatsManager.class);
+        when(mWifiInjector.getWifiPowerStatsManager()).thenReturn(powerStatsManager);
+        WifiChipStats chipStats = mock(WifiChipStats.class);
+        when(powerStatsManager.getWlanPwrStats()).thenReturn(chipStats);
+
+        assertEquals(0, mWifiShellCommand.exec(
+                new Binder(), new FileDescriptor(), new FileDescriptor(), new FileDescriptor(),
+                new String[]{"get-power-stats"}));
+        verify(powerStatsManager).getWlanPwrStats();
     }
 }

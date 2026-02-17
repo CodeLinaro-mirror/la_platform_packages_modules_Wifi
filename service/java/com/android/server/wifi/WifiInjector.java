@@ -42,6 +42,7 @@ import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Process;
+import android.os.SystemProperties;
 import android.os.UserManager;
 import android.os.WorkSource;
 import android.provider.Settings.Secure;
@@ -288,10 +289,10 @@ public class WifiInjector {
     private final RunnerHandler mWifiHandler;
     private boolean mVerboseLoggingEnabled;
     private WifiUsabilityClassifierFactory mWifiUsabilityClassifierFactory;
-    @Nullable private final WepNetworkUsageController mWepNetworkUsageController;
     private final PairingConfigManager mPairingConfigManager;
     private final MainlineSupplicantAidlManager mMainlineSupplicant;
     private RttServiceImpl mRttServiceImpl;
+    private final WifiPowerStatsManager mWifiPowerStatsManager;
 
     public WifiInjector(WifiContext context) {
         if (context == null) {
@@ -314,7 +315,7 @@ public class WifiInjector {
         mWifiHandlerThread.start();
         Looper wifiLooper = mWifiHandlerThread.getLooper();
         mWifiHandlerLocalLog = new LocalLog(1024);
-        WifiAwareMetrics awareMetrics = new WifiAwareMetrics(mClock, mContext);
+        WifiAwareMetrics awareMetrics = new WifiAwareMetrics(mClock);
         RttMetrics rttMetrics = new RttMetrics(mClock);
         mDppMetrics = new DppMetrics();
         mWifiMonitor = new WifiMonitor();
@@ -375,8 +376,15 @@ public class WifiInjector {
                 mWifiGlobals, mSsidTranslator, this);
         mHostapdHal = new HostapdHal(mContext, mWifiHandler);
         Nl80211Proxy nl80211Proxy = new Nl80211Proxy(mWifiHandler, mWifiMetrics);
-        boolean isWificondMigrationEnabled = Environment.isSdkAtLeastB()
-                && mFeatureFlags.wificondToNl80211Migration();
+        boolean isWificondMigrationEnabled = Environment.isSdkAtLeastC()
+                && mFeatureFlags.wificondToNl80211Migration()
+                && mContext.getResources().getBoolean(R.bool.config_wificondMigrationEnabled);
+        // Force enable the wificond migration if wificond is already disabled.
+        if (!isWificondMigrationEnabled
+                && SystemProperties.get("init.svc.wificond").isEmpty()) {
+            Log.i(TAG, "Force enabling wificond migration due to wificond disabled.");
+            isWificondMigrationEnabled = true;
+        }
         mNl80211Native = new Nl80211Native(
                 nl80211Proxy,
                 new Nl80211Utils(nl80211Proxy),
@@ -643,6 +651,7 @@ public class WifiInjector {
                 wifiLooper, mContext, mClock, mWifiMetrics, mWifiPermissionsUtil);
         mApplicationQosPolicyRequestHandler = new ApplicationQosPolicyRequestHandler(
                 mActiveModeWarden, mWifiNative, mWifiHandlerThread, mContext);
+        mWifiPowerStatsManager = new WifiPowerStatsManager(mNl80211Native, mActiveModeWarden);
 
         // Register the various network Nominators with the network selector.
         mWifiNetworkSelector.registerNetworkNominator(mSavedNetworkNominator);
@@ -677,13 +686,7 @@ public class WifiInjector {
             mWifiVoipDetector = null;
         }
         mHasActiveModem = makeTelephonyManager().getActiveModemCount() > 0;
-        if (mFeatureFlags.wepDisabledInApm()) {
-            mWepNetworkUsageController = new WepNetworkUsageController(mWifiHandlerThread,
-                    mWifiDeviceStateChangeManager, mSettingsConfigStore, mWifiGlobals,
-                    mActiveModeWarden, mFeatureFlags);
-        } else {
-            mWepNetworkUsageController = null;
-        }
+
     }
 
     /**
@@ -1404,10 +1407,7 @@ public class WifiInjector {
         return mVerboseLoggingEnabled;
     }
 
-    @Nullable
-    public WepNetworkUsageController getWepNetworkUsageController() {
-        return mWepNetworkUsageController;
-    }
+
 
     @NonNull
     public WifiConfigStore getWifiConfigStore() {
@@ -1422,5 +1422,9 @@ public class WifiInjector {
     @NonNull
     public MainlineSupplicantAidlManager getMainlineSupplicantAidlManager() {
         return mMainlineSupplicant;
+    }
+
+    public WifiPowerStatsManager getWifiPowerStatsManager() {
+        return mWifiPowerStatsManager;
     }
 }

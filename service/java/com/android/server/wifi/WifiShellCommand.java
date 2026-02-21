@@ -233,6 +233,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
             "get-overlay-config-values",
             "get-carrier-network-offload",
             "list-interface-names",
+            "get-power-stats",
     };
 
     private static final Map<String, Pair<NetworkRequest, ConnectivityManager.NetworkCallback>>
@@ -3096,6 +3097,23 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     pw.println(Arrays.toString(channels));
                     return 0;
                 }
+                case "get-wiphy-info": {
+                    int wiphyIndex;
+                    try {
+                        wiphyIndex = Integer.parseInt(getNextArgRequired());
+                    } catch (NumberFormatException e) {
+                        pw.println("Invalid wiphy index: " + e.getMessage());
+                        return -1;
+                    }
+                    Nl80211Utils.WiphyInfo wiphyInfo = mNl80211Native.getWiphyInfo(wiphyIndex);
+                    if (wiphyInfo == null) {
+                        pw.println("Failed to get wiphy info for index " + wiphyIndex
+                                + ". (Is wificond migration enabled?)");
+                        return -1;
+                    }
+                    pw.println(wiphyInfo);
+                    return 0;
+                }
                 case "start-nl80211-scan": {
                     String ifaceName = getNextArgRequired();
                     int scanType = WifiScanner.SCAN_TYPE_HIGH_ACCURACY;
@@ -3464,6 +3482,24 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     }
                     return 0;
                 }
+                case "get-power-stats":
+                    WifiPowerStatsManager pwrManager = mWifiInjector.getWifiPowerStatsManager();
+                    if (pwrManager == null) {
+                        pw.println("FAILURE: WifiPowerStatsManager is not initialized.");
+                        return -1;
+                    }
+
+                    WifiChipStats stats = pwrManager.getWlanPwrStats();
+
+                    if (stats != null) {
+                        pw.println("SUCCESS: Wi-Fi Power Stats:");
+                        pw.println(stats.toString());
+                    } else {
+                        pw.println("FAILURE: Could not retrieve stats."
+                                + "(Native layer returned null)");
+                        return -1;
+                    }
+                    return 0;
                 default:
                     return handleDefaultCommands(cmd);
             }
@@ -4684,6 +4720,9 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("  get-nl80211-channels-mhz 2|5|dbs|6|60");
         pw.println("    For debugging. Dumps the result of Nl80211Native.getChannelsMhzForBand");
         pw.println("    -n Use direct nl80211 implementation instead of wificond.");
+        pw.println("  get-wiphy-info <wiphy index>");
+        pw.println("    For debugging. Dumps the result of Nl80211Native.getWiphyInfo.");
+        pw.println("    Note: wificond migration must be enabled for this to work.");
         pw.println("  stop-nl80211-scan <iface>");
         pw.println("    For debugging. Aborts an ongoing scan via Nl80211Native.abortScan.");
         pw.println("    -n Use direct nl80211 implementation instead of wificond.");

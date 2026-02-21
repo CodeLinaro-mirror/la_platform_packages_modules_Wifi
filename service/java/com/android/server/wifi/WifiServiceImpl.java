@@ -566,6 +566,8 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     private boolean mWifiTetheringDisallowed;
     private boolean mIsBootComplete;
     private boolean mIsLocationModeEnabled;
+    private boolean mDoesCurrentUserEnableScanAlwaysAvailable = false;
+    private boolean mIsFirstDeviceUnlock = true;
 
     private WifiNetworkSelectionConfig mNetworkSelectionConfig;
     private ApplicationQosPolicyRequestHandler mApplicationQosPolicyRequestHandler;
@@ -573,6 +575,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     private final TwtManager mTwtManager;
     private final OpenNetworkNotifier mOpenNetworkNotifier;
     private final Nl80211Native mNl80211Native;
+    private final WifiPowerStatsManager mWifiPowerStatsManager;
 
     /**
      * The wrapper of SoftApCallback is used in WifiService internally.
@@ -845,6 +848,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                             "android"));
         }
         mOpenNetworkNotifier = mWifiInjector.getOpenNetworkNotifier();
+        mWifiPowerStatsManager = mWifiInjector.getWifiPowerStatsManager();
     }
 
     /**
@@ -869,6 +873,8 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                     "WifiService starting up with Wi-Fi " + (wifiEnabled ? "enabled" : "disabled"));
 
             mWifiInjector.getWifiScanAlwaysAvailableSettingsCompatibility().initialize();
+            mDoesCurrentUserEnableScanAlwaysAvailable =
+                    mSettingsStore.isScanAlwaysAvailableToggleEnabled();
             mWifiInjector.getWifiNotificationManager().createNotificationChannels();
             // Old design, flag is disabled.
             mWifiGlobals.setWepAllowed(mSettingsConfigStore.get(WIFI_WEP_ALLOWED));
@@ -1229,6 +1235,17 @@ public class WifiServiceImpl extends IWifiManager.Stub {
             // TODO: b/449013275 Add Environment.isSdkNewerThanB())
             if (mFeatureFlags.multiUserWifiEnhancement()) {
                 mActiveModeWarden.handleUserUnlock(userId);
+                boolean isScanAlwaysAvailable =
+                        mSettingsStore.isScanAlwaysAvailableToggleEnabled();
+                if (isScanAlwaysAvailable != mDoesCurrentUserEnableScanAlwaysAvailable) {
+                    mDoesCurrentUserEnableScanAlwaysAvailable = isScanAlwaysAvailable;
+                    // Only first device unlock after boot need to triggers scan always mode change
+                    // since the state in ActiveModeWarden is cleaned up after user switch.
+                    if (mIsFirstDeviceUnlock) {
+                        mIsFirstDeviceUnlock = false;
+                        mActiveModeWarden.scanAlwaysModeChanged();
+                    }
+                }
             }
         }, TAG + "#handleUserUnlock");
     }
@@ -3695,6 +3712,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         } finally {
             Binder.restoreCallingIdentity(ident);
         }
+        mDoesCurrentUserEnableScanAlwaysAvailable = isAvailable;
         mActiveModeWarden.scanAlwaysModeChanged();
     }
 
@@ -6381,6 +6399,9 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                 } else {
                     pw.println("boundToExternalScorer=failure, lastScorerBindingState="
                             + mLastScorerBindingState);
+                }
+                if (mWifiPowerStatsManager != null) {
+                    mWifiPowerStatsManager.dump(fd, pw, args);
                 }
             }
         }, TAG + "#dump");

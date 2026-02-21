@@ -890,7 +890,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mCmiMonitor = cmiMonitor;
         mTelephonyManager = telephonyManager;
         mSettingsConfigStore = settingsConfigStore;
-        updateInterfaceCapabilities();
+        initCapabilitiesAndSecuritySettings();
         mWifiDeviceStateChangeManager = wifiInjector.getWifiDeviceStateChangeManager();
 
         PowerManager powerManager = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
@@ -1318,8 +1318,12 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 return;
             }
 
-            // Treat an SSID change as a network removal
-            if (oldConfig != null && !TextUtils.equals(newConfig.SSID, oldConfig.SSID)) {
+            // Sometimes a WifiConfiguration's SSID may be updated in-place (e.g. via DO/PO apps).
+            // If this happens, trigger a network disconnect to connect again with the updated SSID.
+            if (oldConfig != null
+                    && oldConfig.networkId == newConfig.networkId
+                    && !newConfig.isPasspoint()
+                    && !TextUtils.equals(newConfig.SSID, oldConfig.SSID)) {
                 Log.i(getTag(), "SSID changed for active/target network (id=" + newConfig.networkId
                         + "). Old: " + oldConfig.SSID + ", New: " + newConfig.SSID
                         + ". Triggering disconnect.");
@@ -1768,21 +1772,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return getSupportedFeaturesBitSet().get(WIFI_FEATURE_WPA3_SAE);
     }
 
-    /**
-     * Update interface capabilities
-     * This method is used to update some of interface capabilities defined in overlay
-     */
-    private void updateInterfaceCapabilities() {
+    private void initCapabilitiesAndSecuritySettings() {
         DeviceWiphyCapabilities cap = getDeviceWiphyCapabilities();
         if (cap != null) {
-            // Some devices don't have support of 11ax/be indicated by the chip,
-            // so an override config value is used
-            if (mContext.getResources().getBoolean(R.bool.config_wifi11beSupportOverride)) {
-                cap.setWifiStandardSupport(ScanResult.WIFI_STANDARD_11BE, true);
-            }
-            if (mContext.getResources().getBoolean(R.bool.config_wifi11axSupportOverride)) {
-                cap.setWifiStandardSupport(ScanResult.WIFI_STANDARD_11AX, true);
-            }
             // The Wi-Fi Alliance has introduced the WPA3 security update for Wi-Fi 7, which
             // mandates cross-AKM (Authenticated Key Management) roaming between three AKMs
             // (AKM: 24(SAE-EXT-KEY), AKM:8(SAE) and AKM:2(PSK)). If the station supports
@@ -1797,8 +1789,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     && isWpa3SaeSupported()) {
                 mWifiGlobals.enableWpa3SaeH2eSupport();
             }
-
-            mWifiNative.setDeviceWiphyCapabilities(mInterfaceName, cap);
         }
     }
 
@@ -3128,20 +3118,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         int [] reportedKbps = {mLastTxKbps, mLastRxKbps};
         int [] l2Kbps = {l2TxKbps, l2RxKbps};
         network.updateBwMetrics(reportedKbps, l2Kbps);
-    }
-
-    // Polling has completed, hence we won't have a score anymore
-    private void cleanWifiScore() {
-        mWifiInfo.setLostTxPacketsPerSecond(0);
-        mWifiInfo.setSuccessfulTxPacketsPerSecond(0);
-        mWifiInfo.setRetriedTxPacketsRate(0);
-        mWifiInfo.setSuccessfulRxPacketsPerSecond(0);
-        mWifiScoreReport.reset();
-        mLastLinkLayerStats = null;
-        if (isPrimary()) {
-            mWifiMetrics.resetWifiUnusableEvent();
-        }
-        updateCurrentConnectionInfo();
     }
 
     private void updateLinkProperties(LinkProperties newLp) {
@@ -7106,7 +7082,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     break;
                 }
                 case CMD_ENABLE_RSSI_POLL: {
-                    cleanWifiScore();
                     mEnableRssiPolling = (message.arg1 == 1);
                     mRssiPollToken++;
                     if (mEnableRssiPolling) {

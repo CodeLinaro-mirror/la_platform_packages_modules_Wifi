@@ -1735,7 +1735,8 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         mAlarmManager.dispatch(BUFFERED_WRITE_ALARM_TAG);
         mLooper.dispatchAll();
         mContextConfigStoreMockOrder.verify(mWifiConfigStore).write();
-        verify(mWifiBlocklistMonitor, times(2)).clearBssidBlocklistForSsid(openNetwork.SSID);
+        verify(mWifiBlocklistMonitor).clearBssidBlocklistForSsid(openNetwork.SSID);
+        verify(mWifiBlocklistMonitor).onEnableNetwork(any());
 
         // Now set it disabled.
         assertTrue(mWifiConfigManager.disableNetwork(
@@ -8963,6 +8964,62 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         assertFalse(mWifiConfigManager.isNetworkConfigured(config));
         verifyAddNetworkToWifiConfigManager(config);
         assertTrue(mWifiConfigManager.isNetworkConfigured(config));
+    }
+
+    /**
+     * Verify that the shared settings are correctly updated from private to shared.
+     */
+    @Test
+    public void testUpdateNetwork_privateToShared_multiUserEnhancementFlagOn() {
+        assumeTrue(Environment.isSdkNewerThanB());
+        when(mFeatureFlags.multiUserWifiEnhancement()).thenReturn(true);
+        when(mWifiPermissionsUtil.areTwoAppsFromSameUser(anyInt(), anyInt())).thenReturn(true);
+        WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
+        config.shared = false;
+        config.setAllowedToUpdateByOtherUsers(false);
+        NetworkUpdateResult result =  addNetworkToWifiConfigManager(config);
+
+        assertTrue(result.isSuccess());
+        config = mWifiConfigManager.getConfiguredNetwork(result.getNetworkId());
+        assertFalse(config.shared);
+        assertFalse(config.isAllowedToUpdateByOtherUsers());
+
+        config.shared = true;
+        config.setAllowedToUpdateByOtherUsers(true);
+        result =  updateNetworkToWifiConfigManager(config);
+
+        assertTrue(result.isSuccess());
+        config = mWifiConfigManager.getConfiguredNetwork(result.getNetworkId());
+        assertTrue(config.shared);
+        assertTrue(config.isAllowedToUpdateByOtherUsers());
+    }
+
+    /**
+     * Verify that the shared settings are correctly updated from shared to private.
+     */
+    @Test
+    public void testUpdateNetwork_sharedToPrivate_multiUserEnhancementFlagOn() {
+        assumeTrue(Environment.isSdkNewerThanB());
+        when(mFeatureFlags.multiUserWifiEnhancement()).thenReturn(true);
+        when(mWifiPermissionsUtil.areTwoAppsFromSameUser(anyInt(), anyInt())).thenReturn(true);
+        WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
+        config.shared = true;
+        config.setAllowedToUpdateByOtherUsers(true);
+        NetworkUpdateResult result =  addNetworkToWifiConfigManager(config);
+
+        assertTrue(result.isSuccess());
+        config = mWifiConfigManager.getConfiguredNetwork(result.getNetworkId());
+        assertTrue(config.shared);
+        assertTrue(config.isAllowedToUpdateByOtherUsers());
+
+        config.shared = false;
+        config.setAllowedToUpdateByOtherUsers(false);
+        result =  updateNetworkToWifiConfigManager(config);
+
+        assertTrue(result.isSuccess());
+        config = mWifiConfigManager.getConfiguredNetwork(result.getNetworkId());
+        assertFalse(config.shared);
+        assertFalse(config.isAllowedToUpdateByOtherUsers());
     }
 
     /**

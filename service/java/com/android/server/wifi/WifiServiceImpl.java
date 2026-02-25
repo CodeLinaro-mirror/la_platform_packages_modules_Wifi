@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/**
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 package com.android.server.wifi;
 
 import static android.app.AppOpsManager.MODE_ALLOWED;
@@ -2028,6 +2034,23 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     }
 
     /**
+     * see {@link WifiManager#getWifiLocalOnlyHotspotEnabledState()}
+     * @return One of {@link WifiManager#WIFI_AP_STATE_DISABLED},
+     *         {@link WifiManager#WIFI_AP_STATE_DISABLING},
+     *         {@link WifiManager#WIFI_AP_STATE_ENABLED},
+     *         {@link WifiManager#WIFI_AP_STATE_ENABLING},
+     *         {@link WifiManager#WIFI_AP_STATE_FAILED}
+     */
+    @Override
+    public int getWifiLocalOnlyHotspotEnabledState() {
+        enforceAccessPermission();
+        if (mVerboseLoggingEnabled) {
+            mLog.info("getWifiLocalOnlyHotspotEnabledState uid=%").c(Binder.getCallingUid()).flush();
+        }
+        return mLohsSoftApTracker.getState().getState();
+    }
+
+    /**
      * see {@link android.net.wifi.WifiManager#updateInterfaceIpState(String, int)}
      *
      * The possible modes include: {@link WifiManager#IFACE_IP_MODE_TETHERED},
@@ -3154,6 +3177,19 @@ public class WifiServiceImpl extends IWifiManager.Stub {
             }
         }
 
+      /**
+         * Unregisters LocalOnlyHotspot requests and stops the hotspot.
+         */
+        public void stopAllRequests() {
+          synchronized (mLocalOnlyHotspotRequests) {
+              if (!mLocalOnlyHotspotRequests.isEmpty()) {
+                  // This is used to take down LOHS in some cases such as suspend to disk.
+                  sendHotspotStoppedMessageToAllLOHSRequestInfoEntriesLocked();
+                  stopIfEmptyLocked();
+              }
+          }
+        }
+
         @GuardedBy("mLocalOnlyHotspotRequests")
         private void stopIfEmptyLocked() {
             if (mLocalOnlyHotspotRequests.isEmpty()) {
@@ -3360,7 +3396,8 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         final int pid = Binder.getCallingPid();
         mWifiPermissionsUtil.checkPackage(uid, packageName);
 
-        mLog.info("start lohs uid=% pid=%").c(uid).c(pid).flush();
+        mLog.info("startLocalOnlyHotspot package=% uid=% pid=%").c(packageName)
+                .c(uid).c(pid).flush();
 
         // Permission requirements are different with/without custom config.
         // From B, the custom config may from public API, check isCalledFromSystemApi
@@ -3509,6 +3546,26 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         mWifiThreadRunner.post(() ->
                 mLohsSoftApTracker.unregisterSoftApCallback(callback),
                 TAG + "#unregisterLocalOnlyHotspotSoftApCallback");
+    }
+
+   /**
+     * see {@link WifiManager#stopAllLocalOnlyHotspotRequests()}
+     *
+     */
+    @Override
+    public boolean stopAllLocalOnlyHotspotRequests(String packageName) {
+        if (enforceChangePermission(packageName) != MODE_ALLOWED) {
+           return false;
+        }
+
+        final int uid = Binder.getCallingUid();
+        final int pid = Binder.getCallingPid();
+
+        mLog.info("stopAllLocalOnlyHotspotRequests package=% uid=% pid=%").c(packageName)
+                .c(uid).c(pid).flush();
+
+        mLohsSoftApTracker.stopAllRequests();
+        return true;
     }
 
     /**

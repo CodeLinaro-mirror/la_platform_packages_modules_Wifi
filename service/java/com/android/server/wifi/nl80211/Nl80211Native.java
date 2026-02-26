@@ -1711,7 +1711,8 @@ public class Nl80211Native {
         List<Nl80211Utils.PnoScanPlan> plans = new ArrayList<>();
         plans.add(new Nl80211Utils.PnoScanPlan(
                 (int) pnoSettings.getIntervalMillis(), pnoSettings.getScanIterations()));
-        plans.add(new Nl80211Utils.PnoScanPlan(maxRequestedScanIntervalSeconds, 0 /* ignored */));
+        plans.add(new Nl80211Utils.PnoScanPlan(
+                maxRequestedScanIntervalSeconds * 1000, 0 /* ignored */));
         return plans;
     }
 

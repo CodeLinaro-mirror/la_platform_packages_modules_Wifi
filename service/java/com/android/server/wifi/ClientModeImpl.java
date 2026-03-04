@@ -4173,6 +4173,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         switch(reason) {
             case StaIfaceReasonCode.UNSPECIFIED:
             case StaIfaceReasonCode.DEAUTH_LEAVING:
+            // Most driver and firmware implementations use the RESERVED reason code for
+            // disconnections caused by continuous beacon loss
+            case StaIfaceReasonCode.RESERVED:
                 logi("Keep PMK cache for network disconnection reason " + reason);
                 break;
             default:
@@ -9382,6 +9385,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             }
         }
         mWifiBlocklistMonitor.updateAndGetBssidBlocklistForSsids(Set.of(configuration.SSID));
+        mFrameworkDisconnectReasonOverride = WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__DISCONNECT_DISALLOW_CURRENT_SUGGESTED_NETWORK;
+        sendMessageAtFrontOfQueue(CMD_DISCONNECT,
+                StaEvent.DISCONNECT_DISALLOW_CURRENT_SUGGESTED_NETWORK);
     }
 
     private void setIpClientManager(IpClientManager ipClientManager) {

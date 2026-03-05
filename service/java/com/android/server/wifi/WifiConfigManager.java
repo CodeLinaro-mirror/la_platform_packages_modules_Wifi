@@ -1460,10 +1460,12 @@ public class WifiConfigManager {
         internalConfig.setSendDhcpHostnameEnabled(externalConfig.isSendDhcpHostnameEnabled());
         internalConfig.setWifi7Enabled(externalConfig.isWifi7Enabled());
         // TODO: b/449013275 Add Environment.isSdkNewerThanB())
-        if (mFeatureFlags.multiUserWifiEnhancement()
-                && externalConfig.shared) {
-            internalConfig.setAllowedToUpdateByOtherUsers(
-                    externalConfig.isAllowedToUpdateByOtherUsers());
+        if (mFeatureFlags.multiUserWifiEnhancement()) {
+            internalConfig.shared = externalConfig.shared;
+            if (externalConfig.shared) {
+                internalConfig.setAllowedToUpdateByOtherUsers(
+                        externalConfig.isAllowedToUpdateByOtherUsers());
+            }
         }
     }
 
@@ -2530,7 +2532,7 @@ public class WifiConfigManager {
                 networkId, WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE)) {
             return false;
         }
-        mWifiBlocklistMonitor.clearBssidBlocklistForSsid(config.SSID);
+        mWifiBlocklistMonitor.onEnableNetwork(config);
         saveToStore();
         return true;
     }

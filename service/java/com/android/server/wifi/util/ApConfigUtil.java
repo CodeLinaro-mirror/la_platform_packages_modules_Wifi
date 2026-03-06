@@ -920,8 +920,10 @@ public class ApConfigUtil {
         if (!ApConfigUtil.isIeee80211beSupported(context)) {
             return false;
         }
-        if (!isMLDApSupportMLO) {
-            // For non-MLO case, check capabilities
+        if (!(isMLDApSupportMLO && isBridgedMode)) {
+            // For non-MLO case or non bridged mode, check capabilities
+            // In dual wifi case: primary chip support 11BE, while 2nd chip doesn't support 11BE
+            // When 2nd chip start LOHS, always check 11BE capability from wiphy capability.
             if (capabilities == null || !capabilities.isWifiStandardSupported(
                     ScanResult.WIFI_STANDARD_11BE)) {
                 return false;

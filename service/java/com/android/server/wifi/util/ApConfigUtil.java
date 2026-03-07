@@ -37,6 +37,7 @@ import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_STA;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.os.SystemProperties;
 import android.content.Context;
 import android.content.res.Resources;
 import android.net.wifi.CoexUnsafeChannel;
@@ -1399,7 +1400,9 @@ public class ApConfigUtil {
             case BAND_6GHZ:
                 return context.getResourceCache().getBoolean(R.bool.config_wifi6ghzSupport)
                         && context.getResourceCache().getBoolean(
-                        R.bool.config_wifiSoftap6ghzSupported);
+                        R.bool.config_wifiSoftap6ghzSupported)
+                        && SystemProperties.getBoolean(
+                        "ro.vendor.wlan.6ghz", false);
             case SoftApConfiguration.BAND_60GHZ:
                 return context.getResourceCache().getBoolean(R.bool.config_wifi60ghzSupport)
                         && context.getResourceCache().getBoolean(

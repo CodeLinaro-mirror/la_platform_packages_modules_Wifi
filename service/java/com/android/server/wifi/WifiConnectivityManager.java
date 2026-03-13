@@ -3880,7 +3880,7 @@ public class WifiConnectivityManager {
             }
 
             secondaryBandType = ScanResult.toBandType(secondaryInfo.getFrequency());
-            if (primaryCmmCandidate.getBandType() == secondaryBandType) {
+            if (primaryCmmCandidate != null && (primaryCmmCandidate.getBandType() == secondaryBandType)) {
                 needDisconnect = true;
             }
         }

@@ -13909,7 +13909,8 @@ public class WifiManager {
             throw new UnsupportedOperationException();
         }
         List<AdvancedProtectionFeature> features = new ArrayList<>();
-        if (android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin()) {
+        if (Environment.isSdkAtLeastC()
+                && Flags.disableInsecureWifiAutojoinWhenAapmOn()) {
             features.add(
                     new AdvancedProtectionFeature(
                             AdvancedProtectionManager.FEATURE_ID_DISALLOW_INSECURE_WIFI_AUTOJOIN));

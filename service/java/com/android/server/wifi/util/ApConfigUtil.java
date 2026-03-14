@@ -36,6 +36,7 @@ import static com.android.server.wifi.HalDeviceManager.HDM_CREATE_IFACE_STA;
 
 import android.annotation.NonNull;
 import android.annotation.Nullable;
+import android.os.SystemProperties;
 import android.content.Context;
 import android.content.res.Resources;
 import android.net.wifi.CoexUnsafeChannel;
@@ -919,8 +920,10 @@ public class ApConfigUtil {
         if (!ApConfigUtil.isIeee80211beSupported(context)) {
             return false;
         }
-        if (!isMLDApSupportMLO) {
-            // For non-MLO case, check capabilities
+        if (!(isMLDApSupportMLO && isBridgedMode)) {
+            // For non-MLO case or non bridged mode, check capabilities
+            // In dual wifi case: primary chip support 11BE, while 2nd chip doesn't support 11BE
+            // When 2nd chip start LOHS, always check 11BE capability from wiphy capability.
             if (capabilities == null || !capabilities.isWifiStandardSupported(
                     ScanResult.WIFI_STANDARD_11BE)) {
                 return false;
@@ -1381,7 +1384,9 @@ public class ApConfigUtil {
             case SoftApConfiguration.BAND_6GHZ:
                 return context.getResourceCache().getBoolean(R.bool.config_wifi6ghzSupport)
                         && context.getResourceCache().getBoolean(
-                        R.bool.config_wifiSoftap6ghzSupported);
+                        R.bool.config_wifiSoftap6ghzSupported)
+                        && SystemProperties.getBoolean(
+                        "ro.vendor.wlan.6ghz", false);
             case SoftApConfiguration.BAND_60GHZ:
                 return context.getResourceCache().getBoolean(R.bool.config_wifi60ghzSupport)
                         && context.getResourceCache().getBoolean(

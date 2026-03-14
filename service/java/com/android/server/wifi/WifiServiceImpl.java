@@ -15,8 +15,8 @@
  */
 
 /**
- * Changes from Qualcomm Innovation Center are provided under the following license:
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
@@ -206,6 +206,7 @@ import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.WorkSource;
 import android.os.connectivity.WifiActivityEnergyInfo;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.telephony.CarrierConfigManager;
 import android.telephony.PhoneStateListener;
@@ -3641,7 +3642,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         mLog.info("stopAllLocalOnlyHotspotRequests package=% uid=% pid=%").c(packageName)
                 .c(uid).c(pid).flush();
         for (LohsSoftApTracker mApTracker : mLohsSoftApTrackers)
-             mApTracker.stopAll();
+            mApTracker.stopAllRequests();
         return true;
     }
 
@@ -6027,7 +6028,8 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     }
 
     private boolean is6GhzBandSupportedInternal() {
-        if (mResourceCache.getBoolean(R.bool.config_wifi6ghzSupport)) {
+        if (mResourceCache.getBoolean(R.bool.config_wifi6ghzSupport)
+            && SystemProperties.getBoolean("ro.vendor.wlan.6ghz", false)) {
             return true;
         }
         return mActiveModeWarden.isBandSupportedForSta(WifiScanner.WIFI_BAND_6_GHZ);

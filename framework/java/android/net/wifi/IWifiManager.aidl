@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+/**
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
 package android.net.wifi;
 
 import android.net.DhcpInfo;
@@ -266,6 +271,10 @@ interface IWifiManager {
     void registerLocalOnlyHotspotSoftApCallback(in ISoftApCallback callback, in Bundle extras);
 
     void unregisterLocalOnlyHotspotSoftApCallback(in ISoftApCallback callback, in Bundle extras);
+
+    int getWifiLocalOnlyHotspotEnabledState();
+
+    boolean stopAllLocalOnlyHotspotRequests(String packageName);
 
     void startWatchLocalOnlyHotspot(in ILocalOnlyHotspotCallback callback);
 

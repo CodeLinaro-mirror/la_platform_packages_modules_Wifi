@@ -14,6 +14,12 @@
  * limitations under the License.
  */
 
+/**
+ * Changes from Qualcomm Technologies, Inc. are provided under the following license:
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+
 package android.net.wifi;
 
 import static android.Manifest.permission.ACCESS_FINE_LOCATION;
@@ -6443,6 +6449,23 @@ public class WifiManager {
         }
     }
 
+   /**
+    * Allow system applications to stop LocalOnlyHotspot in some speical cases such as suspend to disk.
+    *
+    * @hide
+    */
+    @RequiresPermission(android.Manifest.permission.CHANGE_WIFI_STATE)
+    public boolean stopAllLocalOnlyHotspotRequests() {
+        synchronized (mLock) {
+            try {
+                mLOHSCallbackProxy = null;
+                return mService.stopAllLocalOnlyHotspotRequests(mContext.getOpPackageName());
+            } catch (RemoteException e) {
+                throw e.rethrowFromSystemServer();
+            }
+        }
+    }
+
     /**
      * Registers a callback for local only hotspot. See {@link SoftApCallback}. Caller will receive
      * the following callbacks on registration:
@@ -6625,6 +6648,36 @@ public class WifiManager {
     @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
     public boolean isWifiApEnabled() {
         return getWifiApState() == WIFI_AP_STATE_ENABLED;
+    }
+
+    /**
+     * Gets the local-only Wi-Fi hotspot enabled state.
+     * @return One of {@link #WIFI_AP_STATE_DISABLED},
+     *         {@link #WIFI_AP_STATE_DISABLING}, {@link #WIFI_AP_STATE_ENABLED},
+     *         {@link #WIFI_AP_STATE_ENABLING}, {@link #WIFI_AP_STATE_FAILED}
+     * @see #isWifiLocalOnlyHotspotEnabled()
+     *
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
+    public int getWifiLocalOnlyHotspotState() {
+        try {
+            return mService.getWifiLocalOnlyHotspotEnabledState();
+        } catch (RemoteException e) {
+            throw e.rethrowFromSystemServer();
+        }
+    }
+
+    /**
+     * Return whether local-only Wi-Fi hotspot is enabled or disabled.
+     * @return {@code true} if local-only Wi-Fi hotspot is enabled
+     * @see #getWifiLocalOnlyHotspotState()
+     *
+     * @hide
+     */
+    @RequiresPermission(android.Manifest.permission.ACCESS_WIFI_STATE)
+    public boolean isWifiLocalOnlyHotspotEnabled() {
+        return getWifiLocalOnlyHotspotState() == WIFI_AP_STATE_ENABLED;
     }
 
     /**

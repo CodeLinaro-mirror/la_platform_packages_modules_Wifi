@@ -346,24 +346,25 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
 
     /**
      * Enable and configure Aware.
-     *
-     * @param transactionId                 Transaction ID for the transaction - used in the
-     *                                      async callback to match with the original request.
-     * @param configRequest                 Requested Aware configuration.
-     * @param initialConfiguration          Specifies whether initial configuration
-     *                                      (true) or an update (false) to the configuration.
-     * @param isInteractive                 PowerManager.isInteractive
-     * @param isIdle                        PowerManager.isIdle
-     * @param rangingEnabled                Indicates whether or not enable ranging.
+     * @param transactionId Transaction ID for the transaction - used in the
+     *            async callback to match with the original request.
+     * @param configRequest Requested Aware configuration.
+     * @param notifyIdentityChange Indicates whether or not to get address change callbacks.
+     * @param initialConfiguration Specifies whether initial configuration
+*            (true) or an update (false) to the configuration.
+     * @param isInteractive PowerManager.isInteractive
+     * @param isIdle PowerManager.isIdle
+     * @param rangingEnabled Indicates whether or not enable ranging.
      * @param isInstantCommunicationEnabled Indicates whether or not enable instant communication
-     * @param clusterId                     the id of the cluster to join.
+     * @param instantModeChannel
+     * @param clusterId the id of the cluster to join.
      */
     public boolean enableAndConfigure(short transactionId, ConfigRequest configRequest,
-            boolean initialConfiguration, boolean isInteractive,
+            boolean notifyIdentityChange, boolean initialConfiguration, boolean isInteractive,
             boolean isIdle, boolean rangingEnabled, boolean isInstantCommunicationEnabled,
             int instantModeChannel, int clusterId) {
         Log.d(TAG, "enableAndConfigure: transactionId=" + transactionId + ", configRequest="
-                + configRequest
+                + configRequest + ", notifyIdentityChange=" + notifyIdentityChange
                 + ", initialConfiguration=" + initialConfiguration
                 + ", isInteractive=" + isInteractive + ", isIdle=" + isIdle
                 + ", isRangingEnabled=" + rangingEnabled
@@ -373,7 +374,7 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
         recordTransactionId(transactionId);
         AwareIfaceAidlSupplicantImpl supplicant = mHal.getSupplicantNanIface();
         if (supplicant != null) {
-            return supplicant.enableAndConfigure(transactionId, configRequest,
+            return supplicant.enableAndConfigure(transactionId, configRequest, notifyIdentityChange,
                     initialConfiguration, getPowerParameters(isInteractive, isIdle));
         }
         WifiNanIface iface = mHal.getWifiNanIface();
@@ -381,7 +382,7 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
             Log.e(TAG, "enableAndConfigure: null interface");
             return false;
         }
-        return iface.enableAndConfigure(transactionId, configRequest,
+        return iface.enableAndConfigure(transactionId, configRequest, notifyIdentityChange,
                 initialConfiguration, rangingEnabled,
                 isInstantCommunicationEnabled, instantModeChannel, clusterId,
                 mExternalSetParams.getOrDefault(PARAM_MAC_RANDOM_INTERVAL_SEC,

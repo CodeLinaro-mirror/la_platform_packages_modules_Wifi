@@ -115,10 +115,11 @@ public class NetworkSuggestionNominatorTest extends WifiBaseTest {
         mSession = ExtendedMockito.mockitoSession()
                 .mockStatic(ActivityManager.class, withSettings().lenient())
                 .mockStatic(Flags.class, withSettings().lenient())
+                .mockStatic(android.security.Flags.class, withSettings().lenient())
                 .strictness(Strictness.LENIENT)
                 .startMocking();
         // Mock necessary method and enable flag by default to make sure test won't be broken.
-        when(Flags.disableInsecureWifiAutojoinWhenAapmOn()).thenReturn(false);
+        when(android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin()).thenReturn(false);
         when(Flags.multiUserWifiEnhancement()).thenReturn(true);
         when(ActivityManager.getCurrentUser()).thenReturn(0);
         mNetworkSuggestionNominator = new NetworkSuggestionNominator(
@@ -619,8 +620,8 @@ public class NetworkSuggestionNominatorTest extends WifiBaseTest {
         // check for any saved networks.
         verify(mWifiConfigManager, times(suggestionSsids.length))
                 .isNetworkTemporarilyDisabledByUser(anyString());
-        if (Environment.isSdkAtLeastC()
-                && Flags.disableInsecureWifiAutojoinWhenAapmOn()) {
+        if (Environment.isSdkNewerThanB()
+                && android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin()) {
             verify(mWifiDeviceStateChangeManager, times(suggestionSsids.length))
                     .isAapmEnabled();
         }
@@ -817,8 +818,8 @@ public class NetworkSuggestionNominatorTest extends WifiBaseTest {
 
         verify(mWifiConfigManager, times(suggestionSsids.length))
                 .isNetworkTemporarilyDisabledByUser(anyString());
-        if (Environment.isSdkAtLeastC()
-                && Flags.disableInsecureWifiAutojoinWhenAapmOn()) {
+        if (Environment.isSdkNewerThanB()
+                && android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin()) {
             verify(mWifiDeviceStateChangeManager, times(suggestionSsids.length))
                     .isAapmEnabled();
         }
@@ -2078,8 +2079,8 @@ public class NetworkSuggestionNominatorTest extends WifiBaseTest {
      */
     @Test
     public void testAapmModeAndAllowedAutoJoinInAdvancedProtection() {
-        assumeTrue(Environment.isSdkAtLeastC());
-        when(Flags.disableInsecureWifiAutojoinWhenAapmOn()).thenReturn(true);
+        assumeTrue(Environment.isSdkNewerThanB());
+        when(android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin()).thenReturn(true);
         String[] scanSsids = {"test1"};
         String[] bssids = {"6c:f3:7f:ae:8c:f3"};
         int[] freqs = {2470};

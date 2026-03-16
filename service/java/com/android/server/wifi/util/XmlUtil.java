@@ -634,8 +634,7 @@ public class XmlUtil {
                         Flags.multiUserWifiEnhancement()
                         ? configuration.isAllowedToUpdateByOtherUsers() : true /* default */);
             }
-            if (Environment.isSdkAtLeastC()
-                    && Flags.disableInsecureWifiAutojoinWhenAapmOn()) {
+            if (android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin()) {
                 writeNextValue(
                         out, XML_TAG_ALLOWED_AUTO_JOIN_IN_ADVANCED_PROTECTION,
                         configuration.isAutoJoinInAdvancedProtectionModeEnabled());
@@ -1138,8 +1137,8 @@ public class XmlUtil {
                             break;
                         case XML_TAG_ALLOWED_AUTO_JOIN_IN_ADVANCED_PROTECTION:
                             allowedAutoJoinInAdvancedProtectionExists = true;
-                            if (Environment.isSdkAtLeastC()
-                                    && Flags.disableInsecureWifiAutojoinWhenAapmOn()) {
+                            if (android.security.Flags
+                                            .aapmFeatureDisableInsecureWifiAutojoin()) {
                                 configuration.setAutoJoinInAdvancedProtectionModeEnabled(
                                         (boolean) value);
                             }
@@ -1235,8 +1234,7 @@ public class XmlUtil {
                 configuration.setCreatorUserId(userId);
             }
             configuration.convertLegacyFieldsToSecurityParamsIfNeeded();
-            if (Environment.isSdkAtLeastC()
-                    && Flags.disableInsecureWifiAutojoinWhenAapmOn()) {
+            if (android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin()) {
                 if (!allowedAutoJoinInAdvancedProtectionExists) {
                     for (SecurityParams p : configuration.getSecurityParamsList()) {
                         if (p.isSecurityType(WifiConfiguration.SECURITY_TYPE_OPEN)

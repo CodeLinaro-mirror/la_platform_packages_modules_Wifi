@@ -36,12 +36,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.net.MacAddress;
+import android.net.wifi.aware.TlvBufferUtils;
+import java.util.Arrays;
 import android.net.wifi.aware.AwarePairingConfig;
 import android.net.wifi.aware.Characteristics;
 import android.net.wifi.aware.ConfigRequest;
 import android.net.wifi.aware.PublishConfig;
 import android.net.wifi.aware.SubscribeConfig;
-import android.net.wifi.aware.TlvBufferUtils;
 import android.net.wifi.aware.WifiAwareDataPathSecurityConfig;
 import android.os.RemoteException;
 import android.os.ServiceSpecificException;
@@ -56,8 +57,8 @@ import android.system.wifi.mainline_supplicant.NanEnableRequest;
 import android.system.wifi.mainline_supplicant.NanInitiateDataPathRequest;
 import android.system.wifi.mainline_supplicant.NanPairingRequest;
 import android.system.wifi.mainline_supplicant.NanPublishRequest;
-import android.system.wifi.mainline_supplicant.NanRangingIndication;
 import android.system.wifi.mainline_supplicant.NanRespondToDataPathIndicationRequest;
+import android.system.wifi.mainline_supplicant.NanRangingIndication;
 import android.system.wifi.mainline_supplicant.NanRespondToPairingIndicationRequest;
 import android.system.wifi.mainline_supplicant.NanSubscribeRequest;
 import android.system.wifi.mainline_supplicant.NanTransmitFollowupRequest;
@@ -162,7 +163,7 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         ConfigRequest configRequest = new ConfigRequest.Builder().build();
         PowerParameters powerParameters = new PowerParameters();
 
-        assertTrue(mDut.enableAndConfigure(transactionId, configRequest, true,
+        assertTrue(mDut.enableAndConfigure(transactionId, configRequest, true, true,
                 powerParameters));
 
         verify(mMockSupplicantNanIface).enableRequest(eq((char) transactionId),
@@ -175,7 +176,7 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         ConfigRequest configRequest = new ConfigRequest.Builder().build();
         PowerParameters powerParameters = new PowerParameters();
 
-        assertTrue(mDut.enableAndConfigure(transactionId, configRequest, false,
+        assertTrue(mDut.enableAndConfigure(transactionId, configRequest, false, false,
                 powerParameters));
 
         verify(mMockSupplicantNanIface).configRequest(eq((char) transactionId),
@@ -191,7 +192,7 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         doThrow(new RemoteException()).when(mMockSupplicantNanIface).configRequest(anyChar(),
                 any());
 
-        assertFalse(mDut.enableAndConfigure(transactionId, configRequest, false,
+        assertFalse(mDut.enableAndConfigure(transactionId, configRequest, false, false,
                 powerParameters));
     }
 
@@ -204,7 +205,7 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         doThrow(new ServiceSpecificException(0, "error")).when(mMockSupplicantNanIface)
                 .configRequest(anyChar(), any());
 
-        assertFalse(mDut.enableAndConfigure(transactionId, configRequest, false,
+        assertFalse(mDut.enableAndConfigure(transactionId, configRequest, false, false,
                 powerParameters));
     }
 

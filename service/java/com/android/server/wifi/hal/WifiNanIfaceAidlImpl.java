@@ -176,11 +176,12 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
     }
 
     /**
-     * See comments for {@link IWifiNanIface#enableAndConfigure(short, ConfigRequest, boolean, boolean, boolean, int, int, int, WifiNanIface.PowerParameters)}
+     * See comments for {@link IWifiNanIface#enableAndConfigure(short, ConfigRequest, boolean,
+     * boolean, boolean, boolean, int, int, int, WifiNanIface.PowerParameters)}
      */
     @Override
     public boolean enableAndConfigure(short transactionId, ConfigRequest configRequest,
-            boolean initialConfiguration, boolean rangingEnabled,
+            boolean notifyIdentityChange, boolean initialConfiguration, boolean rangingEnabled,
             boolean isInstantCommunicationEnabled, int instantModeChannel, int clusterId,
             int macAddressRandomizationIntervalSec, WifiNanIface.PowerParameters powerParameters) {
         final String methodStr = "enableAndConfigure";
@@ -190,12 +191,12 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
                     rangingEnabled, isInstantCommunicationEnabled, instantModeChannel, clusterId);
             if (initialConfiguration) {
                 NanEnableRequest req = createNanEnableRequest(
-                        configRequest, supplemental,
+                        configRequest, notifyIdentityChange, supplemental,
                         macAddressRandomizationIntervalSec, powerParameters);
                 mWifiNanIface.enableRequest((char) transactionId, req, supplemental);
             } else {
                 NanConfigRequest req = createNanConfigRequest(
-                        configRequest, supplemental,
+                        configRequest, notifyIdentityChange, supplemental,
                         macAddressRandomizationIntervalSec, powerParameters);
                 mWifiNanIface.configRequest((char) transactionId, req, supplemental);
             }
@@ -686,7 +687,7 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
     }
 
     private static NanEnableRequest createNanEnableRequest(
-            ConfigRequest configRequest,
+            ConfigRequest configRequest, boolean notifyIdentityChange,
             NanConfigRequestSupplemental configSupplemental,
             int macAddressRandomizationIntervalSec, WifiNanIface.PowerParameters powerParameters) {
         NanEnableRequest req = new NanEnableRequest();
@@ -700,9 +701,9 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
         req.hopCountMax = 2;
         req.configParams = new NanConfigRequest();
         req.configParams.masterPref = (byte) configRequest.mMasterPreference;
-        req.configParams.disableDiscoveryAddressChangeIndication = false;
-        req.configParams.disableStartedClusterIndication = false;
-        req.configParams.disableJoinedClusterIndication = false;
+        req.configParams.disableDiscoveryAddressChangeIndication = !notifyIdentityChange;
+        req.configParams.disableStartedClusterIndication = !notifyIdentityChange;
+        req.configParams.disableJoinedClusterIndication = !notifyIdentityChange;
         req.configParams.includePublishServiceIdsInBeacon = true;
         req.configParams.numberOfPublishServiceIdsInBeacon = 0;
         req.configParams.includeSubscribeServiceIdsInBeacon = true;
@@ -749,7 +750,7 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
     }
 
     private static NanConfigRequest createNanConfigRequest(
-            ConfigRequest configRequest,
+            ConfigRequest configRequest, boolean notifyIdentityChange,
             NanConfigRequestSupplemental configSupplemental,
             int macAddressRandomizationIntervalSec, WifiNanIface.PowerParameters powerParameters) {
         NanConfigRequest req = new NanConfigRequest();
@@ -757,9 +758,9 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
                 createNanBandSpecificConfigs(configRequest);
 
         req.masterPref = (byte) configRequest.mMasterPreference;
-        req.disableDiscoveryAddressChangeIndication = false;
-        req.disableStartedClusterIndication = false;
-        req.disableJoinedClusterIndication = false;
+        req.disableDiscoveryAddressChangeIndication = !notifyIdentityChange;
+        req.disableStartedClusterIndication = !notifyIdentityChange;
+        req.disableJoinedClusterIndication = !notifyIdentityChange;
         req.includePublishServiceIdsInBeacon = true;
         req.numberOfPublishServiceIdsInBeacon = 0;
         req.includeSubscribeServiceIdsInBeacon = true;

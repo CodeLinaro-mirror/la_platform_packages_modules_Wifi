@@ -402,14 +402,16 @@ class TwtManager {
     public class WifiNativeTwtEvents implements WifiNative.WifiTwtEvents {
         @Override
         public void onTwtFailure(int cmdId, int twtErrorCode) {
-            // Get the Callback object to handle different callback types
-            Callback callback = mCommandCallbacks.get(cmdId);
-            if (callback == null) {
+            ITwtCallback iTwtCallback = (ITwtCallback) getCallback(cmdId);
+            if (iTwtCallback == null) {
                 Log.e(TAG, "onTwtFailure: Command Id is not registered " + cmdId);
                 return;
             }
-
-            notifyFailure(callback.mCallback, callback.mType, twtErrorCode);
+            try {
+                iTwtCallback.onFailure(twtErrorCode);
+            } catch (RemoteException e) {
+                Log.e(TAG, e.getMessage(), e);
+            }
             unregisterCallback(cmdId);
         }
 

@@ -68,8 +68,9 @@ public class SavedNetworkNominatorTest extends WifiBaseTest {
         mStaticMockSession = mockitoSession().strictness(Strictness.LENIENT)
                 .mockStatic(WifiInjector.class)
                 .mockStatic(Flags.class)
+                .mockStatic(android.security.Flags.class)
                 .startMocking();
-        lenient().when(Flags.disableInsecureWifiAutojoinWhenAapmOn())
+        lenient().when(android.security.Flags.aapmFeatureDisableInsecureWifiAutojoin())
                 .thenReturn(true);
         lenient().when(WifiInjector.getInstance()).thenReturn(mWifiInjector);
         when(mWifiInjector.getActiveModeWarden()).thenReturn(mActiveModeWarden);
@@ -576,7 +577,7 @@ public class SavedNetworkNominatorTest extends WifiBaseTest {
      */
     @Test
     public void testAapmModeAndAllowedAutoJoinInAdvancedProtection() {
-        assumeTrue(Environment.isSdkAtLeastC());
+        assumeTrue(Environment.isSdkNewerThanB());
         String[] ssids = {"\"test1\""};
         String[] bssids = {"6c:f3:7f:ae:8c:f3"};
         int[] freqs = {2470};

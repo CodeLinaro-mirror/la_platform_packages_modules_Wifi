@@ -209,13 +209,13 @@ public class AwareIfaceAidlSupplicantImpl {
      * @return True if the request was successful, false otherwise.
      */
     public boolean enableAndConfigure(short transactionId, ConfigRequest configRequest,
-            boolean initialConfiguration,
+            boolean notifyIdentityChange, boolean initialConfiguration,
             WifiNanIface.PowerParameters powerParameters) {
         final String methodStr = "enableAndConfigure";
         try {
             if (!checkIfaceAndLogFailure(methodStr)) return false;
             NanConfigRequest configReq = createNanConfigRequest(
-                        configRequest, powerParameters);
+                        configRequest, notifyIdentityChange, powerParameters);
             if (initialConfiguration) {
                 NanEnableRequest req = createNanEnableRequest(configRequest, configReq);
                 mWifiNanIface.enableRequest((char) transactionId, req, configReq);
@@ -583,15 +583,15 @@ public class AwareIfaceAidlSupplicantImpl {
     }
 
     private NanConfigRequest createNanConfigRequest(
-            ConfigRequest configRequest,
+            ConfigRequest configRequest, boolean notifyIdentityChange,
             WifiNanIface.PowerParameters powerParameters) {
         NanConfigRequest req = new NanConfigRequest();
         NanBandSpecificConfig[] nanBandSpecificConfigs =
                 createNanBandSpecificConfigs(configRequest);
 
         req.masterPref = (byte) configRequest.mMasterPreference;
-        req.disableStartedClusterIndication = false;
-        req.disableJoinedClusterIndication = false;
+        req.disableStartedClusterIndication = !notifyIdentityChange;
+        req.disableJoinedClusterIndication = !notifyIdentityChange;
         req.includePublishServiceIdsInBeacon = true;
         req.numberOfPublishServiceIdsInBeacon = 0;
         req.includeSubscribeServiceIdsInBeacon = true;

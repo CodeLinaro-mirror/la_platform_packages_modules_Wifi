@@ -406,46 +406,6 @@ public class WifiDataStall {
         return deltas;
     }
 
-    private static class Throughputs {
-        int txTputKbps = INVALID_THROUGHPUT;
-        int rxTputKbps = INVALID_THROUGHPUT;
-        boolean isTxTputLow = false;
-        boolean isRxTputLow = false;
-    }
-
-    private void updateThroughput(Throughputs throughputs, int txLinkSpeedMbps, int rxLinkSpeedMbps,
-            boolean isTxTrafficHigh, boolean isRxTrafficHigh, int txPer, int ccaLevel) {
-        if (txLinkSpeedMbps > 0) {
-            // Exclude update with low rate management frames
-            if (isTxTrafficHigh
-                    || txLinkSpeedMbps > mDeviceConfigFacade.getTxLinkSpeedLowThresholdMbps()) {
-                long txTput = (long) txLinkSpeedMbps * 1000 * (100 - txPer) / 100;
-                txTput = txTput * (CHANNEL_UTILIZATION_SCALE - ccaLevel)
-                        / CHANNEL_UTILIZATION_SCALE;
-                throughputs.txTputKbps = (int) txTput;
-            }
-            throughputs.isTxTputLow =
-                    throughputs.txTputKbps < mDeviceConfigFacade.getDataStallTxTputThrKbps();
-        } else {
-            throughputs.txTputKbps = INVALID_THROUGHPUT;
-        }
-
-        if (rxLinkSpeedMbps > 0) {
-            // Exclude update with low rate management frames
-            if (isRxTrafficHigh
-                    || rxLinkSpeedMbps > mDeviceConfigFacade.getRxLinkSpeedLowThresholdMbps()) {
-                long rxTput = (long) rxLinkSpeedMbps * 1000;
-                rxTput = rxTput * (CHANNEL_UTILIZATION_SCALE - ccaLevel)
-                        / CHANNEL_UTILIZATION_SCALE;
-                throughputs.rxTputKbps = (int) rxTput;
-            }
-            throughputs.isRxTputLow =
-                    throughputs.rxTputKbps < mDeviceConfigFacade.getDataStallRxTputThrKbps();
-        } else {
-            throughputs.rxTputKbps = INVALID_THROUGHPUT;
-        }
-    }
-
     public int checkDataStallAndThroughputSufficiency(
             @NonNull String ifaceName,
             @NonNull ConnectionCapabilities connectionCapabilities,
@@ -515,13 +475,32 @@ public class WifiDataStall {
         int txPer = updateTxPer(deltas.txSuccessDelta, deltas.txRetriesDelta, isSameBssidAndFreq,
                 isTxTrafficHigh);
 
-        Throughputs throughputs = new Throughputs();
-        throughputs.txTputKbps = mTxTputKbps;
-        throughputs.rxTputKbps = mRxTputKbps;
-        updateThroughput(throughputs, txLinkSpeedMbps, rxLinkSpeedMbps,
-                isTxTrafficHigh, isRxTrafficHigh, txPer, ccaLevel);
-        mTxTputKbps = throughputs.txTputKbps;
-        mRxTputKbps = throughputs.rxTputKbps;
+        boolean isTxTputLow = false;
+        boolean isRxTputLow = false;
+
+        if (txLinkSpeedMbps > 0) {
+            // Exclude update with low rate management frames
+            if (isTxTrafficHigh
+                    || txLinkSpeedMbps > mDeviceConfigFacade.getTxLinkSpeedLowThresholdMbps()) {
+                mTxTputKbps = (int) ((long) txLinkSpeedMbps * 1000 * (100 - txPer) / 100
+                        * (CHANNEL_UTILIZATION_SCALE  - ccaLevel) / CHANNEL_UTILIZATION_SCALE);
+            }
+            isTxTputLow =  mTxTputKbps < mDeviceConfigFacade.getDataStallTxTputThrKbps();
+        } else {
+            mTxTputKbps = INVALID_THROUGHPUT;
+        }
+
+        if (rxLinkSpeedMbps > 0) {
+            // Exclude update with low rate management frames
+            if (isRxTrafficHigh
+                    || rxLinkSpeedMbps > mDeviceConfigFacade.getRxLinkSpeedLowThresholdMbps()) {
+                mRxTputKbps = (int) ((long) rxLinkSpeedMbps * 1000
+                        * (CHANNEL_UTILIZATION_SCALE  - ccaLevel) / CHANNEL_UTILIZATION_SCALE);
+            }
+            isRxTputLow = mRxTputKbps < mDeviceConfigFacade.getDataStallRxTputThrKbps();
+        } else {
+            mRxTputKbps = INVALID_THROUGHPUT;
+        }
         mWifiMetrics.incrementThroughputKbpsCount(mTxTputKbps, mRxTputKbps, currFrequency);
         wifiInfo.setCalculatedTxKbps(mTxTputKbps);
         wifiInfo.setCalculatedRxKbps(mRxTputKbps);
@@ -542,10 +521,10 @@ public class WifiDataStall {
                     mTxTputKbps, mRxTputKbps, txLinkSpeedMbps, rxLinkSpeedMbps, mChannelBandwidth);
         }
 
-        boolean possibleDataStallTx = throughputs.isTxTputLow
+        boolean possibleDataStallTx = isTxTputLow
                 || ccaLevel >= mDeviceConfigFacade.getDataStallCcaLevelThr()
                 || txPer >= mDeviceConfigFacade.getDataStallTxPerThr();
-        boolean possibleDataStallRx = throughputs.isRxTputLow
+        boolean possibleDataStallRx = isRxTputLow
                 || ccaLevel >= mDeviceConfigFacade.getDataStallCcaLevelThr();
 
         boolean dataStallTx = isTxTrafficHigh ? possibleDataStallTx : mDataStallTx;

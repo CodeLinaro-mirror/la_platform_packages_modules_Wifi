@@ -1361,11 +1361,14 @@ public class Nl80211Native {
             if (requestRandomMac) scanFlags |= NL80211_SCAN_FLAG_RANDOM_ADDR;
             if (enable6GhzRnr) scanFlags |= NL80211_SCAN_FLAG_COLOCATED_6GHZ;
 
-            List<byte[]> ssidsToScan = new ArrayList<>();
-            ssidsToScan.add(new byte[0]); // Always add an empty SSID for wildcard scan
-            ssidsToScan.addAll(hiddenNetworkSSIDs);
-            List<byte[]> trimmedHiddenSsids =
-                    trimScanSsids(ifaceInfo.wiphyInfo.scanCapabilities, ssidsToScan);
+            List<byte[]> trimmedHiddenSsids;
+            if (hiddenNetworkSSIDs.isEmpty()) {
+                // If no hidden SSIDs are supplied, set an empty SSID to indicate a wildcard scan.
+                trimmedHiddenSsids = List.of(new byte[0]);
+            } else {
+                trimmedHiddenSsids =
+                        trimScanSsids(ifaceInfo.wiphyInfo.scanCapabilities, hiddenNetworkSSIDs);
+            }
 
             int result = mNl80211Utils.triggerScan(ifaceInfo.ifIndex, scanFlags, freqs,
                     trimmedHiddenSsids, vendorIes);
@@ -1693,8 +1696,7 @@ public class Nl80211Native {
      * Generates list of PNO scan plans for the given PnoSettings and scan capabilities.
      * If the given settings are not supported, returns an empty list.
      */
-    @VisibleForTesting
-    List<Nl80211Utils.PnoScanPlan> generatePnoScanPlans(
+    private List<Nl80211Utils.PnoScanPlan> generatePnoScanPlans(
             @NonNull PnoSettings pnoSettings,
             @NonNull Nl80211Utils.ScanCapabilities scanCapabilities) {
         int maxRequestedScanIntervalSeconds = (int) ((pnoSettings.getIntervalMillis()
@@ -1710,8 +1712,7 @@ public class Nl80211Native {
         List<Nl80211Utils.PnoScanPlan> plans = new ArrayList<>();
         plans.add(new Nl80211Utils.PnoScanPlan(
                 (int) pnoSettings.getIntervalMillis(), pnoSettings.getScanIterations()));
-        plans.add(new Nl80211Utils.PnoScanPlan(
-                maxRequestedScanIntervalSeconds * 1000, 0 /* ignored */));
+        plans.add(new Nl80211Utils.PnoScanPlan(maxRequestedScanIntervalSeconds, 0 /* ignored */));
         return plans;
     }
 

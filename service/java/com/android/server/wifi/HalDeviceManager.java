@@ -116,8 +116,8 @@ public class HalDeviceManager {
     /**
      * Public API for querying interfaces from the HalDeviceManager.
      *
-     * TODO (b/256648410): Consider replacing these values with WifiChip.IFACE_TYPE_
-     *                     to avoid duplication.
+     * These constants duplicate WifiChip.IFACE_CONCURRENCY_TYPE_ but are maintained
+     * for framework-wide compatibility. See b/256648410 for context.
      */
     public static final int HDM_CREATE_IFACE_STA = 0;
     public static final int HDM_CREATE_IFACE_AP = 1;

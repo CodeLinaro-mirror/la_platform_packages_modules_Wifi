@@ -478,6 +478,13 @@ flag {
 }
 
 flag {
+    name: "p2p_gc_network_agent"
+    namespace: "wifi"
+    description: "Register a NetworkAgent for P2P Group Client connections."
+    bug: "452296385"
+}
+
+flag {
     name: "proximity_ranging"
     is_exported: true
     namespace: "wifi"

@@ -1368,8 +1368,6 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                         doScan = true;
                     }
                 }
-                mWifiThreadRunner.post(() ->
-                    mActiveModeWarden.onIdleModeChanged(idle), TAG + "#handleIdleModeChanged");
             }
         }
         if (doScan) {
@@ -8446,6 +8444,19 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         return channels;
     }
 
+    private List<WifiAvailableChannel> getStoredAwareAvailableChannels(
+            @WifiScanner.WifiBand int band) {
+        List<WifiAvailableChannel> channels = new ArrayList<>();
+        for (int freq : getStoredSoftApAvailableFreqs()) {
+            if ((band & ScanResult.toBand(freq)) == 0) {
+                continue;
+            }
+            channels.add(new WifiAvailableChannel(freq, WifiAvailableChannel.OP_MODE_WIFI_AWARE,
+                    ScanResult.CHANNEL_WIDTH_20MHZ));
+        }
+        return channels;
+    }
+
     private List<Integer> getStoredSoftApAvailableFreqs() {
         List<Integer> freqs = new ArrayList<>();
         try {
@@ -8517,8 +8528,17 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                 () -> mWifiNative.getUsableChannels(band, mode, filter), null,
                 TAG + "#getUsableChannels");
         if (channels == null) {
+            if (MainlineSupplicantAidlManager.hasPcFeature(mContext)
+                    && mode == WifiAvailableChannel.OP_MODE_WIFI_AWARE) {
+                // Temporary solution for desktop
+                List<WifiAvailableChannel> storedChannels = getStoredAwareAvailableChannels(band);
+                if (!storedChannels.isEmpty()) {
+                    return storedChannels;
+                }
+            }
             throw new UnsupportedOperationException();
         }
+
         return channels;
     }
 

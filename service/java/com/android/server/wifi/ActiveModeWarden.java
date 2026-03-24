@@ -279,16 +279,6 @@ public class ActiveModeWarden {
         return mWifiState.get();
     }
 
-    /**
-     * Notify changes in PowerManager#isDeviceIdleMode
-     */
-    public void onIdleModeChanged(boolean isIdle) {
-        // only client mode managers need to get notified for now to consider enabling/disabling
-        // firmware roaming
-        for (ClientModeManager cmm : mClientModeManagers) {
-            cmm.onIdleModeChanged(isIdle);
-        }
-    }
 
     /**
      * See {@link WifiManager#addWifiStateChangedListener(Executor, WifiStateChangedListener)}
@@ -2688,7 +2678,11 @@ public class ActiveModeWarden {
                     requestInfo.listener.onAnswer(primaryManager);
                     return;
                 }
+                boolean allowSameBssidConnection =
+                        mWifiGlobals.isMultiInternetSameBssidConnectionAllowed()
+                        && requestInfo.clientRole == ROLE_CLIENT_SECONDARY_LONG_LIVED;
                 ConcreteClientModeManager cmmForSameBssid =
+                        allowSameBssidConnection ? null :
                         findAnyClientModeManagerConnectingOrConnectedToBssid(
                                 requestInfo.ssid, requestInfo.bssid);
                 if (cmmForSameBssid != null) {

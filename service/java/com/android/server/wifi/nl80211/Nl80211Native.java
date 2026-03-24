@@ -737,7 +737,7 @@ public class Nl80211Native {
                                     return;
                                 }
 
-                                if (!countryCode.equals(mCountryCode)) {
+                                if (!countryCode.isEmpty()) {
                                     mCountryCode = countryCode;
                                     notifyCountryCodeChangedListeners(countryCode);
                                 }
@@ -761,7 +761,7 @@ public class Nl80211Native {
                                 Collections.sort(wiphyIndexes);
                                 for (int wiphyIndex : wiphyIndexes) {
                                     countryCode = mNl80211Utils.getCountryCode(wiphyIndex);
-                                    if (countryCode != null && !countryCode.equals(mCountryCode)) {
+                                    if (countryCode != null && !countryCode.isEmpty()) {
                                         mCountryCode = countryCode;
                                         notifyCountryCodeChangedListeners(countryCode);
                                     }
@@ -950,10 +950,6 @@ public class Nl80211Native {
         // Erase the band to wiphy mapping if there are no more interfaces set up on the wiphy.
         if (!mActiveIfaceToWiphyIndex.values().contains(wiphyIndex)) {
             eraseBandToWiphyIndexMapping(wiphyIndex);
-        }
-
-        if (mActiveIfaceToWiphyIndex.isEmpty()) {
-            unregisterCountryCodeCallbacks();
         }
     }
 
@@ -1288,6 +1284,7 @@ public class Nl80211Native {
             for (String apIface : new ArrayList<>(mApInterfaceInfos.keySet())) {
                 tearDownSoftApInterface(apIface);
             }
+            unregisterCountryCodeCallbacks();
             return true;
         }
     }
@@ -1361,14 +1358,11 @@ public class Nl80211Native {
             if (requestRandomMac) scanFlags |= NL80211_SCAN_FLAG_RANDOM_ADDR;
             if (enable6GhzRnr) scanFlags |= NL80211_SCAN_FLAG_COLOCATED_6GHZ;
 
-            List<byte[]> trimmedHiddenSsids;
-            if (hiddenNetworkSSIDs.isEmpty()) {
-                // If no hidden SSIDs are supplied, set an empty SSID to indicate a wildcard scan.
-                trimmedHiddenSsids = List.of(new byte[0]);
-            } else {
-                trimmedHiddenSsids =
-                        trimScanSsids(ifaceInfo.wiphyInfo.scanCapabilities, hiddenNetworkSSIDs);
-            }
+            List<byte[]> ssidsToScan = new ArrayList<>();
+            ssidsToScan.add(new byte[0]); // Always add an empty SSID for wildcard scan
+            ssidsToScan.addAll(hiddenNetworkSSIDs);
+            List<byte[]> trimmedHiddenSsids =
+                    trimScanSsids(ifaceInfo.wiphyInfo.scanCapabilities, ssidsToScan);
 
             int result = mNl80211Utils.triggerScan(ifaceInfo.ifIndex, scanFlags, freqs,
                     trimmedHiddenSsids, vendorIes);
@@ -1584,6 +1578,7 @@ public class Nl80211Native {
             }
 
             List<byte[]> scanSsids = new ArrayList<>();
+            scanSsids.add(new byte[0]); // Always add an empty SSID for wildcard scan
             List<byte[]> matchSsids = new ArrayList<>();
             Set<Integer> uniqueFreqs = new ArraySet<>();
             int networksWithoutFreqs = 0;
@@ -1695,7 +1690,8 @@ public class Nl80211Native {
      * Generates list of PNO scan plans for the given PnoSettings and scan capabilities.
      * If the given settings are not supported, returns an empty list.
      */
-    private List<Nl80211Utils.PnoScanPlan> generatePnoScanPlans(
+    @VisibleForTesting
+    List<Nl80211Utils.PnoScanPlan> generatePnoScanPlans(
             @NonNull PnoSettings pnoSettings,
             @NonNull Nl80211Utils.ScanCapabilities scanCapabilities) {
         int maxRequestedScanIntervalSeconds = (int) ((pnoSettings.getIntervalMillis()
@@ -1711,7 +1707,8 @@ public class Nl80211Native {
         List<Nl80211Utils.PnoScanPlan> plans = new ArrayList<>();
         plans.add(new Nl80211Utils.PnoScanPlan(
                 (int) pnoSettings.getIntervalMillis(), pnoSettings.getScanIterations()));
-        plans.add(new Nl80211Utils.PnoScanPlan(maxRequestedScanIntervalSeconds, 0 /* ignored */));
+        plans.add(new Nl80211Utils.PnoScanPlan(
+                maxRequestedScanIntervalSeconds * 1000, 0 /* ignored */));
         return plans;
     }
 

@@ -36,13 +36,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.net.MacAddress;
-import android.net.wifi.aware.TlvBufferUtils;
-import java.util.Arrays;
 import android.net.wifi.aware.AwarePairingConfig;
 import android.net.wifi.aware.Characteristics;
 import android.net.wifi.aware.ConfigRequest;
 import android.net.wifi.aware.PublishConfig;
 import android.net.wifi.aware.SubscribeConfig;
+import android.net.wifi.aware.TlvBufferUtils;
 import android.net.wifi.aware.WifiAwareDataPathSecurityConfig;
 import android.os.RemoteException;
 import android.os.ServiceSpecificException;
@@ -57,8 +56,8 @@ import android.system.wifi.mainline_supplicant.NanEnableRequest;
 import android.system.wifi.mainline_supplicant.NanInitiateDataPathRequest;
 import android.system.wifi.mainline_supplicant.NanPairingRequest;
 import android.system.wifi.mainline_supplicant.NanPublishRequest;
-import android.system.wifi.mainline_supplicant.NanRespondToDataPathIndicationRequest;
 import android.system.wifi.mainline_supplicant.NanRangingIndication;
+import android.system.wifi.mainline_supplicant.NanRespondToDataPathIndicationRequest;
 import android.system.wifi.mainline_supplicant.NanRespondToPairingIndicationRequest;
 import android.system.wifi.mainline_supplicant.NanSubscribeRequest;
 import android.system.wifi.mainline_supplicant.NanTransmitFollowupRequest;
@@ -163,7 +162,7 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         ConfigRequest configRequest = new ConfigRequest.Builder().build();
         PowerParameters powerParameters = new PowerParameters();
 
-        assertTrue(mDut.enableAndConfigure(transactionId, configRequest, true, true,
+        assertTrue(mDut.enableAndConfigure(transactionId, configRequest, true,
                 powerParameters));
 
         verify(mMockSupplicantNanIface).enableRequest(eq((char) transactionId),
@@ -176,7 +175,7 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         ConfigRequest configRequest = new ConfigRequest.Builder().build();
         PowerParameters powerParameters = new PowerParameters();
 
-        assertTrue(mDut.enableAndConfigure(transactionId, configRequest, false, false,
+        assertTrue(mDut.enableAndConfigure(transactionId, configRequest, false,
                 powerParameters));
 
         verify(mMockSupplicantNanIface).configRequest(eq((char) transactionId),
@@ -192,7 +191,7 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         doThrow(new RemoteException()).when(mMockSupplicantNanIface).configRequest(anyChar(),
                 any());
 
-        assertFalse(mDut.enableAndConfigure(transactionId, configRequest, false, false,
+        assertFalse(mDut.enableAndConfigure(transactionId, configRequest, false,
                 powerParameters));
     }
 
@@ -205,7 +204,7 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         doThrow(new ServiceSpecificException(0, "error")).when(mMockSupplicantNanIface)
                 .configRequest(anyChar(), any());
 
-        assertFalse(mDut.enableAndConfigure(transactionId, configRequest, false, false,
+        assertFalse(mDut.enableAndConfigure(transactionId, configRequest, false,
                 powerParameters));
     }
 
@@ -523,7 +522,8 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         boolean frameProtectionEnabled = false;
 
         assertTrue(mDut.respondToDataPathRequest(transactionId, accept, ndpId, interfaceName,
-                appInfo, isOutOfBand, securityConfig, pubSubId, frameProtectionEnabled));
+                appInfo, isOutOfBand, securityConfig, pubSubId, frameProtectionEnabled,
+		null, null));
         verify(mMockSupplicantNanIface).respondToDataPathIndicationRequest(
                 eq((char) transactionId), any(NanRespondToDataPathIndicationRequest.class));
     }
@@ -543,7 +543,8 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         doThrow(new RemoteException()).when(mMockSupplicantNanIface)
                 .respondToDataPathIndicationRequest(anyChar(), any());
         assertFalse(mDut.respondToDataPathRequest(transactionId, accept, ndpId, interfaceName,
-                appInfo, isOutOfBand, securityConfig, pubSubId, frameProtectionEnabled));
+                appInfo, isOutOfBand, securityConfig, pubSubId, frameProtectionEnabled,
+		null, null));
     }
 
     @Test
@@ -561,25 +562,29 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         doThrow(new ServiceSpecificException(0, "error")).when(mMockSupplicantNanIface)
                 .respondToDataPathIndicationRequest(anyChar(), any());
         assertFalse(mDut.respondToDataPathRequest(transactionId, accept, ndpId, interfaceName,
-                appInfo, isOutOfBand, securityConfig, pubSubId, frameProtectionEnabled));
+                appInfo, isOutOfBand, securityConfig, pubSubId, frameProtectionEnabled,
+		null, null));
     }
 
     @Test
     public void testEndDataPath() throws Exception {
         short transactionId = 110;
         int ndpId = 200;
+        byte[] addr = new byte[6];
 
         assertTrue(mDut.endDataPath(transactionId, ndpId));
-        verify(mMockSupplicantNanIface).terminateDataPathRequest((char) transactionId, ndpId);
+        verify(mMockSupplicantNanIface)
+                .terminateDataPathRequest((char) transactionId, ndpId, addr);
     }
 
     @Test
     public void testEndDataPath_remoteException() throws Exception {
         short transactionId = 111;
         int ndpId = 200;
+        byte[] addr = new byte[6];
 
         doThrow(new RemoteException()).when(mMockSupplicantNanIface)
-                .terminateDataPathRequest(anyChar(), anyInt());
+                .terminateDataPathRequest(anyChar(), anyInt(), any());
         assertFalse(mDut.endDataPath(transactionId, ndpId));
     }
 
@@ -587,9 +592,10 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
     public void testEndDataPath_serviceSpecificException() throws Exception {
         short transactionId = 112;
         int ndpId = 200;
+        byte[] addr = new byte[6];
 
         doThrow(new ServiceSpecificException(0, "error")).when(mMockSupplicantNanIface)
-                .terminateDataPathRequest(anyChar(), anyInt());
+                .terminateDataPathRequest(anyChar(), anyInt(), any());
         assertFalse(mDut.endDataPath(transactionId, ndpId));
     }
 
@@ -605,10 +611,12 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         String password = "password";
         int akm = 0;
         int cipherSuite = 0;
+        byte[] mac = new byte[6];
+        byte pubSubId = 1;
 
         assertTrue(mDut.respondToPairingRequest(transactionId, pairingId, accept,
                 pairingIdentityKey, enablePairingCache, requestType, pmk, password, akm,
-                cipherSuite));
+                cipherSuite, pubSubId, mac));
         verify(mMockSupplicantNanIface).respondToPairingIndicationRequest(
                 eq((char) transactionId), any(NanRespondToPairingIndicationRequest.class));
     }
@@ -625,12 +633,14 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         String password = "password";
         int akm = 0;
         int cipherSuite = 0;
+        byte[] mac = new byte[6];
+        byte pubSubId = 1;
 
         doThrow(new RemoteException()).when(mMockSupplicantNanIface)
                 .respondToPairingIndicationRequest(anyChar(), any());
         assertFalse(mDut.respondToPairingRequest(transactionId, pairingId, accept,
                 pairingIdentityKey, enablePairingCache, requestType, pmk, password, akm,
-                cipherSuite));
+                cipherSuite, pubSubId, mac));
     }
 
     @Test
@@ -645,12 +655,14 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         String password = "password";
         int akm = 0;
         int cipherSuite = 0;
+        byte[] mac = new byte[6];
+        byte pubSubId = 1;
 
         doThrow(new ServiceSpecificException(0, "error")).when(mMockSupplicantNanIface)
                 .respondToPairingIndicationRequest(anyChar(), any());
         assertFalse(mDut.respondToPairingRequest(transactionId, pairingId, accept,
                 pairingIdentityKey, enablePairingCache, requestType, pmk, password, akm,
-                cipherSuite));
+                cipherSuite, pubSubId, mac));
     }
 
     @Test
@@ -665,9 +677,10 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         String password = "password";
         int akm = 0;
         int cipherSuite = 0;
+        byte pubSubId = 1;
 
         assertTrue(mDut.initiateNanPairingRequest(transactionId, peerId, peer, pairingIdentityKey,
-                enablePairingCache, requestType, pmk, password, akm, cipherSuite));
+                enablePairingCache, requestType, pmk, password, akm, cipherSuite, pubSubId));
         verify(mMockSupplicantNanIface).initiatePairingRequest(eq((char) transactionId),
                 any(NanPairingRequest.class));
     }
@@ -684,11 +697,12 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         String password = "password";
         int akm = 0;
         int cipherSuite = 0;
+        byte pubSubId = 1;
 
         doThrow(new RemoteException()).when(mMockSupplicantNanIface)
                 .initiatePairingRequest(anyChar(), any());
         assertFalse(mDut.initiateNanPairingRequest(transactionId, peerId, peer, pairingIdentityKey,
-                enablePairingCache, requestType, pmk, password, akm, cipherSuite));
+                enablePairingCache, requestType, pmk, password, akm, cipherSuite, pubSubId));
     }
 
     @Test
@@ -703,29 +717,33 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         String password = "password";
         int akm = 0;
         int cipherSuite = 0;
+        byte pubSubId = 1;
 
         doThrow(new ServiceSpecificException(0, "error")).when(mMockSupplicantNanIface)
                 .initiatePairingRequest(anyChar(), any());
         assertFalse(mDut.initiateNanPairingRequest(transactionId, peerId, peer, pairingIdentityKey,
-                enablePairingCache, requestType, pmk, password, akm, cipherSuite));
+                enablePairingCache, requestType, pmk, password, akm, cipherSuite, pubSubId));
     }
 
     @Test
     public void testEndPairing() throws Exception {
         short transactionId = 140;
         int pairingId = 300;
+        byte[] addr = new byte[6];
 
         assertTrue(mDut.endPairing(transactionId, pairingId));
-        verify(mMockSupplicantNanIface).terminatePairingRequest((char) transactionId, pairingId);
+        verify(mMockSupplicantNanIface).terminatePairingRequest(
+                (char) transactionId, pairingId, addr);
     }
 
     @Test
     public void testEndPairing_remoteException() throws Exception {
         short transactionId = 141;
         int pairingId = 300;
+        byte[] addr = new byte[6];
 
         doThrow(new RemoteException()).when(mMockSupplicantNanIface)
-                .terminatePairingRequest(anyChar(), anyInt());
+                .terminatePairingRequest(anyChar(), anyInt(), any());
         assertFalse(mDut.endPairing(transactionId, pairingId));
     }
 
@@ -733,9 +751,10 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
     public void testEndPairing_serviceSpecificException() throws Exception {
         short transactionId = 142;
         int pairingId = 300;
+        byte[] addr = new byte[6];
 
         doThrow(new ServiceSpecificException(0, "error")).when(mMockSupplicantNanIface)
-                .terminatePairingRequest(anyChar(), anyInt());
+                .terminatePairingRequest(anyChar(), anyInt(), any());
         assertFalse(mDut.endPairing(transactionId, pairingId));
     }
 
@@ -797,9 +816,10 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         boolean accept = true;
         byte pubSubId = 1;
         int method = 0;
+        MacAddress peer = MacAddress.fromString("00:11:22:33:44:55");
 
         assertTrue(mDut.respondToNanBootstrappingRequest(transactionId, bootstrappingId, accept,
-                pubSubId, method));
+                pubSubId, method, peer.toByteArray()));
         verify(mMockSupplicantNanIface).respondToBootstrappingIndicationRequest(
                 eq((char) transactionId), any(NanBootstrappingResponse.class));
     }
@@ -811,11 +831,12 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         boolean accept = true;
         byte pubSubId = 1;
         int method = 0;
+        MacAddress peer = MacAddress.fromString("00:11:22:33:44:55");
 
         doThrow(new RemoteException()).when(mMockSupplicantNanIface)
                 .respondToBootstrappingIndicationRequest(anyChar(), any());
         assertFalse(mDut.respondToNanBootstrappingRequest(transactionId, bootstrappingId, accept,
-                pubSubId, method));
+                pubSubId, method, peer.toByteArray()));
     }
 
     @Test
@@ -825,11 +846,12 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         boolean accept = true;
         byte pubSubId = 1;
         int method = 0;
+        MacAddress peer = MacAddress.fromString("00:11:22:33:44:55");
 
         doThrow(new ServiceSpecificException(0, "error")).when(mMockSupplicantNanIface)
                 .respondToBootstrappingIndicationRequest(anyChar(), any());
         assertFalse(mDut.respondToNanBootstrappingRequest(transactionId, bootstrappingId, accept,
-                pubSubId, method));
+                pubSubId, method, peer.toByteArray()));
     }
 
     @Test
@@ -1047,7 +1069,8 @@ public class AwareIfaceAidlSupplicantImplTest extends WifiBaseTest {
         boolean frameProtectionEnabled = false;
 
         assertTrue(mDut.respondToDataPathRequest(transactionId, accept, ndpId, interfaceName,
-                appInfo, isOutOfBand, securityConfig, pubSubId, frameProtectionEnabled));
+                appInfo, isOutOfBand, securityConfig, pubSubId, frameProtectionEnabled,
+		null, null));
         ArgumentCaptor<NanRespondToDataPathIndicationRequest> captor =
                 ArgumentCaptor.forClass(NanRespondToDataPathIndicationRequest.class);
         verify(mMockSupplicantNanIface).respondToDataPathIndicationRequest(

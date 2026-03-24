@@ -48,6 +48,7 @@ import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
 import android.net.wifi.hotspot2.PasspointConfiguration;
+import android.net.wifi.util.Environment;
 import android.os.Process;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
@@ -247,7 +248,7 @@ public class WifiNetworkSuggestionsManager {
             this.uid = uid;
             this.packageName = packageName;
             this.featureId = featureId;
-            if (Flags.multiUserWifiEnhancement()) {
+            if (Environment.isSdkAtLeastC() && Flags.multiUserWifiEnhancement()) {
                 this.userId = ActivityManager.getCurrentUser();
             }
         }
@@ -333,8 +334,7 @@ public class WifiNetworkSuggestionsManager {
             this.wns.wifiConfiguration.ephemeral = true;
             this.wns.wifiConfiguration.creatorName = perAppInfo.packageName;
             this.wns.wifiConfiguration.creatorUid = perAppInfo.uid;
-            // TODO: b/449013275 Add Environment.isSdkNewerThanB())
-            if (Flags.multiUserWifiEnhancement()) {
+            if (Environment.isSdkAtLeastC() && Flags.multiUserWifiEnhancement()) {
                 this.wns.wifiConfiguration.setCreatorUserId(perAppInfo.userId);
             }
             if (perAppInfo.carrierId == TelephonyManager.UNKNOWN_CARRIER_ID) {
@@ -550,7 +550,19 @@ public class WifiNetworkSuggestionsManager {
         @Override
         public void fromDeserialized(Map<String, PerAppInfo> networkSuggestionsMap) {
             mActiveNetworkSuggestionsPerApp.clear();
-            mActiveNetworkSuggestionsPerApp.putAll(networkSuggestionsMap);
+            // Only deserialize the suggestions that are from the current user or device owner.
+            // This is to avoid deserializing suggestions from a removed profile.
+            for (Map.Entry<String, PerAppInfo> entry : networkSuggestionsMap.entrySet()) {
+                if (mWifiPermissionsUtil.doesUidBelongToCurrentUserOrDeviceOwner(
+                        entry.getValue().uid)) {
+                    mActiveNetworkSuggestionsPerApp.put(entry.getKey(), entry.getValue());
+                } else {
+                    mHasNewDataToSerialize = true;
+                    Log.w(TAG, "Skipping suggestions: " + entry.getKey()
+                            + " from a removed profile: " + entry.getValue().uid);
+                }
+            }
+
             // Build the scan cache.
             for (Map.Entry<String, PerAppInfo> entry : networkSuggestionsMap.entrySet()) {
                 String packageName = entry.getKey();
@@ -1465,6 +1477,18 @@ public class WifiNetworkSuggestionsManager {
         if (listenerTracker != null) listenerTracker.kill();
         saveToStore();
         Log.i(TAG, "Removed " + packageName);
+    }
+
+    public void removeSuggestionsForUser(int userId) {
+        List<String> packagesToRemove = new ArrayList<>();
+        for (PerAppInfo perAppInfo : mActiveNetworkSuggestionsPerApp.values()) {
+            if (UserHandle.getUserHandleForUid(perAppInfo.uid).getIdentifier() == userId) {
+                packagesToRemove.add(perAppInfo.packageName);
+            }
+        }
+        for (String packageName : packagesToRemove) {
+            removeApp(packageName);
+        }
     }
 
     /**

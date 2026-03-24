@@ -176,12 +176,11 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
     }
 
     /**
-     * See comments for {@link IWifiNanIface#enableAndConfigure(short, ConfigRequest, boolean,
-     * boolean, boolean, boolean, int, int, int, WifiNanIface.PowerParameters)}
+     * See comments for {@link IWifiNanIface#enableAndConfigure(short, ConfigRequest, boolean, boolean, boolean, int, int, int, WifiNanIface.PowerParameters)}
      */
     @Override
     public boolean enableAndConfigure(short transactionId, ConfigRequest configRequest,
-            boolean notifyIdentityChange, boolean initialConfiguration, boolean rangingEnabled,
+            boolean initialConfiguration, boolean rangingEnabled,
             boolean isInstantCommunicationEnabled, int instantModeChannel, int clusterId,
             int macAddressRandomizationIntervalSec, WifiNanIface.PowerParameters powerParameters) {
         final String methodStr = "enableAndConfigure";
@@ -191,12 +190,12 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
                     rangingEnabled, isInstantCommunicationEnabled, instantModeChannel, clusterId);
             if (initialConfiguration) {
                 NanEnableRequest req = createNanEnableRequest(
-                        configRequest, notifyIdentityChange, supplemental,
+                        configRequest, supplemental,
                         macAddressRandomizationIntervalSec, powerParameters);
                 mWifiNanIface.enableRequest((char) transactionId, req, supplemental);
             } else {
                 NanConfigRequest req = createNanConfigRequest(
-                        configRequest, notifyIdentityChange, supplemental,
+                        configRequest, supplemental,
                         macAddressRandomizationIntervalSec, powerParameters);
                 mWifiNanIface.configRequest((char) transactionId, req, supplemental);
             }
@@ -414,7 +413,7 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
     public boolean respondToDataPathRequest(short transactionId, boolean accept, int ndpId,
             String interfaceName, byte[] appInfo, boolean isOutOfBand, Capabilities capabilities,
             WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId,
-        boolean frameProtectionEnabled) {
+            boolean frameProtectionEnabled, byte[] peerMac, byte[] ndiInitMac) {
         final String methodStr = "respondToDataPathRequest";
         synchronized (mLock) {
             try {
@@ -422,7 +421,8 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
                 NanRespondToDataPathIndicationRequest req =
                         createNanRespondToDataPathIndicationRequest(
                                 accept, ndpId, interfaceName, appInfo, isOutOfBand,
-                                securityConfig, pubSubId, frameProtectionEnabled);
+                                securityConfig, pubSubId, frameProtectionEnabled, peerMac,
+                                ndiInitMac);
                 mWifiNanIface.respondToDataPathIndicationRequest((char) transactionId, req);
                 return true;
             } catch (RemoteException e) {
@@ -686,7 +686,7 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
     }
 
     private static NanEnableRequest createNanEnableRequest(
-            ConfigRequest configRequest, boolean notifyIdentityChange,
+            ConfigRequest configRequest,
             NanConfigRequestSupplemental configSupplemental,
             int macAddressRandomizationIntervalSec, WifiNanIface.PowerParameters powerParameters) {
         NanEnableRequest req = new NanEnableRequest();
@@ -700,9 +700,9 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
         req.hopCountMax = 2;
         req.configParams = new NanConfigRequest();
         req.configParams.masterPref = (byte) configRequest.mMasterPreference;
-        req.configParams.disableDiscoveryAddressChangeIndication = !notifyIdentityChange;
-        req.configParams.disableStartedClusterIndication = !notifyIdentityChange;
-        req.configParams.disableJoinedClusterIndication = !notifyIdentityChange;
+        req.configParams.disableDiscoveryAddressChangeIndication = false;
+        req.configParams.disableStartedClusterIndication = false;
+        req.configParams.disableJoinedClusterIndication = false;
         req.configParams.includePublishServiceIdsInBeacon = true;
         req.configParams.numberOfPublishServiceIdsInBeacon = 0;
         req.configParams.includeSubscribeServiceIdsInBeacon = true;
@@ -749,7 +749,7 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
     }
 
     private static NanConfigRequest createNanConfigRequest(
-            ConfigRequest configRequest, boolean notifyIdentityChange,
+            ConfigRequest configRequest,
             NanConfigRequestSupplemental configSupplemental,
             int macAddressRandomizationIntervalSec, WifiNanIface.PowerParameters powerParameters) {
         NanConfigRequest req = new NanConfigRequest();
@@ -757,9 +757,9 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
                 createNanBandSpecificConfigs(configRequest);
 
         req.masterPref = (byte) configRequest.mMasterPreference;
-        req.disableDiscoveryAddressChangeIndication = !notifyIdentityChange;
-        req.disableStartedClusterIndication = !notifyIdentityChange;
-        req.disableJoinedClusterIndication = !notifyIdentityChange;
+        req.disableDiscoveryAddressChangeIndication = false;
+        req.disableStartedClusterIndication = false;
+        req.disableJoinedClusterIndication = false;
         req.includePublishServiceIdsInBeacon = true;
         req.numberOfPublishServiceIdsInBeacon = 0;
         req.includeSubscribeServiceIdsInBeacon = true;
@@ -1140,7 +1140,7 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
             createNanRespondToDataPathIndicationRequest(boolean accept, int ndpId,
             String interfaceName, byte[] appInfo, boolean isOutOfBand,
             WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId,
-            boolean frameProtectionEnabled) {
+            boolean frameProtectionEnabled, byte[] peerMac, byte[] ndiInitMac) {
         NanRespondToDataPathIndicationRequest req = new NanRespondToDataPathIndicationRequest();
         req.acceptRequest = accept;
         req.ndpInstanceId = ndpId;

@@ -45,6 +45,9 @@ import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.Spy;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
+
 /**
  * Unit tests for {@link com.android.server.wifi.WifiMulticastLockManager}.
  */
@@ -133,6 +136,27 @@ public class WifiMulticastLockManagerTest extends WifiBaseTest {
         assertNotNull(wsCaptor.getValue());
         assertEquals(TEST_UID, wsCaptor.getValue().getAttributionUid());
         assertFalse(mManager.isMulticastEnabled());
+    }
+
+    /**
+     * Verify the basic dump functionality.
+     */
+    @Test
+    public void testDump() {
+        // Acquire two locks and release one of them
+        IBinder binder = mock(IBinder.class);
+        mManager.acquireLock(TEST_UID, binder, WL_1_TAG, TEST_ATTRIBUTION_TAG, TEST_PACKAGE_NAME);
+        mManager.acquireLock(TEST_UID, binder, WL_2_TAG, TEST_ATTRIBUTION_TAG, TEST_PACKAGE_NAME);
+        mManager.releaseLock(TEST_UID, binder, WL_1_TAG);
+
+        StringWriter sw = new StringWriter();
+        PrintWriter pw = new PrintWriter(sw);
+        mManager.dump(pw);
+
+        // Verify that the two acquires and single release are counted in the dump
+        String dumpString = sw.toString();
+        assertTrue(dumpString.contains("mMulticastEnabled 2"));
+        assertTrue(dumpString.contains("mMulticastDisabled 1"));
     }
 
     private static class FakeFilterController implements FilterController {

@@ -26,6 +26,7 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.RemoteException;
 import android.os.WorkSource;
+import android.util.LocalLog;
 import android.util.Log;
 
 import com.android.server.wifi.proto.WifiStatsLog;
@@ -61,6 +62,7 @@ public class WifiMulticastLockManager {
     private final Clock mClock;
     private final WifiMetrics mWifiMetrics;
     private final WifiPermissionsUtil mWifiPermissionsUtil;
+    private final LocalLog mCompletedSessionLog = new LocalLog(100);
     private ConcreteClientModeManager mPrimaryClientModeManager;
 
     /** Delegate for handling state change events for multicast filtering. */
@@ -219,6 +221,7 @@ public class WifiMulticastLockManager {
     }
 
     protected void dump(PrintWriter pw) {
+        pw.println("Dump of WifiMulticastLockManager");
         pw.println("mMulticastEnabled " + mMulticastEnabled);
         pw.println("mMulticastDisabled " + mMulticastDisabled);
         synchronized (mLock) {
@@ -229,6 +232,8 @@ public class WifiMulticastLockManager {
                 pw.print("    ");
                 pw.println(l);
             }
+            pw.println("Completed sessions (max 100 entries):");
+            mCompletedSessionLog.dump(pw);
         }
     }
 
@@ -325,7 +330,16 @@ public class WifiMulticastLockManager {
                 Multicaster m = mMulticasters.get(i);
                 if ((m != null) && (m.getUid() == uid) && (m.getTag().equals(lockTag))
                         && (m.getBinder() == binder)) {
+                    String packageName = m.getPackageName();
+                    String attributionTag = m.getAttributionTag();
+                    long sessionDurationMs =
+                            mClock.getElapsedSinceBootMillis() - m.getAcquireTime();
                     removeMulticasterLocked(i, uid, lockTag);
+                    mCompletedSessionLog.log("uid=" + uid
+                            + ", " + "lockTag=" + lockTag
+                            + ", " + "packageName=" + packageName
+                            + ", " + "attributionTag=" + attributionTag
+                            + ", " + "durationMs=" + sessionDurationMs);
                     break;
                 }
             }

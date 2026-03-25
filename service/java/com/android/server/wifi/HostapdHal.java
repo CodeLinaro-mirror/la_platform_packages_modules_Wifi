@@ -163,6 +163,29 @@ public class HostapdHal {
     }
 
     /**
+     * Register the provided callback handler for SoftAp events on the specified iface from
+     * vendor hal interface.
+     * <p>
+     * Note that only one callback can be registered per iface at a time - any registration on the
+     * same iface overrides previous registrations.
+     *
+     * @param ifaceName Name of the interface.
+     * @param listener Callback listener for AP events.
+     * @return true on success, false on failure.
+     */
+    public boolean registerApVendorCallback(@NonNull String ifaceName,
+            @NonNull SoftApHalCallback callback) {
+        synchronized (mLock) {
+            String methodStr = "registerApVendorCallback";
+            if (mIHostapd == null) {
+                return handleNullIHostapd(methodStr);
+            }
+
+            return mIHostapd.registerApVendorCallback(ifaceName, callback);
+        }
+    }
+
+    /**
      * Add and start a new access point.
      *
      * @param ifaceName Name of the interface.

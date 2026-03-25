@@ -219,6 +219,26 @@ public class HostapdHalAidlImp implements IHostapdHal {
     }
 
     /**
+     * Register the provided callback handler for SoftAp events on the specified iface from
+     * vendor hal interface.
+     * <p>
+     * Note that only one callback can be registered per iface at a time - any registration on the
+     * same iface overrides previous registrations.
+     *
+     * @param ifaceName Name of the interface.
+     * @param listener Callback listener for AP events.
+     * @return true on success, false on failure.
+     */
+    @Override
+    public boolean registerApVendorCallback(@NonNull String ifaceName,
+            @NonNull SoftApHalCallback listener) {
+        synchronized (mLock) {
+            //Not required for aidl
+            return true;
+        }
+    }
+
+    /**
      * Add and start a new access point.
      *
      * @param ifaceName Name of the interface.

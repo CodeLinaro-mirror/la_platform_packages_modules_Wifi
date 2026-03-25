@@ -220,7 +220,6 @@ public class WifiDeviceStateChangeManagerTest extends WifiBaseTest {
 
     @Test
     public void testUsingRegisterReceiverForAllUsersWhenFlagEnabled() throws Exception {
-        assumeTrue(Environment.isSdkAtLeastC());
         when(mFeatureFlags.monitorIntentForAllUsers()).thenReturn(true);
         mWifiDeviceStateChangeManager.handleBootCompleted();
         verify(mContext).registerReceiverForAllUsers(any(BroadcastReceiver.class),

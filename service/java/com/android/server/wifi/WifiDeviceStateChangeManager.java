@@ -124,7 +124,7 @@ public class WifiDeviceStateChangeManager {
                         }
                     }
                 };
-        if (mFeatureFlags.monitorIntentForAllUsers() && Environment.isSdkAtLeastC()) {
+        if (mFeatureFlags.monitorIntentForAllUsers()) {
             mContext.registerReceiverForAllUsers(screenChangedReceiver, filter,
                     null, null);
         } else {

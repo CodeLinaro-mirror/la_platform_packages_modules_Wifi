@@ -17,7 +17,6 @@
 package android.system.wifi.mainline_supplicant;
 
 import android.system.wifi.mainline_supplicant.NanDataPathChannelInfo;
-import android.system.wifi.mainline_supplicant.NanSchedule;
 import android.system.wifi.mainline_supplicant.NanStatus;
 
 /**
@@ -60,9 +59,4 @@ parcelable NanDataPathConfirmInd {
      * event.
      */
     NanDataPathChannelInfo[] channelInfo;
-
-    /**
-     * Peer NDL schedule.
-     */
-    NanSchedule[] peerSchedule;
 }

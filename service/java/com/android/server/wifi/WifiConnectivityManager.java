@@ -2743,7 +2743,8 @@ public class WifiConnectivityManager {
                 mWifiMetrics.enterDeviceMobilityState(newState);
             }
         }
-        if (mScreenOn && newState == WifiManager.DEVICE_MOBILITY_STATE_STATIONARY) {
+        if (mScreenOn && newState == WifiManager.DEVICE_MOBILITY_STATE_STATIONARY
+                && Flags.scanOptimizationWithMobilityChange()) {
             startConnectivityScan(false);
         }
     }

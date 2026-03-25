@@ -424,8 +424,7 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
             byte[] nik) {
         if (mVerboseLoggingEnabled) {
             Log.d(TAG, "publish: transactionId=" + transactionId + ", publishId=" + publishId
-                    + ", config=" + publishConfig
-                    + ", nik=" + (nik == null ? "<null>" : Arrays.toString(nik)));
+                    + ", config=" + publishConfig);
         }
         recordTransactionId(transactionId);
 
@@ -456,8 +455,7 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
             SubscribeConfig subscribeConfig, byte[] nik) {
         if (mVerboseLoggingEnabled) {
             Log.d(TAG, "subscribe: transactionId=" + transactionId + ", subscribeId=" + subscribeId
-                    + ", config=" + subscribeConfig
-                    + ", nik=" + (nik == null ? "<null>" : Arrays.toString(nik)));
+                    + ", config=" + subscribeConfig);
         }
         recordTransactionId(transactionId);
 
@@ -748,25 +746,16 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
      *
      * @param transactionId Transaction ID for the transaction - used in the async callback to
      *                      match with the original request.
-     * @param ndpId         The NDP (Aware data path) ID to be terminated.
-     * @param peer          The MAC address of the peer NMI
-     * @param ndiInitMac    The initiator ndi mac address. If local device is initiator this can be
-     *                      null
-     * @param ndiName       The name of the local NDI. This will be used when local device is
-     *                      initiator
+     * @param ndpId The NDP (Aware data path) ID to be terminated.
      */
-    public boolean endDataPath(short transactionId, int ndpId, byte[] peer, byte[] ndiInitMac,
-            String ndiName) {
+    public boolean endDataPath(short transactionId, int ndpId) {
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "endDataPath: transactionId=" + transactionId + ", ndpId=" + ndpId);
         }
         recordTransactionId(transactionId);
         AwareIfaceAidlSupplicantImpl supplicant = mHal.getSupplicantNanIface();
         if (supplicant != null) {
-            if (ndiInitMac == null) {
-                ndiInitMac = supplicant.getNdiMacAddress(ndiName);
-            }
-            return supplicant.endDataPath(transactionId, ndpId, peer, ndiInitMac);
+            return supplicant.endDataPath(transactionId, ndpId);
         }
 
         WifiNanIface iface = mHal.getWifiNanIface();
@@ -783,16 +772,15 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
      * @param transactionId Transaction ID for the transaction - used in the async callback to
      *                      match with the original request.
      * @param pairId The id of the pairing session
-     * @param peerMac The MAC address of the peer
      */
-    public boolean endPairing(short transactionId, int pairId, byte[] peerMac) {
+    public boolean endPairing(short transactionId, int pairId) {
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "endPairing: transactionId=" + transactionId + ", ndpId=" + pairId);
         }
         recordTransactionId(transactionId);
         AwareIfaceAidlSupplicantImpl supplicant = mHal.getSupplicantNanIface();
         if (supplicant != null) {
-            return supplicant.endPairing(transactionId, pairId, peerMac);
+            return supplicant.endPairing(transactionId, pairId);
         }
 
         WifiNanIface iface = mHal.getWifiNanIface();
@@ -816,12 +804,11 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
      * @param password           credential for the pairing setup
      * @param akm                Key exchange method is used for pairing
      * @param pubSubId           ID of the publish/subscribe session
-     * @param peerNik            The NIK of the peer, used for pairing verification
      * @return True is the request send succeed.
      */
     public boolean initiatePairing(short transactionId, int peerId, byte[] peer,
             byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-            String password, int akm, int cipherSuite, byte pubSubId, byte[] peerNik) {
+            String password, int akm, int cipherSuite, byte pubSubId) {
         if (mVerboseLoggingEnabled) {
             Log.v(TAG, "initiatePairing: transactionId=" + transactionId + ", peerId=" + peerId
                     + ", requestType=" + requestType + ", enablePairingCache=" + enablePairingCache
@@ -841,7 +828,7 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
         if (supplicant != null) {
             return supplicant.initiateNanPairingRequest(transactionId, peerId, peerMac,
                     pairingIdentityKey, enablePairingCache, requestType, pmk, password, akm,
-                    cipherSuite, pubSubId, peerNik);
+                    cipherSuite, pubSubId);
         }
 
         WifiNanIface iface = mHal.getWifiNanIface();
@@ -868,14 +855,11 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
      * @param password           credential for the pairing setup
      * @param akm                Key exchange method is used for pairing
      * @param pubSubId           ID of the publish/subscribe session
-     * @param peerMac            The MAC address of the peer to create a connection with.
-     * @param peerNik            The NIK of the peer, used for pairing verification
      * @return True is the request send succeed.
      */
     public boolean respondToPairingRequest(short transactionId, int pairingId, boolean accept,
             byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-            String password, int akm, int cipherSuite, byte pubSubId, byte[] peerMac,
-            byte[] peerNik) {
+            String password, int akm, int cipherSuite, byte pubSubId, byte[] peerMac) {
         if (mVerboseLoggingEnabled) {
             Log.v(
                     TAG,
@@ -897,7 +881,7 @@ public class WifiAwareNativeApi implements WifiAwareShellCommand.DelegatedShellC
         if (supplicant != null) {
             return supplicant.respondToPairingRequest(transactionId, pairingId, accept,
                     pairingIdentityKey, enablePairingCache, requestType, pmk, password, akm,
-                    cipherSuite, pubSubId, peerMac, peerNik);
+                    cipherSuite, pubSubId, peerMac);
         }
 
         WifiNanIface iface = mHal.getWifiNanIface();

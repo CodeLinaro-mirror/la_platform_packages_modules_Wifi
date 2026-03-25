@@ -35,7 +35,6 @@ import android.net.wifi.WifiContext;
 import android.net.wifi.aware.ConfigRequest;
 import android.net.wifi.aware.PublishConfig;
 import android.net.wifi.aware.SubscribeConfig;
-import android.net.wifi.util.HexEncoding;
 import android.net.wifi.util.WifiResourceCache;
 
 import androidx.test.filters.SmallTest;
@@ -61,7 +60,6 @@ import java.io.PrintWriter;
  */
 @SmallTest
 public class WifiAwareNativeApiTest extends WifiBaseTest {
-    private static final String NDI_NAME = "aware_data0";
     @Mock WifiAwareNativeManager mWifiAwareNativeManagerMock;
     @Mock WifiNanIface mWifiNanIfaceMock;
     @Mock WifiContext mWifiContextMock;
@@ -72,7 +70,6 @@ public class WifiAwareNativeApiTest extends WifiBaseTest {
     private WifiResourceCache mWifiResourceCache;
 
     private WifiAwareNativeApi mDut;
-    private byte[] mPeerNik = "6789012345678901".getBytes();
 
     /**
      * Initializes mocks.
@@ -406,40 +403,34 @@ public class WifiAwareNativeApiTest extends WifiBaseTest {
     @Test
     public void testEndDataPath() {
         when(mWifiAwareNativeManagerMock.getSupplicantNanIface()).thenReturn(null);
-        mDut.endDataPath((short) 1, 123, new byte[6], new byte[16], NDI_NAME);
+        mDut.endDataPath((short) 1, 123);
         verify(mWifiNanIfaceMock).endDataPath(eq((short) 1), eq(123));
     }
 
     @Test
     public void testEndDataPathWithSupplicant() {
-        byte[] addr = HexEncoding.decode("060708090A0B".toCharArray(), false);
-        byte[] ndiInitMac = HexEncoding.decode("010203040506".toCharArray(), false);
-        mDut.endDataPath((short) 1, 123, addr, ndiInitMac, NDI_NAME);
-        verify(mAwareIfaceAidlSupplicantImplMock).endDataPath(eq((short) 1), eq(123),
-                eq(addr), eq(ndiInitMac));
+        mDut.endDataPath((short) 1, 123);
+        verify(mAwareIfaceAidlSupplicantImplMock).endDataPath(eq((short) 1), eq(123));
     }
 
     @Test
     public void testEndPairing() {
-        byte[] peerMac = HexEncoding.decode("010203040506".toCharArray(), false);
         when(mWifiAwareNativeManagerMock.getSupplicantNanIface()).thenReturn(null);
-        mDut.endPairing((short) 1, 123, peerMac);
+        mDut.endPairing((short) 1, 123);
         verify(mWifiNanIfaceMock).endPairing(eq((short) 1), eq(123));
     }
 
     @Test
     public void testEndPairingWithSupplicant() {
-        byte[] peerMac = HexEncoding.decode("010203040506".toCharArray(), false);
-        mDut.endPairing((short) 1, 123, peerMac);
-        verify(mAwareIfaceAidlSupplicantImplMock).endPairing(eq((short) 1), eq(123), eq(peerMac));
+        mDut.endPairing((short) 1, 123);
+        verify(mAwareIfaceAidlSupplicantImplMock).endPairing(eq((short) 1), eq(123));
     }
 
     @Test
     public void testInitiatePairing() {
         when(mWifiAwareNativeManagerMock.getSupplicantNanIface()).thenReturn(null);
         byte[] peer = new byte[]{1, 2, 3, 4, 5, 6};
-        mDut.initiatePairing((short) 1, 123, peer, null, true, 1, null, null, 1, 1,
-                (byte) 1, mPeerNik);
+        mDut.initiatePairing((short) 1, 123, peer, null, true, 1, null, null, 1, 1, (byte)1);
         verify(mWifiNanIfaceMock).initiatePairing(eq((short) 1), eq(123),
                 eq(MacAddress.fromBytes(peer)), eq(null), eq(true), eq(1), eq(null), eq(null),
                 eq(1), eq(1));
@@ -448,18 +439,17 @@ public class WifiAwareNativeApiTest extends WifiBaseTest {
     @Test
     public void testInitiatePairingWithSupplicant() {
         byte[] peer = new byte[]{1, 2, 3, 4, 5, 6};
-        mDut.initiatePairing((short) 1, 123, peer, null, true, 1, null, null, 1, 1,
-                (byte) 1, mPeerNik);
+        mDut.initiatePairing((short) 1, 123, peer, null, true, 1, null, null, 1, 1, (byte)1);
         verify(mAwareIfaceAidlSupplicantImplMock).initiateNanPairingRequest(eq((short) 1), eq(123),
                 eq(MacAddress.fromBytes(peer)), eq(null), eq(true), eq(1), eq(null), eq(null),
-                eq(1), eq(1), eq((byte) 1), eq(mPeerNik));
+                eq(1), eq(1), eq((byte)1));
     }
 
     @Test
     public void testRespondToPairingRequest() {
         when(mWifiAwareNativeManagerMock.getSupplicantNanIface()).thenReturn(null);
         mDut.respondToPairingRequest((short) 1, 123, true, null, true, 1, null, null, 1, 1,
-                (byte) 1, null, mPeerNik);
+		(byte)1, null);
         verify(mWifiNanIfaceMock).respondToPairingRequest(eq((short) 1), eq(123), eq(true),
                 eq(null), eq(true), eq(1), eq(null), eq(null), eq(1), eq(1));
     }
@@ -467,10 +457,10 @@ public class WifiAwareNativeApiTest extends WifiBaseTest {
     @Test
     public void testRespondToPairingRequestWithSupplicant() {
         mDut.respondToPairingRequest((short) 1, 123, true, null, true, 1, null, null, 1, 1,
-                (byte) 1, null, mPeerNik);
+		(byte)1, null);
         verify(mAwareIfaceAidlSupplicantImplMock).respondToPairingRequest(eq((short) 1), eq(123),
                 eq(true), eq(null), eq(true), eq(1), eq(null), eq(null), eq(1), eq(1),
-                eq((byte) 1), eq(null), eq(mPeerNik));
+		eq((byte)1), eq(null));
     }
 
     @Test

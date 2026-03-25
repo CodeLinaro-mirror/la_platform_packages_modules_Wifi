@@ -22,7 +22,6 @@ import static android.telephony.TelephonyManager.CALL_STATE_OFFHOOK;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
-import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.validateMockitoUsage;
 import static org.mockito.Mockito.withSettings;
@@ -31,7 +30,6 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.net.wifi.WifiManager;
-import android.net.wifi.util.Environment;
 import android.os.Build;
 import android.os.PowerManager;
 import android.os.test.TestLooper;
@@ -165,7 +163,6 @@ public class SarManagerTest extends WifiBaseTest {
 
     @Test
     public void testRegisterReceiverForAllUsersWhenFlagOn() throws Exception {
-        assumeTrue(Environment.isSdkAtLeastC());
         when(Flags.monitorIntentForAllUsers()).thenReturn(true);
         createSarManager(true, false);
         mLooper.dispatchAll();

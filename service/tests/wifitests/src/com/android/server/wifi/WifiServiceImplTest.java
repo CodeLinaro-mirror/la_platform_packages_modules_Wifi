@@ -14005,7 +14005,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
     @Test
     public void testUsingRegisterReceiverForAllUsersWhenFlagEnabled() throws Exception {
-        assumeTrue(Environment.isSdkAtLeastC());
         when(mFeatureFlags.monitorIntentForAllUsers()).thenReturn(true);
         reset(mContext);
         when(mContext.getSystemService(TelephonyManager.class)).thenReturn(mTelephonyManager);

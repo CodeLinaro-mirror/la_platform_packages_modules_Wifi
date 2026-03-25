@@ -2338,6 +2338,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
 
     @Test
     public void testStationaryChangeTriggerScan() {
+        when(Flags.scanOptimizationWithMobilityChange()).thenReturn(true);
         when(mClock.getElapsedSinceBootMillis()).thenReturn(0L);
         mLooper.dispatchAll();
         setScreenState(true);

@@ -25,7 +25,6 @@ import android.net.MacAddress;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiSsid;
-import android.net.wifi.util.Environment;
 import android.os.Handler;
 import android.text.TextUtils;
 import android.util.ArrayMap;
@@ -134,7 +133,7 @@ public class SsidTranslator {
                 }
                 updateCurrentLocaleCharset();
             }};
-        if (Flags.monitorIntentForAllUsers() && Environment.isSdkAtLeastC()) {
+        if (Flags.monitorIntentForAllUsers()) {
             mWifiContext.registerReceiverForAllUsers(localeChangedReceiver,
                     new IntentFilter(Intent.ACTION_LOCALE_CHANGED), null,
                     mWifiHandler);

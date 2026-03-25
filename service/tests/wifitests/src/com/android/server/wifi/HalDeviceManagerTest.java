@@ -66,7 +66,6 @@ import android.net.wifi.WifiContext;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.p2p.WifiP2pManager;
-import android.net.wifi.util.Environment;
 import android.os.Handler;
 import android.os.WorkSource;
 import android.os.test.TestLooper;
@@ -932,7 +931,6 @@ public class HalDeviceManagerTest extends WifiBaseTest {
     @Test
     public void testDisconnectedP2pTreatedAsOpportunisticAfterTimeoutWhenFlagEnabled()
             throws Exception {
-        assumeTrue(Environment.isSdkAtLeastC());
         when(mFeatureFlags.monitorIntentForAllUsers()).thenReturn(true);
         executeDisconnectedP2pTreatedAsOpportunisticAfterTimeout(true);
     }

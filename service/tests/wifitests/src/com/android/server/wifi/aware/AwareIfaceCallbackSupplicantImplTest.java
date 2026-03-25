@@ -16,8 +16,6 @@
 
 package com.android.server.wifi.aware;
 
-import static com.android.server.wifi.aware.WifiAwareStateManager.NAN_PAIRING_AKM_SAE;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.anyShort;
@@ -333,8 +331,7 @@ public class AwareIfaceCallbackSupplicantImplTest extends WifiBaseTest {
                 dataPathSetupSuccess,
                 NDI_MAC_ADDR,
                 APP_INFO,
-                expectedChannelInfo
-        );
+                expectedChannelInfo);
     }
 
     @Test
@@ -861,14 +858,26 @@ public class AwareIfaceCallbackSupplicantImplTest extends WifiBaseTest {
         event.status = status;
         event.requestType = requestType;
         event.enablePairingCache = enablePairingCache;
+        event.npksa = npksa;
+
         mDut.eventPairingConfirm(event);
+
+        ArgumentCaptor<PairingConfigManager.PairingSecurityAssociationInfo> captor =
+                ArgumentCaptor.forClass(PairingConfigManager.PairingSecurityAssociationInfo.class);
         verify(mMockFrameworkCallback).eventPairingConfirm(
                 eq(pairingInstanceId),
                 eq(pairingSuccess),
                 eq(WifiNanIface.NanStatusCode.SUCCESS),
                 eq(WifiAwareStateManager.NAN_PAIRING_REQUEST_TYPE_SETUP),
-                eq(enablePairingCache)
-        );
+                eq(enablePairingCache),
+                captor.capture());
+        PairingConfigManager.PairingSecurityAssociationInfo info = captor.getValue();
+        assertEquals(npksa.peerNanIdentityKey, info.mPeerNik);
+        assertEquals(npksa.localNanIdentityKey, info.mLocalNik);
+        assertEquals(npksa.npk, info.mNpk);
+        assertEquals(WifiAwareStateManager.NAN_PAIRING_AKM_SAE, info.mAkm);
+        assertEquals(Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_256,
+                info.mCipherSuite);
     }
 
     @Test
@@ -892,36 +901,20 @@ public class AwareIfaceCallbackSupplicantImplTest extends WifiBaseTest {
         event.status = status;
         event.requestType = requestType;
         event.enablePairingCache = enablePairingCache;
+        event.npksa = npksa;
 
         mDut.eventPairingConfirm(event);
+
+        ArgumentCaptor<PairingConfigManager.PairingSecurityAssociationInfo> captor =
+                ArgumentCaptor.forClass(PairingConfigManager.PairingSecurityAssociationInfo.class);
         verify(mMockFrameworkCallback).eventPairingConfirm(
                 eq(pairingInstanceId),
                 eq(pairingSuccess),
                 eq(WifiNanIface.NanStatusCode.SUCCESS),
                 eq(WifiAwareStateManager.NAN_PAIRING_REQUEST_TYPE_SETUP),
-                eq(enablePairingCache)
-        );
-    }
-
-    @Test
-    public void testEventPairingSecurityAssociationReceived() throws Exception {
-        int pairingId = 1;
-        NpkSecurityAssociation npksa = new NpkSecurityAssociation();
-        npksa.peerNanIdentityKey = new byte[32];
-        npksa.localNanIdentityKey = new byte[32];
-        npksa.npk = new byte[32];
-        npksa.akm = NanPairingAkm.SAE;
-        npksa.cipherType = NanCipherSuiteType.PUBLIC_KEY_PASN_256_MASK;
-
-        mDut.eventPairingSecurityAssociationReceived(1, pairingId, npksa);
-
-        ArgumentCaptor<PairingConfigManager.PairingSecurityAssociationInfo> captor =
-                ArgumentCaptor.forClass(PairingConfigManager.PairingSecurityAssociationInfo.class);
-        verify(mMockFrameworkCallback).eventPairingSecurityAssociationReceived(
-                eq(pairingId), captor.capture());
-
+                eq(enablePairingCache),
+                captor.capture());
         PairingConfigManager.PairingSecurityAssociationInfo info = captor.getValue();
-        assertEquals(NAN_PAIRING_AKM_SAE, info.mAkm);
-        assertEquals(Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_256, info.mCipherSuite);
+        assertEquals(WifiAwareStateManager.NAN_PAIRING_AKM_PASN, info.mAkm);
     }
 }

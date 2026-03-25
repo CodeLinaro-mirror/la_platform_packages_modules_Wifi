@@ -424,9 +424,10 @@ public class WifiAwareNativeCallback implements WifiNanIface.Callback,
 
     @Override
     public void eventPairingConfirm(int pairingId, boolean accept, int reason, int requestType,
-            boolean enableCache) {
+            boolean enableCache,
+            PairingConfigManager.PairingSecurityAssociationInfo npksa) {
         mWifiAwareStateManager.onPairingConfirmNotification(pairingId, accept, reason, requestType,
-                enableCache);
+                enableCache, npksa);
     }
 
     @Override
@@ -449,12 +450,6 @@ public class WifiAwareNativeCallback implements WifiNanIface.Callback,
     @Override
     public void eventSuspensionModeChanged(boolean isSuspended) {
         mWifiAwareStateManager.onSuspensionModeChangedNotification(isSuspended);
-    }
-
-    @Override
-    public void eventPairingSecurityAssociationReceived(int pairingId,
-            PairingConfigManager.PairingSecurityAssociationInfo npksa) {
-        mWifiAwareStateManager.onPairingSecurityAssociationReceived(pairingId, npksa);
     }
 
     /**

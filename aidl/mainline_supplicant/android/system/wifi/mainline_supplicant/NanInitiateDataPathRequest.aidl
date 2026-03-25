@@ -17,7 +17,6 @@
 package android.system.wifi.mainline_supplicant;
 
 import android.system.wifi.mainline_supplicant.NanDataPathSecurityConfig;
-import android.system.wifi.mainline_supplicant.NanSchedule;
 
 /**
  *  Data Path Initiator requesting a data-path.
@@ -91,9 +90,4 @@ parcelable NanInitiateDataPathRequest {
      * NAN Spec: Service Descriptor Attribute (SDA) / Instance ID
      */
     byte discoverySessionId;
-
-    /**
-     * NDL schedule.
-     */
-    NanSchedule[] schedule;
-}
+ }

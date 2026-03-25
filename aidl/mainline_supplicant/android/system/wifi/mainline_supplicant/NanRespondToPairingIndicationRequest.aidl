@@ -73,11 +73,6 @@ parcelable NanRespondToPairingIndicationRequest {
     byte[16] pairingIdentityKey;
 
     /**
-     * The Identity key for pairing from peer, used for pairing verification.
-     */
-    @nullable byte[16] peerIdentityKey;
-
-    /**
      * Security config used for the pairing
      */
     NanPairingSecurityConfig securityConfig;

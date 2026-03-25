@@ -26,7 +26,6 @@ import android.content.IntentFilter;
 import android.net.Uri;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiManager;
-import android.net.wifi.util.Environment;
 import android.os.UserHandle;
 import android.provider.Browser;
 import android.text.SpannableString;
@@ -145,7 +144,7 @@ public class WifiDialogManager {
         if (SdkLevel.isAtLeastT()) {
             flags = Context.RECEIVER_EXPORTED;
         }
-        if (Flags.monitorIntentForAllUsers() && Environment.isSdkAtLeastC()) {
+        if (Flags.monitorIntentForAllUsers()) {
             if (SdkLevel.isAtLeastT()) {
                 mContext.registerReceiverForAllUsers(mBroadcastReceiver, intentFilter,
                         null, null, flags);

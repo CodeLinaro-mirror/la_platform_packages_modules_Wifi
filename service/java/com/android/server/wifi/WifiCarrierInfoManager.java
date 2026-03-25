@@ -42,7 +42,6 @@ import android.net.wifi.WifiManager;
 import android.net.wifi.WifiStringResourceWrapper;
 import android.net.wifi.hotspot2.PasspointConfiguration;
 import android.net.wifi.hotspot2.pps.Credential;
-import android.net.wifi.util.Environment;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.DeadObjectException;
@@ -617,7 +616,7 @@ public class WifiCarrierInfoManager {
         mIntentFilter.addAction(NOTIFICATION_USER_ALLOWED_CARRIER_INTENT_ACTION);
         mIntentFilter.addAction(NOTIFICATION_USER_DISALLOWED_CARRIER_INTENT_ACTION);
         mIntentFilter.addAction(NOTIFICATION_USER_CLICKED_INTENT_ACTION);
-        if (Flags.monitorIntentForAllUsers() && Environment.isSdkAtLeastC()) {
+        if (Flags.monitorIntentForAllUsers()) {
             mContext.registerReceiverForAllUsers(mBroadcastReceiver,
                     mIntentFilter, NETWORK_SETTINGS, handler);
         } else {
@@ -673,7 +672,7 @@ public class WifiCarrierInfoManager {
                 }
             }};
 
-        if (Flags.monitorIntentForAllUsers() && Environment.isSdkAtLeastC()) {
+        if (Flags.monitorIntentForAllUsers()) {
             mContext.registerReceiverForAllUsers(carrierEventReceiver,
                     filter, null, null);
         } else {

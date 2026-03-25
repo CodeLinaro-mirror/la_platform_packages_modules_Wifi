@@ -1272,7 +1272,8 @@ public class WifiNetworkFactory extends NetworkFactory {
 
     private void handleRejectUserSelection() {
         Log.w(TAG, "User dismissed notification, cancelling " + mActiveSpecificNetworkRequest);
-        if (mActiveSpecificNetworkRequestSpecifier != null
+        if (mFeatureFlags.localOnlyConnectionOptimization()
+                && mActiveSpecificNetworkRequestSpecifier != null
                 && mActiveSpecificNetworkRequest != null) {
             sendConnectionFailureIfAllowed(mActiveSpecificNetworkRequest.getRequestorPackageName(),
                     mActiveSpecificNetworkRequest.getRequestorUid(),

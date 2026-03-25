@@ -21,7 +21,6 @@ import static com.android.server.wifi.ConnectToNetworkNotificationBuilder.ACTION
 import static com.android.server.wifi.ConnectToNetworkNotificationBuilder.ACTION_PICK_WIFI_NETWORK_AFTER_CONNECT_FAILURE;
 import static com.android.server.wifi.ConnectToNetworkNotificationBuilder.ACTION_USER_DISMISSED_NOTIFICATION;
 
-import static org.junit.Assume.assumeTrue;
 import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.*;
 
@@ -31,7 +30,6 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.ScanResult.InformationElement;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiSsid;
-import android.net.wifi.util.Environment;
 import android.os.Looper;
 
 import androidx.test.filters.SmallTest;
@@ -143,7 +141,6 @@ public class AvailableNetworkNotifierTest extends WifiBaseTest {
 
     @Test
     public void testUsingRegisterReceiverForAllUsersWhenFlagEnabled() throws Exception {
-        assumeTrue(Environment.isSdkAtLeastC());
         when(mFeatureFlags.monitorIntentForAllUsers()).thenReturn(true);
         reset(mContext);
         mAvailableNetworkNotifier = new AvailableNetworkNotifier(

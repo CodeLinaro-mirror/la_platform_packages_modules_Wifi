@@ -307,7 +307,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private ConnectivityDiagnosticsManager mConnectivityDiagnosticsManager;
 
     private boolean mFailedToResetMacAddress = false;
-    private boolean mMacRandomizationPending = false;
     private int mLastSignalLevel = -1;
     private int mLastTxKbps = -1;
     private int mLastRxKbps = -1;
@@ -636,10 +635,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     @VisibleForTesting
     static final int CMD_REJECT_EAP_INSECURE_CONNECTION                 = BASE + 302;
-    /**
-     * Delayed MAC randomization to avoid aborting initial scan.
-     */
-    static final int CMD_DELAYED_MAC_RANDOMIZATION                      = BASE + 303;
 
     /* Tracks if suspend optimizations need to be disabled by DHCP,
      * screen or due to high perf mode.
@@ -4966,8 +4961,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             Log.d(getTag(), "entering ConnectableState: ifaceName = " + mInterfaceName);
             setSuspendOptimizationsNative(SUSPEND_DUE_TO_HIGH_PERF, true);
             if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
-                mMacRandomizationPending = true;
-                sendMessageDelayed(CMD_DELAYED_MAC_RANDOMIZATION, 30_000);
+                mFailedToResetMacAddress = !mWifiNative.setStaMacAddress(
+                        mInterfaceName, MacAddressUtils.createRandomUnicastAddress());
+                if (mFailedToResetMacAddress) {
+                    Log.e(getTag(), "Failed to set random MAC address on ClientMode creation");
+                }
             }
             mWifiInfo.setMacAddress(mWifiNative.getMacAddress(mInterfaceName));
             updateCurrentConnectionInfo();
@@ -5031,20 +5029,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         @Override
         public boolean processMessageImpl(Message message) {
             switch (message.what) {
-                case CMD_DELAYED_MAC_RANDOMIZATION:
-                    if (mMacRandomizationPending) {
-                        mMacRandomizationPending = false;
-                        if (getCurrentState() == mDisconnectedState) {
-                            // Randomize MAC only if still not connected to wifi
-                            mFailedToResetMacAddress = !mWifiNative.setStaMacAddress(
-                                    mInterfaceName, MacAddressUtils.createRandomUnicastAddress());
-                            if (mFailedToResetMacAddress) {
-                                Log.e(getTag(), "Failed to set random MAC address after delay");
-                            }
-                            mWifiInfo.setMacAddress(mWifiNative.getMacAddress(mInterfaceName));
-                        }
-                    }
-                    break;
                 case CMD_IPCLIENT_CREATED:
                     if (!isFromCurrentIpClientCallbacks(message)) break;
                     if (mIpClient != null) {

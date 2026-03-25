@@ -36,7 +36,6 @@ import android.net.wifi.OuiKeyedData;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.p2p.WifiP2pManager;
-import android.net.wifi.util.Environment;
 import android.os.Handler;
 import android.os.WorkSource;
 import android.text.TextUtils;
@@ -179,7 +178,7 @@ public class HalDeviceManager {
                             && networkInfo.getDetailedState()
                                     == NetworkInfo.DetailedState.CONNECTED;
                 }};
-        if (mFeatureFlags.monitorIntentForAllUsers() && Environment.isSdkAtLeastC()) {
+        if (mFeatureFlags.monitorIntentForAllUsers()) {
             mContext.registerReceiverForAllUsers(
                     p2pConnectionChangedReceiver, intentFilter, null, mEventHandler);
         } else {

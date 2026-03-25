@@ -16,8 +16,6 @@
 
 package android.system.wifi.mainline_supplicant;
 
-import android.system.wifi.mainline_supplicant.NanSchedule;
-
 /**
  * NAN Data path request indication message structure.
  * Event indication is received by an intended Responder when a NAN data request is initiated by an
@@ -63,9 +61,4 @@ parcelable NanDataPathRequestInd {
      * NAN Spec: Data Path Attributes / NDP Attribute / NDP Specific Info
      */
     byte[] appInfo;
-
-    /**
-     * Peer NDL schedule.
-     */
-    NanSchedule[] peerSchedule;
 }

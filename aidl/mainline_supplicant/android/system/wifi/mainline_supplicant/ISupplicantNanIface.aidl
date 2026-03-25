@@ -26,7 +26,6 @@ import android.system.wifi.mainline_supplicant.NanPairingRequest;
 import android.system.wifi.mainline_supplicant.NanPublishRequest;
 import android.system.wifi.mainline_supplicant.NanRespondToDataPathIndicationRequest;
 import android.system.wifi.mainline_supplicant.NanRespondToPairingIndicationRequest;
-import android.system.wifi.mainline_supplicant.NanSchedule;
 import android.system.wifi.mainline_supplicant.NanSubscribeRequest;
 import android.system.wifi.mainline_supplicant.NanTransmitFollowupRequest;
 
@@ -110,12 +109,11 @@ interface ISupplicantNanIface {
      *
      * @param cmdId Command Id to use for this invocation.
      * @param ifaceName The name of the interface, e.g. "aware0".
-     * @param MacAddr The MAC address of the interface
      * @throws ServiceSpecificException with one of the following values:
      *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
      *         |SupplicantStatusCode.FAILURE_UNKNOWN|
      */
-    void createDataInterfaceRequest(in char cmdId, in String ifaceName, in byte[6] MacAddr);
+    void createDataInterfaceRequest(in char cmdId, in String ifaceName);
 
     /**
      * Deletes a NAN Data Interface.
@@ -280,8 +278,7 @@ interface ISupplicantNanIface {
      *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
      *         |SupplicantStatusCode.FAILURE_UNKNOWN|
      */
-    void terminatePairingRequest(
-            in char cmdId, in int pairingInstanceId, in byte[6] peerDiscMacAddr);
+    void terminatePairingRequest(in char cmdId, in int pairingInstanceId, in byte[6] peerDiscMacAddr);
 
     /**
      * Initiate a data-path (NDP) setup operation: Initiator.
@@ -297,7 +294,7 @@ interface ISupplicantNanIface {
      */
     void initiateDataPathRequest(in char cmdId, in NanInitiateDataPathRequest msg);
 
-    /**
+   /**
      * Respond to a received data indication as part of a data-path (NDP) setup operation.
      * An indication is received by the Responder from the Initiator.
      * Asynchronous response is with
@@ -313,7 +310,7 @@ interface ISupplicantNanIface {
     void respondToDataPathIndicationRequest(
             in char cmdId, in NanRespondToDataPathIndicationRequest msg);
 
-    /**
+   /**
      * Data-path (NDP) termination request. Executed by either Initiator or Responder.
      * Asynchronous response is with
      * |ISupplicantNanIfaceEventCallback.notifyTerminateDataPathResponse|.
@@ -322,25 +319,9 @@ interface ISupplicantNanIface {
      * @param ndpInstanceId Data-path instance ID to be terminated.
      * @param peerDiscMacAddr MAC address of the peer. This is the MAC address of the peer's
      *        management/discovery NAN interface.
-     * @param ndiInitMac MAC address of the data interface that initiated the data-path.
      * @throws ServiceSpecificException with one of the following values:
      *         |SupplicantStatusCode.FAILURE_IFACE_INVALID|,
      *         |SupplicantStatusCode.FAILURE_UNKNOWN|
      */
-    void terminateDataPathRequest(
-            in char cmdId, in int ndpInstanceId, in byte[6] peerDiscMacAddr, in byte[6] ndiInitMac);
-
-    /**
-     * Set local NDL schedule.
-     * Asynchronous response is with
-     * |ISupplicantNanIfaceEventCallback.notifyScheduleUpdated|.
-
-     * @param cmdId Command Id to use for this invocation.
-     * @param schedule Local NDL schedule
-     * @throws ServiceSpecificException with one of the following values:
-     *         |SupplicantStatusCode.FAILURE_ARGS_INVALID|,
-     *         |SupplicantStatusCode.FAILURE_UNKNOWN|
-
-     */
-    void setSchedule(in char cmdId, in NanSchedule[] schedule);
+    void terminateDataPathRequest(in char cmdId, in int ndpInstanceId, in byte[6] peerDiscMacAddr);
 }

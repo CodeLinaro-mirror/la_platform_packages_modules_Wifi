@@ -16,6 +16,8 @@
 
 package com.android.server.wifi;
 
+import static android.net.wifi.WifiManager.MAX_LOCK_TAG_LENGTH;
+
 import android.annotation.Nullable;
 import android.app.ActivityManager;
 import android.content.Context;
@@ -38,6 +40,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 
 /**
  * WifiMulticastLockManager tracks holders of multicast locks and
@@ -103,15 +106,17 @@ public class WifiMulticastLockManager {
 
     private class Multicaster implements IBinder.DeathRecipient {
         String mTag;
+        int mTagHash;
         int mUid;
         IBinder mBinder;
         String mAttributionTag;
         String mPackageName;
         long mAcquireTime;
 
-        Multicaster(int uid, IBinder binder, String tag, String attributionTag,
+        Multicaster(int uid, IBinder binder, String tag, int tagHash, String attributionTag,
                 String packageName) throws RemoteException {
             mTag = tag;
+            mTagHash = tagHash;
             mUid = uid;
             mBinder = binder;
             mAttributionTag = attributionTag;
@@ -150,6 +155,10 @@ public class WifiMulticastLockManager {
             return mTag;
         }
 
+        public int getTagHash() {
+            return mTagHash;
+        }
+
         public IBinder getBinder() {
             return mBinder;
         }
@@ -174,6 +183,14 @@ public class WifiMulticastLockManager {
     private boolean uidIsLockOwner(int uid) {
         return mNumLocksPerActiveOwner.containsKey(uid)
                 || mNumLocksPerInactiveOwner.containsKey(uid);
+    }
+
+    private static String trimLockTagIfNeeded(String lockTag) {
+        if (lockTag == null || lockTag.length() <= MAX_LOCK_TAG_LENGTH) {
+            return lockTag;
+        }
+        Log.w(TAG, "Trimming lock tag from original size " + lockTag.length());
+        return lockTag.substring(0, MAX_LOCK_TAG_LENGTH);
     }
 
     private void transitionUidToActive(int uid) {
@@ -287,11 +304,18 @@ public class WifiMulticastLockManager {
      */
     public void acquireLock(int uid, IBinder binder, String lockTag, String attributionTag,
             String packageName) {
+        // Trim the lock tag if it exceeds the maximum allowed size.
+        // To support tags that exceed the size limit, each lock will be
+        // identified by the hash of its tag before trimming.
+        int tagHash = Objects.hash(lockTag);
+        String trimmedTag = trimLockTagIfNeeded(lockTag);
+
         synchronized (mLock) {
             Multicaster multicaster;
             try {
                 // Construction can fail if the provided binder is not alive.
-                multicaster = new Multicaster(uid, binder, lockTag, attributionTag, packageName);
+                multicaster = new Multicaster(
+                        uid, binder, trimmedTag, tagHash, attributionTag, packageName);
             } catch (RemoteException e) {
                 Log.e(TAG, "Unable to create new multicaster " + e);
                 return;
@@ -326,19 +350,22 @@ public class WifiMulticastLockManager {
         synchronized (mLock) {
             mMulticastDisabled++;
             int size = mMulticasters.size();
+            int tagHash = Objects.hash(lockTag);
             for (int i = size - 1; i >= 0; i--) {
                 Multicaster m = mMulticasters.get(i);
-                if ((m != null) && (m.getUid() == uid) && (m.getTag().equals(lockTag))
+                if ((m != null) && (m.getUid() == uid) && (m.getTagHash() == tagHash)
                         && (m.getBinder() == binder)) {
+                    String trimmedTag = m.getTag();
                     String packageName = m.getPackageName();
                     String attributionTag = m.getAttributionTag();
                     long sessionDurationMs =
                             mClock.getElapsedSinceBootMillis() - m.getAcquireTime();
                     removeMulticasterLocked(i, uid, lockTag);
                     mCompletedSessionLog.log("uid=" + uid
-                            + ", " + "lockTag=" + lockTag
+                            + ", " + "lockTag=" + trimmedTag
                             + ", " + "packageName=" + packageName
                             + ", " + "attributionTag=" + attributionTag
+                            + ", " + "tagHash=" + tagHash
                             + ", " + "durationMs=" + sessionDurationMs);
                     break;
                 }

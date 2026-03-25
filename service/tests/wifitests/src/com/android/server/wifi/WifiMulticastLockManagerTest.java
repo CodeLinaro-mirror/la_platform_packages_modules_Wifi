@@ -16,6 +16,8 @@
 
 package com.android.server.wifi;
 
+import static android.net.wifi.WifiManager.MAX_LOCK_TAG_LENGTH;
+
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_PRIMARY;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_SECONDARY_TRANSIENT;
 
@@ -508,5 +510,30 @@ public class WifiMulticastLockManagerTest extends WifiBaseTest {
         // A single active session should have been logged when the final lock was released (t=20)
         verify(mWifiMetrics, times(1)).addMulticastLockManagerActiveSession(anyLong());
         verify(mWifiMetrics).addMulticastLockManagerActiveSession(eq(20L));
+    }
+
+    /**
+     * Test behavior when the lock tag exceeds the maximum allowed size.
+     * Long tags should still serve as unique identifiers, even if they are trimmed internally.
+     */
+    @Test
+    public void testLockTagLargerThanMaxSize() throws RemoteException {
+        String maxSizeTag = "x".repeat(MAX_LOCK_TAG_LENGTH);
+        String longTag1 = maxSizeTag + "tag1";
+        String longTag2 = maxSizeTag + "tag2";
+
+        // Acquire the lock using longTag1
+        IBinder binder = mock(IBinder.class);
+        mManager.acquireLock(TEST_UID, binder, longTag1, TEST_ATTRIBUTION_TAG, TEST_PACKAGE_NAME);
+        assertTrue(mManager.isMulticastEnabled());
+
+        // Expect that longTag2 does not release the lock, even though
+        // the trimmed versions of longTag1 and longTag2 are the same
+        mManager.releaseLock(TEST_UID, binder, longTag2);
+        assertTrue(mManager.isMulticastEnabled());
+
+        // Passing the correct tag should release the lock
+        mManager.releaseLock(TEST_UID, binder, longTag1);
+        assertFalse(mManager.isMulticastEnabled());
     }
 }

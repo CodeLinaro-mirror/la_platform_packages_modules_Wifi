@@ -18,6 +18,9 @@ package com.android.server.wifi.aware;
 
 import static android.net.wifi.ScanResult.CHANNEL_WIDTH_80MHZ;
 import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_SK_128;
+import static android.system.OsConstants.NETLINK_ROUTE;
+
+import static com.android.dx.mockito.inline.extended.ExtendedMockito.staticMockMarker;
 
 import static org.hamcrest.core.IsEqual.equalTo;
 import static org.junit.Assert.assertArrayEquals;
@@ -33,6 +36,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyShort;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNotNull;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.inOrder;
@@ -43,6 +47,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import android.Manifest;
 import android.app.test.TestAlarmManager;
 import android.content.Context;
@@ -88,7 +93,9 @@ import android.util.LocalLog;
 
 import androidx.test.filters.SmallTest;
 
+import com.android.dx.mockito.inline.extended.StaticInOrder;
 import com.android.modules.utils.build.SdkLevel;
+import com.android.net.module.util.netlink.NetlinkUtils;
 import com.android.server.wifi.Clock;
 import com.android.server.wifi.HalDeviceManager;
 import com.android.server.wifi.InterfaceConflictManager;
@@ -212,7 +219,8 @@ public class WifiAwareDataPathStateManagerTest extends WifiBaseTest {
         mDut.enableVerboseLogging(true, true);
         mMockLooper.dispatchAll();
 
-        when(mMockNetworkInterface.configureAgentProperties(any(), any(), any())).thenReturn(true);
+        when(mMockNetworkInterface.configureAgentProperties(any(), any(), any(), any()))
+                .thenReturn(true);
         when(mMockNetworkInterface.isAddressUsable(any())).thenReturn(true);
 
         when(mMockPowerManager.isDeviceIdleMode()).thenReturn(false);
@@ -1703,6 +1711,7 @@ public class WifiAwareDataPathStateManagerTest extends WifiBaseTest {
         InOrder inOrder = inOrder(mMockNative, mMockCm, mMockCallback, mMockSessionCallback,
                 mMockNetdWrapper, mMockNetworkInterface, mMockContext);
         InOrder inOrderM = inOrder(mAwareMetricsMock);
+        StaticInOrder inOrderStatic = ExtendedMockito.inOrder(staticMockMarker(NetlinkUtils.class));
         WifiAwareNetworkAgent networkAgent = null;
 
         if (!providePmk) {
@@ -1770,7 +1779,7 @@ public class WifiAwareDataPathStateManagerTest extends WifiBaseTest {
             int numConfigureAgentPropertiesFail = 0;
             if (numAddrValidationRetries > 0) {
                 when(mMockNetworkInterface.isAddressUsable(any())).thenReturn(false);
-                when(mMockNetworkInterface.configureAgentProperties(any(), any(), any()))
+                when(mMockNetworkInterface.configureAgentProperties(any(), any(), any(), any()))
                         .thenReturn(false);
                 // First retry will be ConfigureAgentProperties failure.
                 numConfigureAgentPropertiesFail = 1;
@@ -1781,13 +1790,14 @@ public class WifiAwareDataPathStateManagerTest extends WifiBaseTest {
             mMockLooper.dispatchAll();
             inOrder.verify(mMockNetdWrapper).setInterfaceUp(anyString());
             inOrder.verify(mMockNetdWrapper).enableIpv6(anyString());
-            inOrder.verify(mMockNetworkInterface).configureAgentProperties(any(), any(), any());
+            inOrder.verify(mMockNetworkInterface).configureAgentProperties(any(), any(), any(),
+                    any());
             if (numAddrValidationRetries <= 0) {
                 inOrder.verify(mMockNetworkInterface).isAddressUsable(any());
             }
             for (int i = 0; i < numAddrValidationRetries; ++i) {
                 if (i == numConfigureAgentPropertiesFail) {
-                    when(mMockNetworkInterface.configureAgentProperties(any(), any(), any()))
+                    when(mMockNetworkInterface.configureAgentProperties(any(), any(), any(), any()))
                             .thenReturn(true);
                 }
                 if (i == numAddrValidationRetries - 1) {
@@ -1799,7 +1809,8 @@ public class WifiAwareDataPathStateManagerTest extends WifiBaseTest {
                 mMockLooper.moveTimeForward(
                         WifiAwareDataPathStateManager.ADDRESS_VALIDATION_RETRY_INTERVAL_MS + 1);
                 mMockLooper.dispatchAll();
-                inOrder.verify(mMockNetworkInterface).configureAgentProperties(any(), any(), any());
+                inOrder.verify(mMockNetworkInterface).configureAgentProperties(any(), any(), any(),
+                        any());
                 if (i < numConfigureAgentPropertiesFail) {
                     continue;
                 }
@@ -1819,6 +1830,8 @@ public class WifiAwareDataPathStateManagerTest extends WifiBaseTest {
                 inOrder.verify(mMockNative).endDataPath(transactionId.capture(), eq(ndpId));
                 mDut.onEndDataPathResponse(transactionId.getValue(), true, 0);
             } else {
+                inOrderStatic.verify(() -> NetlinkUtils.sendOneShotKernelMessage(eq(NETLINK_ROUTE),
+                        isNotNull()));
                 inOrder.verify(mMockNetworkInterface).setConnected(agentCaptor.capture());
                 networkAgent = agentCaptor.getValue();
                 inOrderM.verify(mAwareMetricsMock).recordNdpStatus(eq(NanStatusCode.SUCCESS),

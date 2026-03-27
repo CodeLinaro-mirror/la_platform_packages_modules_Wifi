@@ -6671,6 +6671,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                     mWifiCarrierInfoManager.clear();
                     notifyFactoryReset();
                     mContext.resetResourceCache();
+                    mWifiInjector.getPairingConfigManager().reset();
                 }, TAG + "#factoryReset3");
     }
 

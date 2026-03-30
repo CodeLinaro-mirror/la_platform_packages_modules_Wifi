@@ -919,6 +919,10 @@ public class ApConfigUtil {
      * @return true if supported, false otherwise.
      */
     public static boolean isIeee80211beSupported(@NonNull Context context) {
+        if (!SystemProperties.getBoolean("ro.vendor.wlan.11ax", true)) {
+            Log.i(TAG, "Disable 11ax due to ro.vendor.wlan.11ax is false");
+            return false;
+        }
         return context.getResources().getBoolean(
                     R.bool.config_wifiSoftapIeee80211beSupported);
     }

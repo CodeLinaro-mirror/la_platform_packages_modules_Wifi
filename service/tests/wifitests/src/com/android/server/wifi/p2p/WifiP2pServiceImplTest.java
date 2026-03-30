@@ -10155,4 +10155,66 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         // This verifies that sendMessage(DISABLE_P2P) is called.
         verify(mWifiNative).teardownInterface();
     }
+
+    /**
+     * Verifies that if NetworkAgent registration fails (e.g., due to an older Tethering module
+     * requiring LocalNetworkConfig when the WiFi module does not provide one), the system
+     * falls back to the manual netd configuration instead of crashing or leaving the interface
+     * unconfigured.
+     */
+    @Test
+    public void testP2pGcNetworkAgent_RegisterFailure_FallbackToNetd() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastC());
+        when(mFeatureFlags.p2pGcNetworkAgent()).thenReturn(true);
+
+        // Mock registration to throw IllegalArgumentException (simulating older tethering module)
+        doThrow(new IllegalArgumentException("Local network agents must have a LocalNetworkConfig"))
+                .when(mWifiInjector).makeWifiNetworkAgent(any(), any(), any(), isNull(), any());
+
+        forceP2pEnabled(mClient1);
+        mockPeersList();
+
+        // Trigger connection to a peer
+        mTestWifiP2pPeerConfig.wps.setup = WpsInfo.PBC;
+        sendConnectMsg(mClientMessenger, mTestWifiP2pPeerConfig);
+        assertTrue(mClientHandler.hasMessages(WifiP2pManager.CONNECT_SUCCEEDED));
+
+        // Move to GroupNegotiationState
+        final WifiP2pProvDiscEvent pdEvent = new WifiP2pProvDiscEvent();
+        pdEvent.device = mTestWifiP2pDevice;
+        sendSimpleMsg(null, WifiP2pMonitor.P2P_PROV_DISC_PBC_RSP_EVENT, pdEvent);
+
+        // Group started as GC
+        final WifiP2pGroup group = new WifiP2pGroup();
+        group.setInterface(IFACE_NAME_P2P);
+        group.setIsGroupOwner(false);
+        group.setOwner(mTestWifiP2pDevice);
+        sendGroupStartedMsg(group);
+
+        // Send DHCP results to trigger NetworkAgent registration
+        final DhcpResultsParcelable dhcpResults = new DhcpResultsParcelable();
+        dhcpResults.baseConfiguration = new StaticIpConfiguration();
+
+        // This call should not crash the service and should fallback
+        sendSimpleMsg(null, WifiP2pServiceImpl.IPC_DHCP_RESULTS, dhcpResults);
+        mLooper.dispatchAll();
+
+        // Verify that it tried to register but failed
+        verify(mWifiInjector).makeWifiNetworkAgent(any(), any(), any(), isNull(), any());
+
+        // Verify that it fell back to old way (netd configuration)
+        verify(mNetdWrapper).addInterfaceToLocalNetwork(eq(IFACE_NAME_P2P), any());
+
+        // Verify that markConnected was not called on the (null) agent
+        verify(mWifiNetworkAgent, never()).markConnected();
+
+        // Trigger disconnection
+        sendSimpleMsg(null, WifiP2pMonitor.P2P_GROUP_REMOVED_EVENT);
+        mLooper.dispatchAll();
+
+        // Verify that disconnection used netd way if registration failed
+        verify(mNetdWrapper).removeInterfaceFromLocalNetwork(eq(IFACE_NAME_P2P));
+        verify(mNetdWrapper).clearInterfaceAddresses(eq(IFACE_NAME_P2P));
+        verify(mWifiNetworkAgent, never()).unregister();
+    }
 }

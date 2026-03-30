@@ -5601,7 +5601,15 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                                 setWifiP2pInfoOnGroupFormation(addr.getHostAddress());
                             }
                         }
-                        if (!isP2pGcNetworkAgentEnabled()) {
+                        if (isP2pGcNetworkAgentEnabled()) {
+                            // Assumes mGroup is not null and this is not a group owner.
+                            final String iface = mGroup.getInterface();
+                            LinkProperties linkProperties =
+                                    toLinkProperties(mDhcpResultsParcelable.baseConfiguration,
+                                            iface);
+                            registerNetworkAgent(linkProperties);
+                        }
+                        if (!isP2pGcNetworkAgentEnabled() || mNetworkAgent == null) {
                             try {
                                 final String ifname = mGroup.getInterface();
                                 if (mDhcpResultsParcelable != null) {
@@ -5617,13 +5625,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         onGroupCreated(new WifiP2pInfo(mWifiP2pInfo),
                                 eraseOwnDeviceAddress(mGroup));
                         sendP2pConnectionChangedBroadcast();
-                        if (isP2pGcNetworkAgentEnabled()) {
-                            // Assumes mGroup is not null and this is not a group owner.
-                            final String iface = mGroup.getInterface();
-                            LinkProperties linkProperties =
-                                    toLinkProperties(mDhcpResultsParcelable.baseConfiguration,
-                                            iface);
-                            registerNetworkAgent(linkProperties);
+                        if (mNetworkAgent != null) {
                             mNetworkAgent.markConnected();
                         }
                         break;
@@ -5639,7 +5641,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         }
                         if (isP2pGcNetworkAgentEnabled()) {
                             registerNetworkAgent((LinkProperties) message.obj);
-                        } else {
+                        }
+                        if (!isP2pGcNetworkAgentEnabled() || mNetworkAgent == null) {
                             try {
                                 mNetdWrapper.addInterfaceToLocalNetwork(
                                         mGroup.getInterface(),
@@ -7985,18 +7988,15 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         }
 
         private void handleGroupRemoved() {
+            boolean networkAgentUsed = isP2pGcNetworkAgentEnabled() && mNetworkAgent != null;
             if (mGroup.isGroupOwner()) {
                 // {@link com.android.server.connectivity.Tethering} listens to
                 // {@link WifiP2pManager#WIFI_P2P_CONNECTION_CHANGED_ACTION}
                 // events and takes over the DHCP server management automatically.
             } else {
-                if (isP2pGcNetworkAgentEnabled()) {
-                    if (mNetworkAgent != null) {
-                        mNetworkAgent.unregister();
-                        mNetworkAgent = null;
-                    } else {
-                        Log.wtf(TAG, "handleGroupRemoved: mNetworkAgent is null");
-                    }
+                if (networkAgentUsed) {
+                    mNetworkAgent.unregister();
+                    mNetworkAgent = null;
                 } else {
                     try {
                         mNetdWrapper.removeInterfaceFromLocalNetwork(mGroup.getInterface());
@@ -8008,7 +8008,7 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 stopIpClient();
             }
 
-            if (!isP2pGcNetworkAgentEnabled()) {
+            if (!networkAgentUsed) {
                 try {
                     mNetdWrapper.clearInterfaceAddresses(mGroup.getInterface());
                 } catch (Exception e) {
@@ -9166,12 +9166,18 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         @NonNull KeepalivePacketData packet) {
                 }
             };
-            mNetworkAgent = mWifiInjector.makeWifiNetworkAgent(
-                    ncb.build(), lp, nac, null, callback);
-            mNetworkAgent.sendNetworkScore(new NetworkScore.Builder()
-                    .setKeepConnectedReason(3 /* KEEP_CONNECTED_REASON_LOCAL_NETWORK */).build());
-            Log.i(TAG, "Local network agent registered, netId="
-                    + mNetworkAgent.getNetwork().getNetId());
+            try {
+                mNetworkAgent = mWifiInjector.makeWifiNetworkAgent(
+                        ncb.build(), lp, nac, null, callback);
+                mNetworkAgent.sendNetworkScore(new NetworkScore.Builder()
+                        .setKeepConnectedReason(
+                                3 /* KEEP_CONNECTED_REASON_LOCAL_NETWORK */).build());
+                Log.i(TAG, "Local network agent registered, netId="
+                        + mNetworkAgent.getNetwork().getNetId());
+            } catch (IllegalArgumentException e) {
+                Log.e(TAG, "Failed to register network agent, fallback to netd", e);
+                mNetworkAgent = null;
+            }
         }
     }
 

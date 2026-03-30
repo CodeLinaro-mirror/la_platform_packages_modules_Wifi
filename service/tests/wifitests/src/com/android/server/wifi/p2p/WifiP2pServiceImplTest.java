@@ -16,6 +16,8 @@
 
 package com.android.server.wifi.p2p;
 
+import static android.net.NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK;
+import static android.net.NetworkCapabilities.TRANSPORT_WIFI;
 import static android.net.NetworkInfo.DetailedState.CONNECTING;
 import static android.net.NetworkInfo.DetailedState.DISCONNECTED;
 import static android.net.NetworkInfo.DetailedState.FAILED;
@@ -56,6 +58,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
@@ -84,11 +87,16 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.location.LocationManager;
 import android.net.ConnectivityManager;
+import android.net.DhcpResultsParcelable;
 import android.net.InetAddresses;
 import android.net.LinkAddress;
+import android.net.LinkProperties;
 import android.net.MacAddress;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
 import android.net.NetworkStack;
+import android.net.StaticIpConfiguration;
 import android.net.TetheredClient;
 import android.net.TetheringInterface;
 import android.net.TetheringManager;
@@ -138,6 +146,7 @@ import android.provider.Settings;
 import android.text.TextUtils;
 import android.util.ArraySet;
 import android.util.LocalLog;
+import android.util.Range;
 import android.view.Display;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -162,6 +171,7 @@ import com.android.server.wifi.WifiDiagnostics;
 import com.android.server.wifi.WifiDialogManager;
 import com.android.server.wifi.WifiGlobals;
 import com.android.server.wifi.WifiInjector;
+import com.android.server.wifi.WifiNetworkAgent;
 import com.android.server.wifi.WifiP2pConnection;
 import com.android.server.wifi.WifiSettingsConfigStore;
 import com.android.server.wifi.coex.CoexManager;
@@ -197,6 +207,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 /**
@@ -240,6 +251,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     private static final int[] TEST_USD_DISCOVERY_CHANNEL_FREQUENCIES_MHZ = {2412, 2437, 2462};
     private static final int TEST_USD_SESSION_ID = 2;
     private static final int TEST_DIK_ID = 3;
+    private static final int TEST_NET_ID = 123;
 
     private ArgumentCaptor<BroadcastReceiver> mBcastRxCaptor = ArgumentCaptor.forClass(
             BroadcastReceiver.class);
@@ -314,6 +326,7 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Mock AlarmManager mAlarmManager;
     @Mock WifiDialogManager mWifiDialogManager;
     @Mock WifiDialogManager.DialogHandle mDialogHandle;
+    @Mock ConnectivityManager mConnectivityManager;
     @Mock InterfaceConflictManager mInterfaceConflictManager;
     @Mock Clock mClock;
     @Mock LayoutInflater mLayoutInflater;
@@ -333,6 +346,8 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     @Mock List<TetheredClient.AddressInfo> mAddresses;
     @Mock LocalLog mLocalLog;
     @Mock FeatureFlags mFeatureFlags;
+    @Mock Network mNetwork;
+    @Mock WifiNetworkAgent mWifiNetworkAgent;
 
     private void generatorTestData() {
         mTestWifiP2pGroup = new WifiP2pGroup();
@@ -1643,9 +1658,11 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         when(mWifiInjector.getWifiHandlerLocalLog()).thenReturn(mLocalLog);
         when(mDeviceConfigFacade.isP2pFailureBugreportEnabled()).thenReturn(false);
         when(mContext.getSystemService(TetheringManager.class)).thenReturn(mTetheringManager);
+        when(mContext.getSystemService(ConnectivityManager.class)).thenReturn(mConnectivityManager);
         when(mP2pListener.asBinder()).thenReturn(mock(IBinder.class));
 
         mWifiP2pServiceImpl = new WifiP2pServiceImpl(mContext, mWifiInjector);
+        mWifiP2pServiceImpl.connectivityServiceReady();
         if (supported) {
             // register these event:
             // * WifiManager.WIFI_STATE_CHANGED_ACTION        -- always
@@ -7768,6 +7785,137 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
         runTestP2pWithUserApproval(false);
     }
 
+
+
+    private void doTestP2pGcNetworkAgent(boolean isProvisioningSuccess,
+            boolean p2pGcNetworkAgentFlag)
+            throws Exception {
+        final boolean expectAgent = p2pGcNetworkAgentFlag && SdkLevel.isAtLeastC();
+        when(mFeatureFlags.p2pGcNetworkAgent()).thenReturn(p2pGcNetworkAgentFlag);
+
+        if (expectAgent) {
+            doReturn(mWifiNetworkAgent).when(mWifiInjector).makeWifiNetworkAgent(any(), any(),
+                    any(), isNull(), any());
+            when(mWifiNetworkAgent.getNetwork()).thenReturn(mNetwork);
+            when(mNetwork.getNetId()).thenReturn(TEST_NET_ID);
+        }
+        forceP2pEnabled(mClient1);
+        mockPeersList();
+
+        if (isProvisioningSuccess) {
+            mockEnterProvisionDiscoveryStateForV2Connection(WifiP2pPairingBootstrappingConfig
+                    .PAIRING_BOOTSTRAPPING_METHOD_OPPORTUNISTIC, "", false);
+            // Move to GroupNegotiationState
+            final WifiP2pProvDiscEvent pdEvent = createWifiP2pProvDiscEventForV2Connection(
+                    WifiP2pProvDiscEvent.PAIRING_BOOTSTRAPPING_OPPORTUNISTIC_RSP, false);
+            sendSimpleMsg(null,
+                    WifiP2pMonitor.P2P_PROV_DISC_PAIRING_BOOTSTRAPPING_OPPORTUNISTIC_RSP_EVENT,
+                    pdEvent);
+        } else {
+            // Trigger connection to a peer
+            mTestWifiP2pPeerConfig.wps.setup = WpsInfo.PBC;
+            sendConnectMsg(mClientMessenger, mTestWifiP2pPeerConfig);
+            assertTrue(mClientHandler.hasMessages(WifiP2pManager.CONNECT_SUCCEEDED));
+
+            // Move to GroupNegotiationState
+            final WifiP2pProvDiscEvent pdEvent = new WifiP2pProvDiscEvent();
+            pdEvent.device = mTestWifiP2pDevice;
+            sendSimpleMsg(null, WifiP2pMonitor.P2P_PROV_DISC_PBC_RSP_EVENT, pdEvent);
+        }
+
+        // Group started as GC
+        final WifiP2pGroup group = new WifiP2pGroup();
+        group.setInterface(IFACE_NAME_P2P);
+        group.setIsGroupOwner(false);
+        if (isProvisioningSuccess) {
+            group.setOwner(mTestWifiP2pV2Device);
+        } else {
+            group.setOwner(mTestWifiP2pDevice);
+        }
+        sendGroupStartedMsg(group);
+
+        if (isProvisioningSuccess) {
+            // Send provisioning success to trigger NetworkAgent registration
+            sendSimpleMsg(null, WifiP2pServiceImpl.IPC_PROVISIONING_SUCCESS,
+                    new LinkProperties());
+        } else {
+            // Send DHCP results to trigger NetworkAgent registration
+            final DhcpResultsParcelable dhcpResults = new DhcpResultsParcelable();
+            dhcpResults.baseConfiguration = new StaticIpConfiguration();
+            sendSimpleMsg(null, WifiP2pServiceImpl.IPC_DHCP_RESULTS,
+                    dhcpResults);
+        }
+        mLooper.dispatchAll();
+
+        if (expectAgent) {
+            final ArgumentCaptor<NetworkCapabilities> ncCaptor =
+                    ArgumentCaptor.forClass(NetworkCapabilities.class);
+            verify(mWifiInjector).makeWifiNetworkAgent(ncCaptor.capture(), any(), any(), isNull(),
+                    any());
+            verify(mNetdWrapper, never()).addInterfaceToLocalNetwork(any(), any());
+
+            final NetworkCapabilities nc = ncCaptor.getValue();
+            assertTrue(nc.hasTransport(TRANSPORT_WIFI));
+            assertTrue(nc.hasCapability(NET_CAPABILITY_LOCAL_NETWORK));
+            final Set<Range<Integer>> uids = nc.getUids();
+            assertEquals(1, uids.size());
+            final Range<Integer> range = uids.iterator().next();
+            // The UID should be the UID of the client that started the connection.
+            // Which is mocked inside forceP2pEnabled().
+            assertEquals(mClient1.getCallingUid(), (int) range.getLower());
+            assertEquals(mClient1.getCallingUid(), (int) range.getUpper());
+
+            verify(mWifiNetworkAgent).markConnected();
+        } else {
+            verify(mWifiInjector, never())
+                    .makeWifiNetworkAgent(any(), any(), any(), isNull(), any());
+            verify(mNetdWrapper).addInterfaceToLocalNetwork(any(), any());
+        }
+
+        // Disconnect
+        sendGroupRemovedMsg();
+        mLooper.dispatchAll();
+
+        if (expectAgent) {
+            verify(mWifiNetworkAgent).unregister();
+            verify(mNetdWrapper, never()).removeInterfaceFromLocalNetwork(any());
+            verify(mNetdWrapper, never()).clearInterfaceAddresses(any());
+        } else {
+            verify(mNetdWrapper).removeInterfaceFromLocalNetwork(any());
+            verify(mNetdWrapper).clearInterfaceAddresses(any());
+        }
+    }
+
+    @Test
+    public void testP2pGcNetworkAgentRegistered_Dhcp_FlagOn_atLeastC() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastC());
+        doTestP2pGcNetworkAgent(false, true);
+    }
+
+    @Test
+    public void testP2pGcNetworkAgentNotUsed_Dhcp_FlagOff_atLeastC() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastC());
+        doTestP2pGcNetworkAgent(false, false);
+    }
+
+    @Test
+    public void testP2pGcNetworkAgentNotUsed_Dhcp_FlagOn_belowC() throws Exception {
+        assumeFalse(SdkLevel.isAtLeastC());
+        doTestP2pGcNetworkAgent(false, true);
+    }
+
+    @Test
+    public void testP2pGcNetworkAgentRegistered_Provisioning_FlagOn_atLeastC() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastC());
+        doTestP2pGcNetworkAgent(true, true);
+    }
+
+    @Test
+    public void testP2pGcNetworkAgentNotUsed_Provisioning_FlagOff_atLeastC() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastC());
+        doTestP2pGcNetworkAgent(true, false);
+    }
+
     /**
      * Validate InterfaceConflictManager is reset if user approval occurs after wifi turned off.
      */
@@ -10006,5 +10154,67 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
 
         // This verifies that sendMessage(DISABLE_P2P) is called.
         verify(mWifiNative).teardownInterface();
+    }
+
+    /**
+     * Verifies that if NetworkAgent registration fails (e.g., due to an older Tethering module
+     * requiring LocalNetworkConfig when the WiFi module does not provide one), the system
+     * falls back to the manual netd configuration instead of crashing or leaving the interface
+     * unconfigured.
+     */
+    @Test
+    public void testP2pGcNetworkAgent_RegisterFailure_FallbackToNetd() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastC());
+        when(mFeatureFlags.p2pGcNetworkAgent()).thenReturn(true);
+
+        // Mock registration to throw IllegalArgumentException (simulating older tethering module)
+        doThrow(new IllegalArgumentException("Local network agents must have a LocalNetworkConfig"))
+                .when(mWifiInjector).makeWifiNetworkAgent(any(), any(), any(), isNull(), any());
+
+        forceP2pEnabled(mClient1);
+        mockPeersList();
+
+        // Trigger connection to a peer
+        mTestWifiP2pPeerConfig.wps.setup = WpsInfo.PBC;
+        sendConnectMsg(mClientMessenger, mTestWifiP2pPeerConfig);
+        assertTrue(mClientHandler.hasMessages(WifiP2pManager.CONNECT_SUCCEEDED));
+
+        // Move to GroupNegotiationState
+        final WifiP2pProvDiscEvent pdEvent = new WifiP2pProvDiscEvent();
+        pdEvent.device = mTestWifiP2pDevice;
+        sendSimpleMsg(null, WifiP2pMonitor.P2P_PROV_DISC_PBC_RSP_EVENT, pdEvent);
+
+        // Group started as GC
+        final WifiP2pGroup group = new WifiP2pGroup();
+        group.setInterface(IFACE_NAME_P2P);
+        group.setIsGroupOwner(false);
+        group.setOwner(mTestWifiP2pDevice);
+        sendGroupStartedMsg(group);
+
+        // Send DHCP results to trigger NetworkAgent registration
+        final DhcpResultsParcelable dhcpResults = new DhcpResultsParcelable();
+        dhcpResults.baseConfiguration = new StaticIpConfiguration();
+
+        // This call should not crash the service and should fallback
+        sendSimpleMsg(null, WifiP2pServiceImpl.IPC_DHCP_RESULTS, dhcpResults);
+        mLooper.dispatchAll();
+
+        // Verify that it tried to register but failed
+        verify(mWifiInjector).makeWifiNetworkAgent(any(), any(), any(), isNull(), any());
+
+        // Verify that it fell back to old way (netd configuration)
+        verify(mNetdWrapper).addInterfaceToLocalNetwork(eq(IFACE_NAME_P2P), any());
+
+        // Verify that markConnected was not called on the (null) agent
+        verify(mWifiNetworkAgent, never()).markConnected();
+
+        // Trigger disconnection
+        sendSimpleMsg(null, WifiP2pMonitor.P2P_GROUP_REMOVED_EVENT);
+        mLooper.dispatchAll();
+
+        // Verify that disconnection used netd way if registration failed
+        verify(mNetdWrapper).removeInterfaceFromLocalNetwork(eq(IFACE_NAME_P2P));
+        verify(mNetdWrapper).clearInterfaceAddresses(eq(IFACE_NAME_P2P));
+        verify(mWifiNetworkAgent, never()).unregister();
     }
 }

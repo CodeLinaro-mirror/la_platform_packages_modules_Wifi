@@ -3623,10 +3623,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 link.setState(info.links[i].isAnyTidMapped() ? MloLink.MLO_LINK_STATE_ACTIVE
                         : MloLink.MLO_LINK_STATE_IDLE);
                 link.setMaxSupportedRxLinkSpeedMbps(
-                        mThroughputPredictor.predicMaxRxThroughputForMloLink(
+                        mThroughputPredictor.predictMaxRxThroughputForMloLink(
                                 capabilities, info.links[i]));
                 link.setMaxSupportedTxLinkSpeedMbps(
-                        mThroughputPredictor.predicMaxTxThroughputForMloLink(
+                        mThroughputPredictor.predictMaxTxThroughputForMloLink(
                                 capabilities, info.links[i]));
                 affiliatedMloLinks.add(link);
             }
@@ -3639,10 +3639,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         info.links[i].isAnyTidMapped() ? MloLink.MLO_LINK_STATE_ACTIVE
                                 : MloLink.MLO_LINK_STATE_IDLE);
                 mWifiInfo.updateMaxSupportedMloTxLinkSpeedMbps(info.links[i].getLinkId(),
-                        mThroughputPredictor.predicMaxTxThroughputForMloLink(
+                        mThroughputPredictor.predictMaxTxThroughputForMloLink(
                                 capabilities, info.links[i]));
                 mWifiInfo.updateMaxSupportedMloRxLinkSpeedMbps(info.links[i].getLinkId(),
-                        mThroughputPredictor.predicMaxRxThroughputForMloLink(
+                        mThroughputPredictor.predictMaxRxThroughputForMloLink(
                                 capabilities, info.links[i]));
             }
         }

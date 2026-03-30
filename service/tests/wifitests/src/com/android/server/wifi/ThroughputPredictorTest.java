@@ -476,7 +476,7 @@ public class ThroughputPredictorTest extends WifiBaseTest {
         WifiNative.ConnectionMloLink linkInfo = new WifiNative.ConnectionMloLink(0, null, null,
                 (byte) 0, (byte) 0, 5240, ScanResult.CHANNEL_WIDTH_160MHZ, 1, 1);
         assertEquals(1441,
-                mThroughputPredictor.predicMaxTxThroughputForMloLink(mConnectionCap, linkInfo));
+                mThroughputPredictor.predictMaxTxThroughputForMloLink(mConnectionCap, linkInfo));
     }
 
     /**
@@ -493,32 +493,32 @@ public class ThroughputPredictorTest extends WifiBaseTest {
         WifiNative.ConnectionMloLink linkInfo = new WifiNative.ConnectionMloLink(0, null, null,
                 (byte) 0, (byte) 0, 5240, ScanResult.CHANNEL_WIDTH_160MHZ, 2, 2);
         assertEquals(2882,
-                mThroughputPredictor.predicMaxRxThroughputForMloLink(mConnectionCap, linkInfo));
+                mThroughputPredictor.predictMaxRxThroughputForMloLink(mConnectionCap, linkInfo));
     }
 
     /**
-     * Verifies that predicMaxTxThroughputForMloLink returns LINK_SPEED_UNKNOWN
+     * Verifies that predictMaxTxThroughputForMloLink returns LINK_SPEED_UNKNOWN
      * when the link bandwidth is invalid.
      */
     @Test
-    public void verifyPredicMaxTxThroughputForMloLinkUnknownBandwidth() {
+    public void verifyPredictMaxTxThroughputForMloLinkUnknownBandwidth() {
         mConnectionCap.wifiStandard = ScanResult.WIFI_STANDARD_11BE;
         WifiNative.ConnectionMloLink linkInfo = new WifiNative.ConnectionMloLink(0, null, null,
                 (byte) 0, (byte) 0, 5240, -1, 0, 0);
         assertEquals(LINK_SPEED_UNKNOWN,
-                mThroughputPredictor.predicMaxTxThroughputForMloLink(mConnectionCap, linkInfo));
+                mThroughputPredictor.predictMaxTxThroughputForMloLink(mConnectionCap, linkInfo));
     }
 
     /**
-     * Verifies that predicMaxRxThroughputForMloLink returns LINK_SPEED_UNKNOWN
+     * Verifies that predictMaxRxThroughputForMloLink returns LINK_SPEED_UNKNOWN
      * when the link bandwidth is invalid.
      */
     @Test
-    public void verifyPredicMaxRxThroughputForMloLinkUnknownBandwidth() {
+    public void verifyPredictMaxRxThroughputForMloLinkUnknownBandwidth() {
         mConnectionCap.wifiStandard = ScanResult.WIFI_STANDARD_11BE;
         WifiNative.ConnectionMloLink linkInfo = new WifiNative.ConnectionMloLink(0, null, null,
                 (byte) 0, (byte) 0, 5240, -1, 2, 0);
         assertEquals(LINK_SPEED_UNKNOWN,
-                mThroughputPredictor.predicMaxRxThroughputForMloLink(mConnectionCap, linkInfo));
+                mThroughputPredictor.predictMaxRxThroughputForMloLink(mConnectionCap, linkInfo));
     }
 }

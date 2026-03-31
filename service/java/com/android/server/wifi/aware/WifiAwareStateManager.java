@@ -3377,10 +3377,16 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     waitForResponse = mWifiAwareNativeApi.createAwareNetworkInterface(
                             mCurrentTransactionId, (String) msg.obj);
                     break;
-                case COMMAND_TYPE_DELETE_DATA_PATH_INTERFACE:
+                case COMMAND_TYPE_DELETE_DATA_PATH_INTERFACE: {
+                    String interfaceName = (String) msg.obj;
                     waitForResponse = mWifiAwareNativeApi.deleteAwareNetworkInterface(
-                            mCurrentTransactionId, (String) msg.obj);
+                            mCurrentTransactionId, interfaceName);
+                    if (interfaceName.equals(mNdiName)) {
+                        stopIpClient(mNdiName);
+                        mNdiName = null;
+                    }
                     break;
+                }
                 case COMMAND_TYPE_INITIATE_DATA_PATH_SETUP: {
                     Bundle data = msg.getData();
 
@@ -4694,7 +4700,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             WifiAwareNetworkSpecifier networkSpecifier, byte[] peerDiscoveryMac, int peerId,
             int clientId, int sessionId, AwareDataPathRequest request, byte[] ndiInitMac) {
         WifiAwareDataPathSecurityConfig securityConfig;
-        boolean isLegacyApi = request == null;
+        boolean isLegacyApi = networkSpecifier != null;
         if (!accept) {
             securityConfig = null;
         } else {
@@ -5206,7 +5212,9 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     mCapabilities.isInstantCommunicationModeSupported,
                     mCapabilities.isNanPairingSupported,
                     mCapabilities.isSuspensionSupported,
-                    mCapabilities.supportedDataPathCipherSuites,
+                    mCapabilities.supportedDataPathCipherSuites
+                    | mCapabilities.supportedPairingCipherSuites
+                    | mCapabilities.gtkCipherSuites,
                     mCapabilities.maxNdiInterfaces,
                     mCapabilities.maxNdpSessions,
                     mCapabilities.maxPublishes,
@@ -5252,10 +5260,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             }
             String interfaceName = (String) command.obj;
             mDataPathMgr.onInterfaceDeleted(interfaceName);
-            if (mNdiName == interfaceName) {
-                mIpClientPerNdi.get(mNdiName).shutdown();
-                mNdiName = null;
-            }
         } else {
             Log.e(TAG,
                     "onDeleteDataPathInterfaceResponseLocal: failed when trying to delete "

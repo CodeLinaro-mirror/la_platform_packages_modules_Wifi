@@ -367,6 +367,7 @@
           <item type="bool" name="config_wifiMainlineSupplicantEnabled" />
           <item type="bool" name="config_wificondMigrationEnabled" />
           <item type="array" name="config_wifiMobilityFilterCarrierIdBlocklist" />
+          <item type="integer" name="config_wifiAwareSessionIdleTimeoutMs" />
 
           <!-- Params from config.xml that can be overlayed -->
 

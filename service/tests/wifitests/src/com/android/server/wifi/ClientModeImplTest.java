@@ -594,6 +594,7 @@ public class ClientModeImplTest extends WifiBaseTest {
     @Mock WifiCarrierInfoManager mWifiCarrierInfoManager;
     @Mock WifiPseudonymManager mWifiPseudonymManager;
     @Mock WifiNotificationManager mWifiNotificationManager;
+    @Mock WifiMulticastLockManager mWifiMulticastLockManager;
 
     @Mock WifiConnectivityHelper mWifiConnectivityHelper;
     @Mock InsecureEapNetworkHandler mInsecureEapNetworkHandler;
@@ -697,6 +698,7 @@ public class ClientModeImplTest extends WifiBaseTest {
         when(mWifiInjector.getWifiCountryCode()).thenReturn(mWifiCountryCode);
         when(mWifiInjector.getApplicationQosPolicyRequestHandler())
                 .thenReturn(mApplicationQosPolicyRequestHandler);
+        when(mWifiInjector.getWifiMulticastLockManager()).thenReturn(mWifiMulticastLockManager);
 
         mFrameworkFacade = getFrameworkFacade();
         mContext = getContext();
@@ -734,6 +736,7 @@ public class ClientModeImplTest extends WifiBaseTest {
             return null;
         }).when(mIpClient).shutdown();
         when(mWifiNetworkAgent.getNetwork()).thenReturn(mNetwork);
+        when(mWifiMulticastLockManager.isMulticastEnabled()).thenReturn(false);
 
         // static mocking
         mSession = ExtendedMockito.mockitoSession().strictness(Strictness.LENIENT)
@@ -4389,6 +4392,24 @@ public class ClientModeImplTest extends WifiBaseTest {
     }
 
     /**
+     * Verify that the multicast filter state is retrieved from the lock manager.
+     */
+    @Test
+    public void verifyMcastFilterStateIsRetrievedFromLockManager() throws Exception {
+        // If multicast is enabled, then filtering should be disabled
+        when(mWifiMulticastLockManager.isMulticastEnabled()).thenReturn(true);
+        reset(mIpClient);
+        initializeCmi();
+        verify(mIpClient).setMulticastFilter(false);
+
+        // If multicast is disabled, then filtering should be enabled
+        when(mWifiMulticastLockManager.isMulticastEnabled()).thenReturn(false);
+        reset(mIpClient);
+        initializeCmi();
+        verify(mIpClient).setMulticastFilter(true);
+    }
+
+    /**
      * Verifies that when
      * 1. Global feature support flag is set to false
      * 2. connected MAC randomization is on and
@@ -7701,6 +7722,27 @@ public class ClientModeImplTest extends WifiBaseTest {
 
         assertEquals("DisconnectedState", getCurrentState().getName());
         verify(mWifiNative).removeNetworkCachedData(FRAMEWORK_NETWORK_ID);
+    }
+
+    /**
+     * Verify that network cached data is not cleared for RESERVED reason code in
+     * disconnected state.
+     */
+    @Test
+    public void testNetworkCachedDataIsNotClearedForReservedReasonCode() throws Exception {
+        // Setup CONNECT_MODE & a WifiConfiguration
+        initializeAndAddNetworkAndVerifySuccess();
+        mCmi.sendMessage(ClientModeImpl.CMD_START_CONNECT, 0, 0, TEST_BSSID_STR);
+        mLooper.dispatchAll();
+
+        // got RESERVED (0) during this connection attempt
+        DisconnectEventInfo disconnectEventInfo =
+                new DisconnectEventInfo(TEST_SSID, TEST_BSSID_STR, 0, false);
+        mCmi.sendMessage(WifiMonitor.NETWORK_DISCONNECTION_EVENT, disconnectEventInfo);
+        mLooper.dispatchAll();
+
+        assertEquals("DisconnectedState", getCurrentState().getName());
+        verify(mWifiNative, never()).removeNetworkCachedData(anyInt());
     }
 
     /*
@@ -11870,6 +11912,9 @@ public class ClientModeImplTest extends WifiBaseTest {
         verify(mWifiBlocklistMonitor).blockBssidForDurationMs(eq(TEST_BSSID_STR), any(),
                 eq(100 * 1000L), eq(REASON_APP_DISALLOW), eq(0));
         verify(mWifiBlocklistMonitor).updateAndGetBssidBlocklistForSsids(any());
+
+        mLooper.dispatchAll();
+        verify(mWifiNative).disconnect(any());
     }
 
     /**

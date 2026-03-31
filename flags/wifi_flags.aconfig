@@ -271,13 +271,6 @@ flag {
 }
 
 flag {
-    name: "wifi_lock_activated_by_p2p_or_aware"
-    namespace: "wifi"
-    description: "Allow some apps to activate a WifiLock if a P2P or Aware connection is active"
-    bug: "404950833"
-}
-
-flag {
     name: "un_deprecated_wificonfiguration"
     is_exported: true
     namespace: "wifi"
@@ -394,13 +387,6 @@ flag {
     namespace: "wifi"
     description: "Allow the Nl80211 proxy to be initialized"
     bug: "344891670"
-}
-
-flag {
-    name: "filter_carrier_networks_while_in_motion"
-    namespace: "wifi"
-    description: "Filters carrier networks from the connection candidate list while the device is in motion"
-    bug: "409851656"
 }
 
 flag {
@@ -542,4 +528,12 @@ flag {
     namespace: "wifi"
     description: "API to get power statistics for each wifi core/radio"
     bug: "444936941"
+}
+
+flag {
+    name: "allow_d2d_without_sta_on_xr"
+    is_exported: false
+    namespace: "wifi"
+    description: "Enables Standalone D2D on XR devices, even when STA+D2D concurrency is supported"
+    bug: "486996062"
 }

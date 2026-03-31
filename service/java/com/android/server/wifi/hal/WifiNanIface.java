@@ -42,20 +42,10 @@ import java.util.function.Supplier;
 public class WifiNanIface implements WifiHal.WifiInterface {
     private static final String TAG = "WifiNanIface";
     private IWifiNanIface mWifiNanIface;
-    private String mName;
-    private boolean mIsSupplicantManaged;
 
     public static final String SERVICE_NAME_FOR_OOB_DATA_PATH = "Wi-Fi Aware Data Path";
 
-    public WifiNanIface(@NonNull String name) {
-        mName = name;
-        mIsSupplicantManaged = true;
-    }
 
-    @Override
-    public boolean isSupplicantManaged() {
-        return mIsSupplicantManaged;
-    }
     /**
      * Event types for a cluster event indication.
      */
@@ -361,7 +351,6 @@ public class WifiNanIface implements WifiHal.WifiInterface {
     @Override
     @Nullable
     public String getName() {
-        if (mName != null) return mName;
         return validateAndCall("getName", null,
                 () -> mWifiNanIface.getName());
     }
@@ -482,11 +471,11 @@ public class WifiNanIface implements WifiHal.WifiInterface {
             String interfaceName, byte[] appInfo,
             boolean isOutOfBand, Capabilities capabilities,
             WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId,
-            boolean frameProtectionEnabled) {
+            boolean frameProtectionEnabled, byte[] peerMac, byte[] ndiInitMac) {
         return validateAndCall("respondToDataPathRequest", false,
                 () -> mWifiNanIface.respondToDataPathRequest(transactionId, accept, ndpId,
-                        interfaceName, appInfo, isOutOfBand, capabilities, securityConfig,
-                        pubSubId, frameProtectionEnabled));
+                        interfaceName, appInfo, isOutOfBand, capabilities, securityConfig, pubSubId,
+                        frameProtectionEnabled, peerMac, ndiInitMac));
     }
 
     /**
@@ -806,7 +795,7 @@ public class WifiNanIface implements WifiHal.WifiInterface {
          *                They are passed from sender to receiver as-is with no parsing.
          */
         void eventDataPathRequest(byte discoverySessionId, byte[] peerDiscMacAddr,
-                int ndpInstanceId, byte[] appInfo);
+                int ndpInstanceId, byte[] appInfo, byte[] ndiInitMac);
 
         /**
          * Indicates that a data-path (NDP) setup has been completed. Received by both the
@@ -865,8 +854,8 @@ public class WifiNanIface implements WifiHal.WifiInterface {
         /**
          * Indicates that the bootstrapping is finished
          */
-        void eventBootstrappingConfirm(int pairingId, int responseCode, int reason,
-                int comebackDelay, byte[] cookie);
+        void eventBootstrappingConfirm(int sessionId, int pairingId, int responseCode, int reason,
+                int comebackDelay, int bootstrappingMethod, byte[] cookie, byte[] peerMacAddr);
 
         /**
          * Indicates that the suspension mode has changed, i.e., the device has entered or exited

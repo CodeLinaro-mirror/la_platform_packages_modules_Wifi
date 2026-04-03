@@ -227,6 +227,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private static final int DISASSOC_AP_BUSY_DISABLE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
     @VisibleForTesting public static final long CONNECTING_WATCHDOG_TIMEOUT_MS = 30_000; // 30 secs.
     @VisibleForTesting public static final long CONNECTING_WATCHDOG_SHORT_TIMEOUT_MS = 8_000;
+    private static final int TIME_WAIT_FOR_DICONNECT_COMPLETE_MS = 200;
     public static final int PROVISIONING_TIMEOUT_FILS_CONNECTION_MS = 36_000; // 36 secs.
     private static final float LINK_SPEED_UPDATE_THRESHOLD = 0.20f;
     @VisibleForTesting
@@ -6033,6 +6034,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     if (state == SupplicantState.COMPLETED) {
                         mWifiScoreReport.noteNudCheck();
                     }
+                    if (state == SupplicantState.ASSOCIATED) {
+                        boolean mIsDisconnect = mWifiConnectivityManager.disconnectSecondaryClientIfNecessary(isPrimary(), stateChangeResult.frequencyMhz);
+                        Log.d(TAG, "SecondarySTA should be disconnected: " + mIsDisconnect);
+                    }
                     break;
                 }
                 case WifiMonitor.ASSOCIATED_BSSID_EVENT: {
@@ -8242,7 +8247,29 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * @param bssid BSSID of the network
      */
     public void startConnectToNetwork(int networkId, int uid, String bssid) {
+        if (mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+            WifiConfiguration config =
+                    mWifiConfigManager.getConfiguredNetworkWithoutMasking(networkId);
+            //Before disconnecting 2nd STA, need to know the freq of selected candidate network
+            //Here do the selecting candidate before handling CMD_START_CONNECT, otherwise
+            //it could not make sure disconnect 2nd STA completed before primary STA prepare to connect
+            //since selecting condidate is followed by connecting candidate.
+            selectCandidateBeforePrepareToConnect(config);
+            if (mWifiConnectivityManager.disconnectSecondaryClientIfNecessary(
+                    mWifiConfigManager.getConfiguredNetworkWithoutMasking(networkId))){
+                Log.d(TAG, "Need to disconnect 2nd STA before connection");
+                //delay to make sure disconnect 2nd STA completed before primary STA prepare to connect
+                sendMessageDelayed(CMD_START_CONNECT, networkId, uid, bssid, TIME_WAIT_FOR_DICONNECT_COMPLETE_MS);
+                return;
+            }
+
+        }
         sendMessage(CMD_START_CONNECT, networkId, uid, bssid);
+    }
+
+    void selectCandidateBeforePrepareToConnect(WifiConfiguration config) {
+        List<ScanResult> scanResults = mScanRequestProxy.getScanResults();
+        selectCandidateSecurityParamsIfNecessary(config, scanResults);
     }
 
     /**

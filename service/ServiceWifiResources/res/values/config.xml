@@ -883,6 +883,10 @@
     <bool translatable="false" name="config_wifiMultiInternetSameBandConnectionAllowed">false</bool>
     <!-- Indicates that the device supports multi internet connection to same bssid -->
     <bool translatable="false" name="config_wifiMultiInternetSameBssidConnectionAllowed">false</bool>
+    <!-- Indicate that primary STA has a higher priority in band selection
+         and oem paid/private network should have different band with primary network.
+         Note: this is conditional on the device supporting concurrent restricted connectivity + internet connectivity. -->
+    <bool translatable="false" name="config_wifiAllowConnectPolicyForDualStation">false</bool>
     <!-- Enable the default coex channel avoidance algorithm and disable the functionality of
          WifiManager#setCoexUnsafeChannels. -->
     <bool translatable="false" name="config_wifiDefaultCoexAlgorithmEnabled">false</bool>

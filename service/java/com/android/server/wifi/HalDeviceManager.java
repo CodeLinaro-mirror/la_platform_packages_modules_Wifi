@@ -36,6 +36,7 @@ import android.net.wifi.OuiKeyedData;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.p2p.WifiP2pManager;
+import android.net.wifi.util.Environment;
 import android.os.Handler;
 import android.os.WorkSource;
 import android.text.TextUtils;
@@ -117,8 +118,8 @@ public class HalDeviceManager {
     /**
      * Public API for querying interfaces from the HalDeviceManager.
      *
-     * TODO (b/256648410): Consider replacing these values with WifiChip.IFACE_TYPE_
-     *                     to avoid duplication.
+     * These constants duplicate WifiChip.IFACE_CONCURRENCY_TYPE_ but are maintained
+     * for framework-wide compatibility. See b/256648410 for context.
      */
     public static final int HDM_CREATE_IFACE_STA = 0;
     public static final int HDM_CREATE_IFACE_AP = 1;
@@ -178,7 +179,7 @@ public class HalDeviceManager {
                             && networkInfo.getDetailedState()
                                     == NetworkInfo.DetailedState.CONNECTED;
                 }};
-        if (mFeatureFlags.monitorIntentForAllUsers()) {
+        if (mFeatureFlags.monitorIntentForAllUsers() && Environment.isSdkAtLeastC()) {
             mContext.registerReceiverForAllUsers(
                     p2pConnectionChangedReceiver, intentFilter, null, mEventHandler);
         } else {

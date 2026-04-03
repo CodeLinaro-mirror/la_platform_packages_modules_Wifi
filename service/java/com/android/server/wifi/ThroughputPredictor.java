@@ -136,7 +136,7 @@ public class ThroughputPredictor {
      * with the lowest channel utilization
      * @return predicted maximum Tx throughput in Mbps
      */
-    public int predicMaxTxThroughputForMloLink(
+    public int predictMaxTxThroughputForMloLink(
             @NonNull WifiNative.ConnectionCapabilities capabilities,
             @NonNull WifiNative.ConnectionMloLink linkInfo) {
         if (linkInfo.getChannelBandwidth() == -1) {
@@ -163,7 +163,7 @@ public class ThroughputPredictor {
      * with the lowest channel utilization
      * @return predicted maximum Rx throughput in Mbps
      */
-    public int predicMaxRxThroughputForMloLink(
+    public int predictMaxRxThroughputForMloLink(
             @NonNull WifiNative.ConnectionCapabilities capabilities,
             @NonNull WifiNative.ConnectionMloLink linkInfo) {
         if (linkInfo.getChannelBandwidth() == -1) {

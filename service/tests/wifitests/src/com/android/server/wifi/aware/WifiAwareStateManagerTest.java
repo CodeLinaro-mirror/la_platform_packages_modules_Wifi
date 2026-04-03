@@ -295,6 +295,7 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         mResources.setInteger(R.integer.config_wifiAwareInstantCommunicationModeDurationMillis,
                 30000);
         mResources.setInteger(R.integer.config_wifiConfigurationWifiRunnerThresholdInMs, 4000);
+        mResources.setInteger(R.integer.config_wifiAwareSessionIdleTimeoutMs, 300000);
         when(mMockContext.getResources()).thenReturn(mResources);
 
         when(mInterfaceConflictManager.manageInterfaceConflictForStateMachine(any(), any(), any(),
@@ -7000,5 +7001,217 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         validateInternalSessionInfoCleanedUp(clientId, sessionId.getValue());
         verify(mAwareMetricsMock).reportAwareInstantModeEnabled(anyBoolean());
         verifyNoMoreInteractions(mockSessionCallback, mMockNative, mAwareMetricsMock);
+    }
+
+    /**
+     * Verify that a client is disconnected after being idle (no discovery sessions) for the
+     * configured timeout.
+     */
+    @Test
+    public void testSessionInactivityTimeout() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastU());
+        when(mFeatureFlags.awareSessionInactivityTimeout()).thenReturn(true);
+
+        final int clientId = 12341;
+        final IWifiAwareEventCallback mockCallback = mock(IWifiAwareEventCallback.class);
+        final InOrder inOrder = inOrder(mMockContext, mMockNative, mockCallback);
+
+        // connect and no publish and subscribe session
+        connectSuccessfully(inOrder, mockCallback, clientId);
+
+        // Dispatch inactivity timeout
+        assertTrue(mAlarmManager.dispatch(WifiAwareStateManager.SESSION_INACTIVITY_TIMEOUT_TAG));
+        mMockLooper.dispatchAll();
+
+        // Verify client disconnected
+        verifyClientDisconnected(inOrder, mockCallback, clientId);
+    }
+
+    /**
+     * Verify that if multiple clients are connected, they are only disconnected if NONE of them
+     * have active discovery sessions.
+     */
+    @Test
+    public void testSessionInactivityTimeoutMultipleClients() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastU());
+        when(mFeatureFlags.awareSessionInactivityTimeout()).thenReturn(true);
+
+        final int clientId1 = 12341;
+        final int clientId2 = 12342;
+        final PublishConfig publishConfig = new PublishConfig.Builder().build();
+        final byte publishId = 15;
+        final IWifiAwareEventCallback mockCallback1 = mock(IWifiAwareEventCallback.class);
+        final IWifiAwareEventCallback mockCallback2 = mock(IWifiAwareEventCallback.class);
+        final IWifiAwareDiscoverySessionCallback mockSessionCallback1 = mock(
+                IWifiAwareDiscoverySessionCallback.class);
+        final ArgumentCaptor<Short> transactionIdCap = ArgumentCaptor.forClass(Short.class);
+        final ArgumentCaptor<Integer> sessionId1 = ArgumentCaptor.forClass(Integer.class);
+        final InOrder inOrder =
+                inOrder(mMockContext, mMockNative, mockCallback1, mockCallback2,
+                        mockSessionCallback1);
+
+        // connect client 1 and 2
+        final int uid1 = 1000;
+        final int uid2 = 1001;
+        final int pid1 = 2000;
+        final int pid2 = 2001;
+        final String callingPackage1 = "com.google.somePackage1";
+        final String callingPackage2 = "com.google.somePackage2";
+        final String callingFeature1 = "com.google.someFeature1";
+        final String callingFeature2 = "com.google.someFeature2";
+        final ConfigRequest configRequest1 =
+                new ConfigRequest.Builder().setMasterPreference(2).build();
+        final ConfigRequest configRequest2 =
+                new ConfigRequest.Builder().setMasterPreference(2).build();
+
+        mDut.enableUsage();
+        mMockLooper.dispatchAll();
+
+        mDut.connect(clientId1, uid1, pid1, callingPackage1, callingFeature1, mockCallback1,
+                configRequest1, false, mExtras, false);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).enableAndConfigure(transactionIdCap.capture(),
+                eq(configRequest1), eq(true), eq(true), eq(false),
+                eq(false), eq(false), anyInt(), anyInt());
+
+        mDut.onConfigSuccessResponse(transactionIdCap.getValue());
+        mMockLooper.dispatchAll();
+        assertTrue(mDut.isDeviceAttached());
+        inOrder.verify(mockCallback1).onConnectSuccess(clientId1);
+        mDut.onClusterChangeNotification(IdentityChangedListener.CLUSTER_CHANGE_EVENT_STARTED,
+                CLUSTER_ID);
+        mMockLooper.dispatchAll();
+
+        mDut.connect(clientId2, uid2, pid2, callingPackage2, callingFeature2, mockCallback2,
+                configRequest2, false, mExtras, false);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mockCallback2).onConnectSuccess(clientId2);
+        mDut.onClusterChangeNotification(IdentityChangedListener.CLUSTER_CHANGE_EVENT_STARTED,
+                CLUSTER_ID);
+        mMockLooper.dispatchAll();
+
+        // Start publish session for client 1
+        mDut.publish(clientId1, publishConfig, mockSessionCallback1);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).publish(
+                transactionIdCap.capture(), eq((byte) 0), eq(publishConfig), isNull());
+        mDut.onSessionConfigSuccessResponse(transactionIdCap.getValue(), true, publishId);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mockSessionCallback1).onSessionStarted(sessionId1.capture());
+
+        // Verify inactivity timer is canceled because client 1 has an active session
+        assertFalse(mAlarmManager.dispatch(WifiAwareStateManager.SESSION_INACTIVITY_TIMEOUT_TAG));
+        mMockLooper.dispatchAll();
+
+        // Terminate publish session for client 1
+        mDut.terminateSession(clientId1, sessionId1.getValue());
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).stopPublish(anyShort(), eq(publishId));
+
+        // Now both clients have no active sessions. Verify inactivity timer is scheduled and
+        // triggers disconnection for both.
+        assertTrue(mAlarmManager.dispatch(WifiAwareStateManager.SESSION_INACTIVITY_TIMEOUT_TAG));
+        mMockLooper.dispatchAll();
+
+        // Verify both clients disconnected
+        inOrder.verify(mockCallback1).onAttachTerminate();
+        inOrder.verify(mockCallback2).onAttachTerminate();
+        inOrder.verify(mMockNative).disable(transactionIdCap.capture());
+        mDut.onDisableResponse(transactionIdCap.getValue(), NanStatusCode.SUCCESS);
+        mMockLooper.dispatchAll();
+        assertFalse(mDut.isDeviceAttached());
+        validateInternalClientInfoCleanedUp(clientId1);
+        validateInternalClientInfoCleanedUp(clientId2);
+    }
+
+    /**
+     * Verify that the session inactivity timeout is reset when discovery sessions are started or
+     * terminated.
+     */
+    @Test
+    public void testSessionInactivityTimeoutResetOnDiscovery() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastU());
+        when(mFeatureFlags.awareSessionInactivityTimeout()).thenReturn(true);
+
+        final int clientId = 12341;
+        final PublishConfig publishConfig = new PublishConfig.Builder().build();
+        final byte publishId = 15;
+        final IWifiAwareEventCallback mockCallback = mock(IWifiAwareEventCallback.class);
+        final IWifiAwareDiscoverySessionCallback mockSessionCallback = mock(
+                IWifiAwareDiscoverySessionCallback.class);
+        final ArgumentCaptor<Short> transactionIdCap = ArgumentCaptor.forClass(Short.class);
+        final ArgumentCaptor<Integer> sessionId = ArgumentCaptor.forClass(Integer.class);
+        final InOrder inOrder =
+                inOrder(mMockContext, mMockNative, mockCallback, mockSessionCallback);
+
+        // connect
+        connectSuccessfully(inOrder, mockCallback, clientId);
+
+        // Start publish session
+        mDut.publish(clientId, publishConfig, mockSessionCallback);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).publish(
+                transactionIdCap.capture(), eq((byte) 0), eq(publishConfig), isNull());
+        mDut.onSessionConfigSuccessResponse(transactionIdCap.getValue(), true, publishId);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mockSessionCallback).onSessionStarted(sessionId.capture());
+
+        // Verify inactivity timer is canceled
+        assertFalse(mAlarmManager.dispatch(WifiAwareStateManager.SESSION_INACTIVITY_TIMEOUT_TAG));
+        mMockLooper.dispatchAll();
+        verify(mockCallback, never()).onAttachTerminate();
+        verify(mMockNative, never()).disable(anyShort());
+
+        // Terminate publish session
+        mDut.terminateSession(clientId, sessionId.getValue());
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).stopPublish(anyShort(), eq(publishId));
+
+        // Verify inactivity timer is rescheduled
+        assertTrue(mAlarmManager.dispatch(WifiAwareStateManager.SESSION_INACTIVITY_TIMEOUT_TAG));
+        mMockLooper.dispatchAll();
+
+        // Verify client disconnected
+        verifyClientDisconnected(inOrder, mockCallback, clientId);
+    }
+
+    private void connectSuccessfully(InOrder inOrder, IWifiAwareEventCallback mockCallback,
+            int clientId) throws Exception {
+        final int uid = 1000;
+        final int pid = 2000;
+        final String callingPackage = "com.google.somePackage";
+        final String callingFeature = "com.google.someFeature";
+        final ConfigRequest configRequest =
+                new ConfigRequest.Builder().setMasterPreference(2).build();
+        final ArgumentCaptor<Short> transactionIdCap = ArgumentCaptor.forClass(Short.class);
+
+        mDut.enableUsage();
+        mMockLooper.dispatchAll();
+
+        mDut.connect(clientId, uid, pid, callingPackage, callingFeature, mockCallback,
+                configRequest, false, mExtras, false);
+        mMockLooper.dispatchAll();
+        inOrder.verify(mMockNative).enableAndConfigure(transactionIdCap.capture(),
+                eq(configRequest), eq(true), eq(true), eq(false),
+                eq(false), eq(false), anyInt(), anyInt());
+
+        mDut.onConfigSuccessResponse(transactionIdCap.getValue());
+        mMockLooper.dispatchAll();
+        assertTrue(mDut.isDeviceAttached());
+        inOrder.verify(mockCallback).onConnectSuccess(clientId);
+        mDut.onClusterChangeNotification(IdentityChangedListener.CLUSTER_CHANGE_EVENT_STARTED,
+                CLUSTER_ID);
+        mMockLooper.dispatchAll();
+    }
+
+    private void verifyClientDisconnected(InOrder inOrder, IWifiAwareEventCallback mockCallback,
+            int clientId) throws Exception {
+        final ArgumentCaptor<Short> transactionIdCap = ArgumentCaptor.forClass(Short.class);
+        inOrder.verify(mockCallback).onAttachTerminate();
+        inOrder.verify(mMockNative).disable(transactionIdCap.capture());
+        mDut.onDisableResponse(transactionIdCap.getValue(), NanStatusCode.SUCCESS);
+        mMockLooper.dispatchAll();
+        assertFalse(mDut.isDeviceAttached());
+        validateInternalClientInfoCleanedUp(clientId);
     }
 }

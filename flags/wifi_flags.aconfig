@@ -471,6 +471,13 @@ flag {
 }
 
 flag {
+    name: "p2p_gc_network_agent"
+    namespace: "wifi"
+    description: "Register a NetworkAgent for P2P Group Client connections."
+    bug: "452296385"
+}
+
+flag {
     name: "proximity_ranging"
     is_exported: true
     namespace: "wifi"
@@ -550,4 +557,12 @@ flag {
     namespace: "wifi"
     description: "Handle L2 data stall in ML scorer"
     bug: "458195756"
+}
+
+flag {
+    name: "aware_session_inactivity_timeout"
+    is_exported: false
+    namespace: "wifi"
+    description: "Terminates idle Wi-Fi Aware sessions after a specified period"
+    bug: "496498467"
 }

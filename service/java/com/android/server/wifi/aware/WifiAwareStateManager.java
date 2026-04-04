@@ -205,12 +205,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     public static final String HAL_BOOTSTRAPPING_CONFIRM_TIMEOUT_TAG =
             TAG + " HAL Bootstrapping Confirm Timeout";
 
-    /**
-     * Wakeup message tag used for the session inactivity timeout.
-     */
-    @VisibleForTesting
-    public static final String SESSION_INACTIVITY_TIMEOUT_TAG = TAG + " Session Inactivity Timeout";
-
     public static final int NAN_PAIRING_REQUEST_TYPE_SETUP = 0;
     public static final int NAN_PAIRING_REQUEST_TYPE_VERIFICATION = 1;
     public static final int NAN_PAIRING_AKM_SAE = 0;
@@ -276,10 +270,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     private static final int COMMAND_TYPE_RESUME_SESSION = 130;
     private static final int COMMAND_TYPE_END_PAIRING = 131;
     private static final int COMMAND_TYPE_CREATE_ALL_DATA_PATH_INTERFACES = 132;
-    /**
-     * Command type used when a session inactivity timeout occurs.
-     */
-    private static final int COMMAND_TYPE_SESSION_INACTIVITY_TIMEOUT = 133;
 
     private static final int RESPONSE_TYPE_ON_CONFIG_SUCCESS = 200;
     private static final int RESPONSE_TYPE_ON_CONFIG_FAIL = 201;
@@ -977,11 +967,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             }
         }
         return Pair.create(numOfPub, numOfSub);
-    }
-
-    private boolean isNoActiveSession() {
-        final Pair<Integer, Integer> numSessions = getNumOfDiscoverySessions();
-        return numSessions.first == 0 && numSessions.second == 0;
     }
 
     /**
@@ -2426,10 +2411,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                 mPairingConfirmTimeoutMessages = new SparseArray<>();
         private final SparseArray<WakeupMessage>
                 mBootstrappingConfirmTimeoutMessages = new SparseArray<>();
-        /**
-         * Wakeup messages for session inactivity timeouts.
-         */
-        private WakeupMessage mSessionInactivityTimeoutMessage = null;
 
         WifiAwareStateMachine(String name, Looper looper) {
             super(name, looper);
@@ -2491,8 +2472,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                 case COMMAND_TYPE_END_PAIRING -> "COMMAND_TYPE_END_PAIRING";
                 case COMMAND_TYPE_CREATE_ALL_DATA_PATH_INTERFACES
                         -> "COMMAND_TYPE_CREATE_ALL_DATA_PATH_INTERFACES";
-                case COMMAND_TYPE_SESSION_INACTIVITY_TIMEOUT
-                        -> "COMMAND_TYPE_SESSION_INACTIVITY_TIMEOUT";
 
                 case RESPONSE_TYPE_ON_CONFIG_SUCCESS -> "RESPONSE_TYPE_ON_CONFIG_SUCCESS";
                 case RESPONSE_TYPE_ON_CONFIG_FAIL -> "RESPONSE_TYPE_ON_CONFIG_FAIL";
@@ -3544,13 +3523,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     waitForResponse = false;
                     break;
                 }
-                case COMMAND_TYPE_SESSION_INACTIVITY_TIMEOUT: {
-                    if (isNoActiveSession()) {
-                        disableUsage(true);
-                    }
-                    waitForResponse = false;
-                    break;
-                }
                 default:
                     waitForResponse = false;
                     Log.wtf(TAG, "processCommand: this isn't a COMMAND -- msg=" + msg);
@@ -4091,7 +4063,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         if (mVdbg) {
             Log.v(TAG, "sendAwareResourcesChangedBroadcast");
         }
-        updateSessionInactivityTimer();
         final Intent intent = new Intent(WifiAwareManager.ACTION_WIFI_AWARE_RESOURCE_CHANGED);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY);
         intent.putExtra(WifiAwareManager.EXTRA_AWARE_RESOURCES, getAvailableAwareResources());
@@ -4174,7 +4145,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             client.enableVerboseLogging(mVerboseLoggingEnabled, mVdbg);
             client.onClusterChange(mClusterEventType, mClusterId, mCurrentDiscoveryInterfaceMac);
             mClients.append(clientId, client);
-            updateSessionInactivityTimer();
             mAwareMetrics.recordAttachSession(uid, notifyIdentityChange, mClients, callerType,
                     callingFeatureId, clientId);
             try {
@@ -4869,7 +4839,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     callbackAndAttributionSource.second, awareOffload, callerType);
             client.enableVerboseLogging(mVerboseLoggingEnabled, mVdbg);
             mClients.put(clientId, client);
-            updateSessionInactivityTimer();
             mAwareMetrics.recordAttachSession(uid, notifyIdentityChange, mClients, callerType,
                     callingFeatureId, clientId);
             try {
@@ -5913,9 +5882,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         }
 
         for (int i = 0; i < mClients.size(); ++i) {
-            final int clientId = mClients.keyAt(i);
             WifiAwareClientState client = mClients.valueAt(i);
-            mAwareMetrics.recordAttachSessionDuration(client.getCreationTime(), clientId);
+            mAwareMetrics.recordAttachSessionDuration(client.getCreationTime(), mClients.keyAt(i));
             SparseArray<WifiAwareDiscoverySessionState> sessions = client.getSessions();
             for (int j = 0; j < sessions.size(); ++j) {
                 mAwareMetrics.recordDiscoverySessionDuration(sessions.valueAt(j).getCreationTime(),
@@ -6429,44 +6397,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             }
         }
         return false;
-    }
-
-    /**
-     * Updates the session inactivity timer.
-     * Starts the timer if there are no active discovery sessions, or cancels it if there is at
-     * least one active session.
-     */
-    private void updateSessionInactivityTimer() {
-        if (!mFeatureFlags.awareSessionInactivityTimeout()) return; // Feature is not enabled.
-
-        final int sessionIdleTimeoutMs = mContext.getResources().getInteger(
-                R.integer.config_wifiAwareSessionIdleTimeoutMs);
-        if (sessionIdleTimeoutMs <= 0) return; // No timeout
-        if (mClients.size() == 0) return; // No client
-
-        // Cancel the timer
-        cancelSessionInactivityTimer();
-
-        // Has an active session
-        if (!isNoActiveSession()) return;
-
-        // Schedule a new timer for no active session
-        mSm.mSessionInactivityTimeoutMessage = new WakeupMessage(mContext, mSm.getHandler(),
-                SESSION_INACTIVITY_TIMEOUT_TAG, MESSAGE_TYPE_COMMAND,
-                COMMAND_TYPE_SESSION_INACTIVITY_TIMEOUT);
-        mSm.mSessionInactivityTimeoutMessage.schedule(
-                SystemClock.elapsedRealtime() + sessionIdleTimeoutMs);
-    }
-
-    /**
-     * Cancels the session inactivity timer.
-     */
-    private void cancelSessionInactivityTimer() {
-        // Cancel the timer
-        if (mSm.mSessionInactivityTimeoutMessage != null) {
-            mSm.mSessionInactivityTimeoutMessage.cancel();
-            mSm.mSessionInactivityTimeoutMessage = null;
-        }
     }
 
     private int getInstantModeFromAllClients() {

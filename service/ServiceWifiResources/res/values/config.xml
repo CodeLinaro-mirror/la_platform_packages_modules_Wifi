@@ -1494,10 +1494,4 @@
     <bool translatable="false" name="config_supplicantAwareEnabled">false</bool>
     <!-- Boolean indicating whether wificond migration is enabled . -->
     <bool translatable="false" name="config_wificondMigrationEnabled">true</bool>
-
-    <!-- The duration in milliseconds of the inactivity timeout for Wi-Fi Aware sessions.
-         If a session has no active discovery (publish or subscribe) operations for this duration,
-         it will be automatically closed by the system to conserve power.
-         A value of 0 indicates no timeout. -->
-    <integer translatable="false" name="config_wifiAwareSessionIdleTimeoutMs">0</integer>
 </resources>

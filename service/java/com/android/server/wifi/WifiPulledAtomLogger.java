@@ -23,19 +23,13 @@ import android.content.pm.PackageManager;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSuggestion;
-import android.net.wifi.rtt.WifiRttManager;
 import android.net.wifi.WifiSsid;
-import android.net.wifi.rtt.ProximityDetectionCharacteristics;
 import android.os.Handler;
-import android.os.Bundle;
-import android.os.Build;
-
 import android.os.Process;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.StatsEvent;
 
-import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.proto.WifiStatsLog;
 import com.android.wifi.resources.R;
 
@@ -56,8 +50,6 @@ public class WifiPulledAtomLogger {
     private final Context mContext;
     private final WifiInjector mWifiInjector;
     private StatsManager.StatsPullAtomCallback mStatsPullAtomCallback;
-    private WifiRttManager mWifiRttManager;
-    private Bundle mCharacteristics;
 
     private int mApexVersionNumber = -1;
 
@@ -68,7 +60,6 @@ public class WifiPulledAtomLogger {
         mStatsPullAtomCallback = new WifiPullAtomCallback();
         mContext = context;
         mWifiInjector = wifiInjector;
-        mWifiRttManager = mContext.getSystemService(WifiRttManager.class);
     }
 
     /**
@@ -176,26 +167,6 @@ public class WifiPulledAtomLogger {
                 WifiStatsLog.WIFI_SETTING_INFO__SETTING_NAME__WIFICOND_MIGRATION_ENABLED,
                 mContext.getResources().getBoolean(
                         R.bool.config_wificondMigrationEnabled)));
-        boolean is11azSupported = false;
-        if (SdkLevel.isAtLeastU() && mWifiRttManager != null) {
-            try {
-                mCharacteristics = mWifiRttManager.getRttCharacteristics();
-            } catch (RuntimeException e) {
-                Log.e(TAG, "Failed to get RTT characteristics: " + e);
-            }
-            is11azSupported = mCharacteristics != null
-                    && mCharacteristics.getBoolean(
-                            WifiRttManager.CHARACTERISTICS_KEY_BOOLEAN_NTB_INITIATOR);
-        }
-        data.add(WifiStatsLog.buildStatsEvent(atomTag,
-                WifiStatsLog.WIFI_SETTING_INFO__SETTING_NAME__WIFI_80211AZ_SUPPORTED,
-                is11azSupported));
-        data.add(WifiStatsLog.buildStatsEvent(atomTag,
-                WifiStatsLog.WIFI_SETTING_INFO__SETTING_NAME__WIFI_USD_PUBLISHER_SUPPORTED,
-                mWifiInjector.getWifiNative().isUsdPublisherSupported()));
-        data.add(WifiStatsLog.buildStatsEvent(atomTag,
-                WifiStatsLog.WIFI_SETTING_INFO__SETTING_NAME__WIFI_USD_SUBSCRIBER_SUPPORTED,
-                mWifiInjector.getWifiNative().isUsdSubscriberSupported()));
         return StatsManager.PULL_SUCCESS;
     }
 

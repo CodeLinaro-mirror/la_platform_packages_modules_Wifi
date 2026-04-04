@@ -1407,8 +1407,8 @@ public class ClientModeImplTest extends WifiBaseTest {
     public void testMloLinkSpeedUpdate() throws Exception {
 
         // Initialize
-        when(mThroughputPredictor.predictMaxRxThroughputForMloLink(any(), any())).thenReturn(100);
-        when(mThroughputPredictor.predictMaxTxThroughputForMloLink(any(), any())).thenReturn(200);
+        when(mThroughputPredictor.predicMaxRxThroughputForMloLink(any(), any())).thenReturn(100);
+        when(mThroughputPredictor.predicMaxTxThroughputForMloLink(any(), any())).thenReturn(200);
 
         connect();
         setScanResultWithMloInfo();

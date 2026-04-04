@@ -46,24 +46,16 @@ import android.location.LocationManager;
 import android.net.ConnectivityManager;
 import android.net.DhcpResultsParcelable;
 import android.net.InetAddresses;
-import android.net.IpPrefix;
-import android.net.KeepalivePacketData;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.MacAddress;
-import android.net.NetworkAgent;
-import android.net.NetworkAgentConfig;
-import android.net.NetworkCapabilities;
 import android.net.NetworkInfo;
-import android.net.NetworkScore;
 import android.net.NetworkStack;
-import android.net.RouteInfo;
 import android.net.StaticIpConfiguration;
 import android.net.TetheredClient;
 import android.net.TetheringInterface;
 import android.net.TetheringManager;
 import android.net.TetheringManager.TetheringEventCallback;
-import android.net.Uri;
 import android.net.ip.IIpClient;
 import android.net.ip.IpClientCallbacks;
 import android.net.ip.IpClientUtil;
@@ -147,7 +139,6 @@ import com.android.server.wifi.RunnerState;
 import com.android.server.wifi.WifiDialogManager;
 import com.android.server.wifi.WifiGlobals;
 import com.android.server.wifi.WifiInjector;
-import com.android.server.wifi.WifiNetworkAgent;
 import com.android.server.wifi.WifiSettingsConfigStore;
 import com.android.server.wifi.WifiThreadRunner;
 import com.android.server.wifi.coex.CoexManager;
@@ -179,7 +170,6 @@ import java.nio.charset.CharsetDecoder;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -364,10 +354,8 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
     // Messages for interaction with IpClient.
     private static final int IPC_PRE_DHCP_ACTION            =   BASE + 30;
     private static final int IPC_POST_DHCP_ACTION           =   BASE + 31;
-    @VisibleForTesting
-    static final int IPC_DHCP_RESULTS                       =   BASE + 32;
-    @VisibleForTesting
-    static final int IPC_PROVISIONING_SUCCESS               =   BASE + 33;
+    private static final int IPC_DHCP_RESULTS               =   BASE + 32;
+    private static final int IPC_PROVISIONING_SUCCESS       =   BASE + 33;
     private static final int IPC_PROVISIONING_FAILURE       =   BASE + 34;
     @VisibleForTesting
     static final int TETHER_INTERFACE_STATE_CHANGED         =   BASE + 35;
@@ -485,16 +473,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
     private final RemoteCallbackList<IWifiP2pListener> mWifiP2pListeners =
             new RemoteCallbackList<>();
-
-    /**
-     * Check if P2P GC NetworkAgent is supported.
-     *
-     * @return true if supported, false otherwise.
-     */
-    @SuppressLint("NewApi")
-    private boolean isP2pGcNetworkAgentEnabled() {
-        return mFeatureFlags.p2pGcNetworkAgent() && SdkLevel.isAtLeastC();
-    }
 
     /**
      * Error code definition.
@@ -1450,7 +1428,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         pw.println("mClientInfoList " + mClientInfoList.size());
         pw.println("mActiveClients " + mActiveClients);
         pw.println("mPeerAuthorizingTimestamp" + mPeerAuthorizingTimestamp);
-        pw.println("isP2pGcNetworkAgentEnabled " + isP2pGcNetworkAgentEnabled());
         pw.println();
 
         final IIpClient ipClient = mIpClient;
@@ -1516,8 +1493,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                 new OngoingGroupRemovalState(mThreshold, mThreadLocalLog);
         private final P2pRejectWaitState mP2pRejectWaitState =
                 new P2pRejectWaitState(mThreshold, mThreadLocalLog);
-
-        private NetworkAgent mNetworkAgent;
 
         private final WifiP2pMonitor mWifiMonitor = mWifiInjector.getWifiP2pMonitor();
 
@@ -5391,24 +5366,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
 
         class GroupCreatedState extends RunnerState {
 
-            private LinkProperties toLinkProperties(StaticIpConfiguration staticIpConfig,
-                    String iface) {
-                LinkProperties lp = new LinkProperties();
-                lp.setInterfaceName(iface);
-                if (staticIpConfig.getIpAddress() != null) {
-                    lp.addLinkAddress(staticIpConfig.getIpAddress());
-                }
-                if (staticIpConfig.getGateway() != null) {
-                    lp.addRoute(new RouteInfo((IpPrefix) null, staticIpConfig.getGateway(), iface,
-                            RouteInfo.RTN_UNICAST));
-                }
-                for (InetAddress dns : staticIpConfig.getDnsServers()) {
-                    lp.addDnsServer(dns);
-                }
-                lp.setDomains(staticIpConfig.getDomains());
-                return lp;
-            }
-
             /**
              * The Runner state Constructor
              *
@@ -5603,33 +5560,19 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                                 setWifiP2pInfoOnGroupFormation(addr.getHostAddress());
                             }
                         }
-                        if (isP2pGcNetworkAgentEnabled()) {
-                            // Assumes mGroup is not null and this is not a group owner.
-                            final String iface = mGroup.getInterface();
-                            LinkProperties linkProperties =
-                                    toLinkProperties(mDhcpResultsParcelable.baseConfiguration,
-                                            iface);
-                            registerNetworkAgent(linkProperties);
-                        }
-                        if (!isP2pGcNetworkAgentEnabled() || mNetworkAgent == null) {
-                            try {
-                                final String ifname = mGroup.getInterface();
-                                if (mDhcpResultsParcelable != null) {
-                                    mNetdWrapper.addInterfaceToLocalNetwork(
-                                            ifname,
-                                            mDhcpResultsParcelable.baseConfiguration
-                                                    .getRoutes(ifname));
-                                }
-                            } catch (Exception e) {
-                                loge("Failed to add iface to local network " + e);
+                        try {
+                            final String ifname = mGroup.getInterface();
+                            if (mDhcpResultsParcelable != null) {
+                                mNetdWrapper.addInterfaceToLocalNetwork(
+                                        ifname,
+                                        mDhcpResultsParcelable.baseConfiguration.getRoutes(ifname));
                             }
+                        } catch (Exception e) {
+                            loge("Failed to add iface to local network " + e);
                         }
                         onGroupCreated(new WifiP2pInfo(mWifiP2pInfo),
                                 eraseOwnDeviceAddress(mGroup));
                         sendP2pConnectionChangedBroadcast();
-                        if (mNetworkAgent != null) {
-                            mNetworkAgent.markConnected();
-                        }
                         break;
                     case IPC_PROVISIONING_SUCCESS:
                         if (mSavedPeerConfig.getGroupClientIpProvisioningMode()
@@ -5641,42 +5584,37 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                         if (mVerboseLoggingEnabled) {
                             logd("IP provisioning result " + linkProperties);
                         }
-                        if (isP2pGcNetworkAgentEnabled()) {
-                            registerNetworkAgent((LinkProperties) message.obj);
-                        }
-                        if (!isP2pGcNetworkAgentEnabled() || mNetworkAgent == null) {
-                            try {
-                                mNetdWrapper.addInterfaceToLocalNetwork(
-                                        mGroup.getInterface(),
-                                        linkProperties.getRoutes());
-                            } catch (Exception e) {
-                                loge("Failed to add iface to local network " + e);
-                                mWifiNative.p2pGroupRemove(mGroup.getInterface());
-                            }
+                        try {
+                            mNetdWrapper.addInterfaceToLocalNetwork(
+                                    mGroup.getInterface(),
+                                    linkProperties.getRoutes());
+                        } catch (Exception e) {
+                            loge("Failed to add iface to local network " + e);
+                            mWifiNative.p2pGroupRemove(mGroup.getInterface());
                         }
 
                         byte[] goInterfaceMacAddress = mGroup.interfaceAddress;
-                        InetAddress goIp = null;
-                        if (goInterfaceMacAddress != null) {
-                            byte[] goIpv6Address = MacAddress.fromBytes(goInterfaceMacAddress)
-                                    .getLinkLocalIpv6FromEui48Mac().getAddress();
-                            try {
-                                goIp = Inet6Address.getByAddress(null, goIpv6Address,
-                                        NetworkInterface.getByName(mGroup.getInterface()));
-                            } catch (UnknownHostException | SocketException e) {
-                                loge("Unable to retrieve link-local IPv6 address of group owner "
-                                        + e);
-                                mWifiNative.p2pGroupRemove(mGroup.getInterface());
-                                break;
-                            }
+                        if (goInterfaceMacAddress == null) {
+                            setWifiP2pInfoOnGroupFormationWithInetAddress(null);
+                            onGroupCreated(new WifiP2pInfo(mWifiP2pInfo),
+                                    eraseOwnDeviceAddress(mGroup));
+                            sendP2pConnectionChangedBroadcast();
+                            break;
                         }
 
-                        setWifiP2pInfoOnGroupFormationWithInetAddress(goIp);
-                        onGroupCreated(new WifiP2pInfo(mWifiP2pInfo),
-                                eraseOwnDeviceAddress(mGroup));
-                        sendP2pConnectionChangedBroadcast();
-                        if (mNetworkAgent != null) {
-                            mNetworkAgent.markConnected();
+                        byte[] goIpv6Address = MacAddress.fromBytes(goInterfaceMacAddress)
+                                .getLinkLocalIpv6FromEui48Mac().getAddress();
+                        try {
+                            InetAddress goIp = Inet6Address.getByAddress(null, goIpv6Address,
+                                    NetworkInterface.getByName(mGroup.getInterface()));
+                            setWifiP2pInfoOnGroupFormationWithInetAddress(goIp);
+                            onGroupCreated(new WifiP2pInfo(mWifiP2pInfo),
+                                    eraseOwnDeviceAddress(mGroup));
+                            sendP2pConnectionChangedBroadcast();
+                        } catch (UnknownHostException | SocketException e) {
+                            loge("Unable to retrieve link-local IPv6 address of group owner "
+                                    + e);
+                            mWifiNative.p2pGroupRemove(mGroup.getInterface());
                         }
                         break;
                     case IPC_PROVISIONING_FAILURE:
@@ -7990,32 +7928,24 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
         }
 
         private void handleGroupRemoved() {
-            boolean networkAgentUsed = isP2pGcNetworkAgentEnabled() && mNetworkAgent != null;
             if (mGroup.isGroupOwner()) {
                 // {@link com.android.server.connectivity.Tethering} listens to
                 // {@link WifiP2pManager#WIFI_P2P_CONNECTION_CHANGED_ACTION}
                 // events and takes over the DHCP server management automatically.
             } else {
-                if (networkAgentUsed) {
-                    mNetworkAgent.unregister();
-                    mNetworkAgent = null;
-                } else {
-                    try {
-                        mNetdWrapper.removeInterfaceFromLocalNetwork(mGroup.getInterface());
-                    } catch (IllegalStateException e) {
-                        loge("Failed to remove iface from local network " + e);
-                    }
-                }
                 if (mVerboseLoggingEnabled) logd("stop IpClient");
                 stopIpClient();
+                try {
+                    mNetdWrapper.removeInterfaceFromLocalNetwork(mGroup.getInterface());
+                } catch (IllegalStateException e) {
+                    loge("Failed to remove iface from local network " + e);
+                }
             }
 
-            if (!networkAgentUsed) {
-                try {
-                    mNetdWrapper.clearInterfaceAddresses(mGroup.getInterface());
-                } catch (Exception e) {
-                    loge("Failed to clear addresses " + e);
-                }
+            try {
+                mNetdWrapper.clearInterfaceAddresses(mGroup.getInterface());
+            } catch (Exception e) {
+                loge("Failed to clear addresses " + e);
             }
 
             // Clear any timeout that was set. This is essential for devices
@@ -9095,91 +9025,6 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
             }
 
             return true;
-        }
-
-
-
-        private void registerNetworkAgent(LinkProperties lp) {
-            if (mNetworkAgent != null) {
-                throw new IllegalStateException("Already have a network agent");
-            }
-
-            NetworkCapabilities.Builder ncb = new NetworkCapabilities.Builder()
-                    .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
-                    .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
-                    .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_ROAMING)
-                    .addCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)
-                    .addCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED);
-
-            // This will make it so that only the requester UIDs can match this network in
-            // ConnectivityService, while other users can still access the network via the
-            // interface in the intent.
-            Set<android.util.Range<Integer>> uidRanges = new HashSet<>();
-            for (Integer uid : mActiveClients.keySet()) {
-                uidRanges.add(new android.util.Range<>(uid, uid));
-            }
-            ncb.setUids(uidRanges);
-
-            NetworkAgentConfig nac = new NetworkAgentConfig.Builder().build();
-            WifiNetworkAgent.Callback callback = new WifiNetworkAgent.Callback() {
-                @Override
-                public void onNetworkUnwanted() {
-                    // P2P GC connection is not needed anymore. Disconnect.
-                    if (mGroup != null) {
-                        sendMessage(WifiP2pManager.REMOVE_GROUP);
-                    }
-                }
-
-                @Override
-                public void onDscpPolicyStatusUpdated(int status, int dscp) {
-                }
-
-                @Override
-                public void onValidationStatus(int status, @Nullable Uri redirectUri) {
-                }
-
-                @Override
-                public void onStopSocketKeepalive(int slot) {
-                }
-
-                @Override
-                public void onStartSocketKeepalive(int slot, @NonNull Duration interval,
-                        @NonNull KeepalivePacketData packet) {
-                }
-
-                @Override
-                public void onSignalStrengthThresholdsUpdated(@NonNull int[] thresholds) {
-                }
-
-                @Override
-                public void onSaveAcceptUnvalidated(boolean accept) {
-                }
-
-                @Override
-                public void onRemoveKeepalivePacketFilter(int slot) {
-                }
-
-                @Override
-                public void onAutomaticReconnectDisabled() {
-                }
-
-                @Override
-                public void onAddKeepalivePacketFilter(int slot,
-                        @NonNull KeepalivePacketData packet) {
-                }
-            };
-            try {
-                mNetworkAgent = mWifiInjector.makeWifiNetworkAgent(
-                        ncb.build(), lp, nac, null, callback);
-                mNetworkAgent.sendNetworkScore(new NetworkScore.Builder()
-                        .setKeepConnectedReason(
-                                3 /* KEEP_CONNECTED_REASON_LOCAL_NETWORK */).build());
-                Log.i(TAG, "Local network agent registered, netId="
-                        + mNetworkAgent.getNetwork().getNetId());
-            } catch (IllegalArgumentException e) {
-                Log.e(TAG, "Failed to register network agent, fallback to netd", e);
-                mNetworkAgent = null;
-            }
         }
     }
 

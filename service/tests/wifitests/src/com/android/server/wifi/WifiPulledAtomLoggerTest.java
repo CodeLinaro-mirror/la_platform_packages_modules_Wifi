@@ -34,8 +34,6 @@ import android.content.res.Resources;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiManager;
 import android.net.wifi.WifiNetworkSuggestion;
-import android.net.wifi.rtt.WifiRttManager;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.test.TestLooper;
 import android.util.StatsEvent;
@@ -81,9 +79,6 @@ public class WifiPulledAtomLoggerTest extends WifiBaseTest {
     @Mock private PasspointManager mPasspointManager;
     @Mock private SsidTranslator mSsidTranslator;
     @Mock private WifiConfiguration mWifiConfiguration;
-    @Mock private WifiNative mWifiNative;
-    @Mock private WifiRttManager mWifiRttManager;
-    @Mock private Bundle mCharacteristics;
     @Captor ArgumentCaptor<StatsManager.StatsPullAtomCallback> mPullAtomCallbackArgumentCaptor;
 
     @Before
@@ -93,7 +88,6 @@ public class WifiPulledAtomLoggerTest extends WifiBaseTest {
         when(mContext.getPackageManager()).thenReturn(mPackageManager);
         when(mContext.getResources()).thenReturn(mResources);
         when(mWifiInjector.getWifiSettingsStore()).thenReturn(mWifiSettingsStore);
-        when(mContext.getSystemService(WifiRttManager.class)).thenReturn(mWifiRttManager);
         mWifiPulledAtomLogger = new WifiPulledAtomLogger(mStatsManager,
                 new Handler(mLooper.getLooper()), mContext, mWifiInjector);
 
@@ -195,16 +189,12 @@ public class WifiPulledAtomLoggerTest extends WifiBaseTest {
         when(mWifiInjector.getWifiPermissionsUtil()).thenReturn(mock(WifiPermissionsUtil.class));
         when(mWifiInjector.getDeviceConfigFacade()).thenReturn(mock(DeviceConfigFacade.class));
         when(mWifiInjector.getActiveModeWarden()).thenReturn(mock(ActiveModeWarden.class));
-        when(mWifiInjector.getWifiNative()).thenReturn(mWifiNative);
-        when(mWifiNative.isUsdPublisherSupported()).thenReturn(true);
-        when(mWifiNative.isUsdSubscriberSupported()).thenReturn(true);
-        when(mWifiRttManager.getRttCharacteristics()).thenReturn(mCharacteristics);
 
         // Verify that all settings were retrieved.
         List<StatsEvent> data = new ArrayList<>();
         assertEquals(StatsManager.PULL_SUCCESS, mPullAtomCallbackArgumentCaptor.getValue()
                 .onPullAtom(WifiStatsLog.WIFI_SETTING_INFO, data));
-        assertEquals(15, data.size());
+        assertEquals(12, data.size());
     }
 
     @Test

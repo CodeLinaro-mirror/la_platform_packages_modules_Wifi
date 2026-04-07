@@ -49,7 +49,7 @@ public class TestUtils {
         }
 
         public boolean enableAndConfigure(short transactionId, ConfigRequest configRequest,
-                boolean notifyIdentityChange, boolean initialConfiguration, boolean isInteractive,
+                boolean initialConfiguration, boolean isInteractive,
                 boolean isIdle, boolean rangingEnabled, boolean isInstantCommunicationEnabled,
                 int instantModeChannel, int clusterId) {
             addTransactionId(transactionId);
@@ -142,7 +142,7 @@ public class TestUtils {
         }
 
         public boolean respondToBootstrappingRequest(short transactionId, int bootstrappingId,
-                boolean accept, byte pubSubId, int method) {
+                boolean accept, byte pubSubId, int method, byte[] peerDiscMacAddr) {
             addTransactionId(transactionId);
             return true;
         }

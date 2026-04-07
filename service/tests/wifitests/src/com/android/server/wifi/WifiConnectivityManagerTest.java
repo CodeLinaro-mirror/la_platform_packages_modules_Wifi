@@ -1667,6 +1667,34 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
     }
 
     @Test
+    public void multiInternetSecondaryConnectionRequestSucceedsWithMultiApAllowedAndPrimaryMloSameBssidAllowed() {
+        setupMocksForMultiInternetTests(false);
+        // Enable Multi-Link operation (MLO) for primary.
+        when(mPrimaryClientModeManager.isMlo()).thenReturn(true);
+        // Return the primary BSSID as CANDIDATE_BSSID_2
+        when(mPrimaryClientModeManager.getConnectedBssid()).thenReturn(CANDIDATE_BSSID_2);
+        // Enable same BSSID multi-internet mode
+        when(mWifiGlobals.isMultiInternetSameBssidConnectionAllowed()).thenReturn(true);
+
+        // Test secondary STA selects candidate CANDIDATE_BSSID_2 which is the same as primary
+        // BSSID.
+        testMultiInternetSecondaryConnectionRequest(false, true, true, CANDIDATE_BSSID_2);
+    }
+
+    @Test
+    public void multiInternetSecondaryConnectionRequestSucceedsSameBssidAllowed() {
+        setupMocksForMultiInternetTests(false);
+        // Make all CANDIDATE BSSIDs affiliated with primary.
+        when(mPrimaryClientModeManager.isAffiliatedLinkBssid(
+                MacAddress.fromString(CANDIDATE_BSSID_2))).thenReturn(true);
+        // Enable same BSSID multi-internet mode
+        when(mWifiGlobals.isMultiInternetSameBssidConnectionAllowed()).thenReturn(true);
+
+        // Test secondary STA selects candidate CANDIDATE_BSSID_2 which is affiliated with primary.
+        testMultiInternetSecondaryConnectionRequest(false, true, true, CANDIDATE_BSSID_2);
+    }
+
+    @Test
     public void multiInternetSecondaryConnectionDisconnectedBeforeNetworkSelection() {
         setupMocksForMultiInternetTests(false);
         testMultiInternetSecondaryConnectionRequest(false, true, true, CANDIDATE_BSSID_2);
@@ -4976,7 +5004,7 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         InOrder inOrder = inOrder(mWifiBlocklistMonitor, mWifiConfigManager);
         // Force a connectivity scan
         inOrder.verify(mWifiBlocklistMonitor, never())
-                .updateAndGetBssidBlocklistForSsids(anySet());
+                .updateAndGetBssidBlocklistForSsids(anySet(), anySet());
         mWifiConnectivityManager.forceConnectivityScan(WIFI_WORK_SOURCE);
         mLooper.dispatchAll();
         inOrder.verify(mWifiBlocklistMonitor).clearBssidBlocklistForReason(
@@ -4984,7 +5012,8 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         inOrder.verify(mWifiBlocklistMonitor).tryEnablingBlockedBssids(any());
         inOrder.verify(mWifiConfigManager).updateNetworkSelectionStatus(disabledConfig.networkId,
                 WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
-        inOrder.verify(mWifiBlocklistMonitor).updateAndGetBssidBlocklistForSsids(anySet());
+        inOrder.verify(mWifiBlocklistMonitor)
+                .updateAndGetBssidBlocklistForSsids(anySet(), anySet());
     }
 
     /**
@@ -5006,14 +5035,15 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         InOrder inOrder = inOrder(mWifiBlocklistMonitor, mWifiConfigManager);
         // Force a connectivity scan
         inOrder.verify(mWifiBlocklistMonitor, never())
-                .updateAndGetBssidBlocklistForSsids(anySet());
+                .updateAndGetBssidBlocklistForSsids(anySet(), anySet());
         mWifiConnectivityManager.forceConnectivityScan(WIFI_WORK_SOURCE);
         mLooper.dispatchAll();
         inOrder.verify(mWifiBlocklistMonitor).tryEnablingBlockedBssids(any());
         inOrder.verify(mWifiConfigManager, never()).updateNetworkSelectionStatus(
                 disabledConfig.networkId,
                 WifiConfiguration.NetworkSelectionStatus.DISABLED_NONE);
-        inOrder.verify(mWifiBlocklistMonitor).updateAndGetBssidBlocklistForSsids(anySet());
+        inOrder.verify(mWifiBlocklistMonitor)
+                .updateAndGetBssidBlocklistForSsids(anySet(), anySet());
     }
 
     /**
@@ -5387,6 +5417,24 @@ public class WifiConnectivityManagerTest extends WifiBaseTest {
         setScreenState(true);
 
         verify(mPrimaryClientModeManager, times(0)).startRoamToNetwork(anyInt(), any());
+    }
+
+    @Test
+    public void testMultiInternetSameBandAllowed() {
+        String ifaceName = "wlan0";
+        // Enable same band multi-internet mode
+        when(mWifiGlobals.isMultiInternetSameBandConnectionAllowed()).thenReturn(true);
+
+        // Same frequency should be allowed
+        assertTrue(mWifiConnectivityManager.filterMultiInternetFrequency(TEST_FREQUENCY,
+                TEST_FREQUENCY, ifaceName));
+
+        // Disable same band multi-internet mode
+        when(mWifiGlobals.isMultiInternetSameBandConnectionAllowed()).thenReturn(false);
+
+        // Same frequency should not be allowed
+        assertFalse(mWifiConnectivityManager.filterMultiInternetFrequency(TEST_FREQUENCY,
+                TEST_FREQUENCY, ifaceName));
     }
 
     @Test

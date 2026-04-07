@@ -1,7 +1,6 @@
 """CTS-V-Host WiFi connection tests."""
 
 import logging
-from typing import override
 
 from mobly import asserts
 from mobly import base_test
@@ -59,6 +58,8 @@ class NetworkRequestTests(base_test.BaseTestClass):
     test_utils.drop_shell_permission(ad, ensure_mbs_initialized=True)
     test_utils.enable_wifi_verbose_logging(ad)
     test_utils.set_screen_on_and_unlock(ad)
+    # Make sure location mode is on before triggering any Wi-Fi scan.
+    test_utils.set_location_mode_on(ad)
 
     # Disable wifi scan throttle.
     self._original_wifi_scan_throttle_state = None
@@ -70,7 +71,8 @@ class NetworkRequestTests(base_test.BaseTestClass):
       # Set this attribute to revert this change in teardown_class phase.
       self._original_wifi_scan_throttle_state = current_wifi_scan_throttle_state
 
-  @override
+    test_utils.logging_device_model(ad)
+
   def setup_class(self):
     self.ad = self.register_controller(android_device)[0]
     self._setup_android_device(self.ad)
@@ -90,9 +92,20 @@ class NetworkRequestTests(base_test.BaseTestClass):
     # request_networkid support managing multiple network sessions.
     # But we only need one wifi connection in each test
     self.request_networkid = '0'
-    test_utils.logging_device_model(self.ad)
 
-  @override
+    self._close_button_of_no_device_found_dialog = self.user_params.get(
+        constants.KEY_CLOSE_BUTTON_OF_NO_DEVICE_FOUND_DIALOG, None
+    )
+    self._close_button_of_something_came_up_dialog = self.user_params.get(
+        constants.KEY_CLOSE_BUTTON_OF_SOMETHING_CAME_UP_DIALOG, None
+    )
+    self._connect_button_of_network_request_dialog = self.user_params.get(
+        constants.KEY_CONNECT_BUTTON_OF_NETWORK_REQUEST_DIALOG, None,
+    )
+    self._select_wifi_button_of_network_request_dialog = self.user_params.get(
+        constants.KEY_SELECT_WIFI_BUTTON_OF_NETWORK_REQUEST_DIALOG, None
+    )
+
   def teardown_class(self):
     if self._original_wifi_scan_throttle_state is not None:
       self.ad.wifi.wifiSetScanThrottleState(
@@ -100,7 +113,6 @@ class NetworkRequestTests(base_test.BaseTestClass):
       )
       self._original_wifi_scan_throttle_state = None
 
-  @override
   def setup_test(self) -> None:
     self.ad.wifi.wifiFactoryReset()
     self.ad.wifi.wifiToggleEnable()
@@ -113,20 +125,21 @@ class NetworkRequestTests(base_test.BaseTestClass):
     })
     # Close failed to connect wifi dialog to avoid blocking the test.
     ui_action_utils.close_failed_to_connect_wifi_dialog(
-        self.ad, self.current_test_info.output_path,
+        self.ad,
+        self.current_test_info.output_path,
+        button_something_came_up=self._close_button_of_something_came_up_dialog,
+        button_no_device_found=self._close_button_of_no_device_found_dialog,
     )
     ui_action_utils.return_home_page(self.ad)
     # set the wifi snippet to foreground
     self.ad.wifi.utilityBringToForeground()
 
-  @override
   def teardown_test(self) -> None:
     self.ap_helper.stop_programmable_ap()
     self.ad.wifi.wifiClearConfiguredNetworks()
     self.ad.wifi.connectivityUnregisterNetwork(self.request_networkid)
     self.ad.services.create_output_excerpts_all(self.current_test_info)
 
-  @override
   def on_fail(self, record: records.TestResultRecord) -> None:
     self.ad.take_bug_report(destination=self.current_test_info.output_path)
 
@@ -175,7 +188,10 @@ class NetworkRequestTests(base_test.BaseTestClass):
 
     try:
       ui_action_utils.click_connect_in_connection_dialog(
-          self.ad, wifi_info.ssid, self.current_test_info.output_path,
+          self.ad,
+          wifi_info.ssid,
+          self.current_test_info.output_path,
+          self._connect_button_of_network_request_dialog,
       )
       wifi_utils.wait_until_network_expected_callback(
           network_callback, constants.NetworkCallback.ON_AVAILABLE
@@ -249,7 +265,9 @@ class NetworkRequestTests(base_test.BaseTestClass):
 
     try:
       ui_action_utils.click_pattern_matched_wifi_in_connection_dialog(
-          self.ad, wifi_info.ssid, self.current_test_info.output_path,
+          self.ad,
+          wifi_info.ssid,
+          select_button_text=self._select_wifi_button_of_network_request_dialog,
       )
       wifi_utils.wait_until_network_expected_callback(
           network_callback, constants.NetworkCallback.ON_AVAILABLE
@@ -257,6 +275,11 @@ class NetworkRequestTests(base_test.BaseTestClass):
     except (
         errors.CallbackHandlerTimeoutError, asserts.signals.TestFailure
     ) as e:
+      ui_action_utils.capture_hsv_snapshot(
+          self.ad,
+          prefix='connect_with_pattern_network_request',
+          output_path=self.current_test_info.output_path,
+      )
       raise NetworkRequestFailedError(
           _ERROR_MSG_NETWORK_CONNECT_FAILED.format(
               wifi_ssid=wifi_info.ssid,
@@ -312,6 +335,8 @@ class NetworkRequestTests(base_test.BaseTestClass):
     ui_action_utils.close_failed_to_connect_wifi_dialog(
         self.ad,
         self.current_test_info.output_path,
+        button_something_came_up=self._close_button_of_something_came_up_dialog,
+        button_no_device_found=self._close_button_of_no_device_found_dialog,
     )
 
   def test_with_invalid_credential_in_network_specifier(self) -> None:
@@ -358,7 +383,10 @@ class NetworkRequestTests(base_test.BaseTestClass):
 
     # TODO: b/433456977 - Set up a unique resource-id to improve robustness.
     ui_action_utils.click_connect_in_connection_dialog(
-        self.ad, wifi_info.ssid, self.current_test_info.output_path,
+        self.ad,
+        wifi_info.ssid,
+        self.current_test_info.output_path,
+        self._connect_button_of_network_request_dialog
     )
 
     wifi_utils.wait_until_network_expected_callback(

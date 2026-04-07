@@ -26,6 +26,7 @@ import static android.net.wifi.ScanResult.WIFI_BAND_6_GHZ;
 import static android.net.wifi.WifiAvailableChannel.FILTER_REGULATORY;
 import static android.net.wifi.WifiAvailableChannel.OP_MODE_SAP;
 import static android.net.wifi.WifiAvailableChannel.OP_MODE_STA;
+import static android.net.wifi.WifiAvailableChannel.OP_MODE_WIFI_AWARE;
 import static android.net.wifi.WifiConfiguration.METERED_OVERRIDE_METERED;
 import static android.net.wifi.WifiManager.ACTION_REMOVE_SUGGESTION_DISCONNECT;
 import static android.net.wifi.WifiManager.CHANNEL_DATA_KEY_FREQUENCY_MHZ;
@@ -6387,16 +6388,12 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.stopAutoDispatchAndIgnoreExceptions();
         // No scans must be made yet as the device is idle.
         verify(mScanRequestProxy, never()).startScan(Process.myUid(), SCAN_PACKAGE_NAME);
-        // Verify ActiveModeWarden is notified of the idle mode change
-        verify(mActiveModeWarden).onIdleModeChanged(true);
 
         // Tell the wifi service that idle mode ended.
         when(mPowerManager.isDeviceIdleMode()).thenReturn(false);
         mLooper.startAutoDispatch();
         TestUtil.sendIdleModeChanged(mBroadcastReceiverCaptor.getValue(), mContext);
         mLooper.stopAutoDispatchAndIgnoreExceptions();
-        // Verify ActiveModeWarden is notified of the idle mode change
-        verify(mActiveModeWarden).onIdleModeChanged(false);
 
         // Must scan now.
         verify(mScanRequestProxy).startScan(Process.myUid(), TEST_PACKAGE_NAME);
@@ -6665,6 +6662,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
         mLooper.dispatchAll();
 
         verify(mWifiConfigManager).removeNetworksForUser(userHandle.getIdentifier());
+        verify(mWifiNetworkSuggestionsManager).removeSuggestionsForUser(userHandle.getIdentifier());
     }
 
     @Test
@@ -9998,33 +9996,11 @@ public class WifiServiceImplTest extends WifiBaseTest {
     }
 
     /**
-     * Test unregister listener from background user.
-     */
-    @Test(expected = SecurityException.class)
-    public void testRemoveSuggestionUserApprovalStatusListenerFromBackgroundUser() {
-        when(mWifiPermissionsUtil.doesUidBelongToCurrentUserOrDeviceOwner(anyInt()))
-                .thenReturn(false);
-        mWifiServiceImpl.removeSuggestionUserApprovalStatusListener(
-                mSuggestionUserApprovalStatusListener, TEST_PACKAGE_NAME);
-    }
-
-    /**
      * Test register listener without listener
      */
     @Test(expected = NullPointerException.class)
     public void testAddSuggestionUserApprovalStatusListenerWithIllegalArgument() {
         mWifiServiceImpl.addSuggestionUserApprovalStatusListener(null, TEST_PACKAGE_NAME);
-    }
-
-    /**
-     * Test unregister callback without permission.
-     */
-    @Test(expected = SecurityException.class)
-    public void testUnregisterSuggestionUserApprovalStatusListenerWithMissingPermission() {
-        doThrow(new SecurityException()).when(mContext).enforceCallingOrSelfPermission(
-                eq(ACCESS_WIFI_STATE), eq("WifiService"));
-        mWifiServiceImpl.removeSuggestionUserApprovalStatusListener(
-                mSuggestionUserApprovalStatusListener, TEST_PACKAGE_NAME);
     }
 
     /**
@@ -10645,6 +10621,43 @@ public class WifiServiceImplTest extends WifiBaseTest {
                         new WifiAvailableChannel(5955, WifiAvailableChannel.OP_MODE_SAP,
                         ScanResult.CHANNEL_WIDTH_20MHZ),
                         new WifiAvailableChannel(58320, WifiAvailableChannel.OP_MODE_SAP,
+                        ScanResult.CHANNEL_WIDTH_20MHZ));
+        mLooper.stopAutoDispatchAndIgnoreExceptions();
+    }
+
+    /**
+     * Verify the call to getUsableChannels() goes to cached Aware capabilities
+     */
+    @Test
+    public void testGetUsableChannelsUsesStoredAwareChannelsWhenNotSupported() throws Exception {
+        mWifiServiceImpl.handleBootCompleted();
+        mLooper.dispatchAll();
+        when(mPackageManager.hasSystemFeature(PackageManager.FEATURE_PC)).thenReturn(true);
+        when(mWifiPermissionsUtil.isLocationModeEnabled()).thenReturn(true);
+        when(mWifiPermissionsUtil.checkCallersHardwareLocationPermission(anyInt()))
+                .thenReturn(true);
+        when(mWifiNative.isHalSupported()).thenReturn(true);
+        when(mWifiNative.isHalStarted()).thenReturn(true);
+        setup5GhzSupported();
+        setup6GhzSupported();
+        setup60GhzSupported();
+        when(mWifiCountryCode.getCountryCode()).thenReturn(TEST_COUNTRY_CODE);
+        when(mWifiNative.getUsableChannels(anyInt(), eq(OP_MODE_WIFI_AWARE), anyInt()))
+                .thenReturn(null);
+
+        when(mWifiSettingsConfigStore.get(WifiSettingsConfigStore.WIFI_AVAILABLE_SOFT_AP_FREQS_MHZ))
+                .thenReturn("[2452,5180,5955,58320]");
+
+        mLooper.startAutoDispatch();
+        assertThat(mWifiServiceImpl.getUsableChannels(WIFI_BAND_24_5_WITH_DFS_6_60_GHZ,
+                OP_MODE_WIFI_AWARE, FILTER_REGULATORY, TEST_PACKAGE_NAME, mExtras)).containsExactly(
+                new WifiAvailableChannel(2452, WifiAvailableChannel.OP_MODE_WIFI_AWARE,
+                        ScanResult.CHANNEL_WIDTH_20MHZ),
+                new WifiAvailableChannel(5180, WifiAvailableChannel.OP_MODE_WIFI_AWARE,
+                        ScanResult.CHANNEL_WIDTH_20MHZ),
+                new WifiAvailableChannel(5955, WifiAvailableChannel.OP_MODE_WIFI_AWARE,
+                        ScanResult.CHANNEL_WIDTH_20MHZ),
+                new WifiAvailableChannel(58320, WifiAvailableChannel.OP_MODE_WIFI_AWARE,
                         ScanResult.CHANNEL_WIDTH_20MHZ));
         mLooper.stopAutoDispatchAndIgnoreExceptions();
     }
@@ -12409,12 +12422,6 @@ public class WifiServiceImplTest extends WifiBaseTest {
                 .removeLocalOnlyDisconnectionStatusListener(mLocalOnlyDisconnectionStatusListener,
                         null));
 
-        when(mWifiPermissionsUtil.checkRequestCompanionProfileAutomotiveProjectionPermission(
-                anyInt())).thenReturn(false);
-        assertThrows(SecurityException.class, () -> mWifiServiceImpl
-                .removeLocalOnlyDisconnectionStatusListener(mLocalOnlyDisconnectionStatusListener,
-                        TEST_PACKAGE_NAME));
-
         // verify removeLocalOnlyDisconnectionStatusListener callable with permission
         when(mWifiPermissionsUtil.checkRequestCompanionProfileAutomotiveProjectionPermission(
                 anyInt())).thenReturn(true);
@@ -12438,19 +12445,7 @@ public class WifiServiceImplTest extends WifiBaseTest {
     }
 
     /**
-     * Test unregister callback without permission.
-     */
-    @Test
-    public void testUnregisterLocalOnlyNetworkCallbackWithMissingPermission() {
-        doThrow(new SecurityException()).when(mContext).enforceCallingOrSelfPermission(
-                eq(ACCESS_WIFI_STATE), eq("WifiService"));
-        assertThrows(SecurityException.class, () -> mWifiServiceImpl
-                .removeLocalOnlyConnectionStatusListener(
-                        mLocalOnlyConnectionStatusListener, TEST_PACKAGE_NAME));
-    }
-
-    /**
-     * Test register nad unregister callback will go to WifiNetworkSuggestionManager
+     * Test register and unregister callback will go to WifiNetworkSuggestionManager
      */
     @Test
     public void testRegisterUnregisterLocalOnlyNetworkCallback() throws Exception {

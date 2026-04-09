@@ -364,6 +364,13 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     private final SparseArray<PairingInfo> mPairingRequest = new SparseArray<>();
     private final SparseArray<BootStrppingInfo> mBootstrappingRequest = new SparseArray<>();
 
+    private long mStartTime;
+    private int mMaxNdpSessionLimit = 0;
+    /**
+     * Current logged in user ID.
+     */
+    private int mCurrentUserId = UserHandle.SYSTEM.getIdentifier();
+
     private static class PairingInfo {
         public final int mClientId;
         public final int mSessionId;
@@ -5371,5 +5378,48 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             }
         }
         return false;
+    }
+
+    /**
+     * Handle user switch event.
+     */
+    public void handleUserSwitch(int userId) {
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "Handling user switch for " + userId);
+        }
+        if (userId == mCurrentUserId) {
+            Log.w(TAG, "User already in foreground " + userId);
+            return;
+        }
+        mCurrentUserId = userId;
+        mPairingConfigManager.reset();
+    }
+
+    /**
+     * Handle user unlock event.
+     */
+    public void handleUserUnlock(int userId) {
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "Handling user unlock for " + userId);
+        }
+        if (userId != mCurrentUserId) {
+            Log.e(TAG, "Ignore user unlock for non current user " + userId);
+            return;
+        }
+        // No specific action needed for the current user on unlock.
+    }
+
+    /**
+     * Handle user stop event.
+     */
+    public void handleUserStop(int userId) {
+        if (mVerboseLoggingEnabled) {
+            Log.v(TAG, "Handling user stop for " + userId);
+        }
+        if (userId != mCurrentUserId) {
+            Log.e(TAG, "Ignore user stop for non current user " + userId);
+            return;
+        }
+        mPairingConfigManager.reset();
     }
 }

@@ -20,6 +20,8 @@ import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS
 import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_PK_256;
 import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_SK_128;
 import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_SK_256;
+import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128;
+import static android.net.wifi.aware.Characteristics.WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_256;
 
 import static com.android.server.wifi.aware.WifiAwareStateManager.NAN_PAIRING_AKM_SAE;
 import static com.android.server.wifi.aware.WifiAwareStateManager.NAN_PAIRING_REQUEST_TYPE_SETUP;
@@ -1004,7 +1006,7 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
                 : NanPairingRequestType.NAN_PAIRING_VERIFICATION;
         request.securityConfig = new NanPairingSecurityConfig();
         request.securityConfig.pmk = new byte[32];
-        request.securityConfig.cipherType = cipherSuite;
+        request.securityConfig.cipherType = getHalCipherSuiteType(cipherSuite);
         request.securityConfig.passphrase = new byte[0];
         if (pmk != null && pmk.length != 0) {
             request.securityConfig.securityType = NanPairingSecurityType.PMK;
@@ -1037,7 +1039,7 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
         request.securityConfig = new NanPairingSecurityConfig();
         request.securityConfig.pmk = new byte[32];
         request.securityConfig.passphrase = new byte[0];
-        request.securityConfig.cipherType = cipherSuite;
+        request.securityConfig.cipherType = getHalCipherSuiteType(cipherSuite);
         if (pmk != null && pmk.length != 0) {
             request.securityConfig.securityType = NanPairingSecurityType.PMK;
             request.securityConfig.pmk = copyArray(pmk);
@@ -1101,6 +1103,10 @@ public class WifiNanIfaceAidlImpl implements IWifiNanIface {
                 return NanCipherSuiteType.PUBLIC_KEY_2WDH_256_MASK;
             case WIFI_AWARE_CIPHER_SUITE_NCS_PK_256:
                 return NanCipherSuiteType.PUBLIC_KEY_2WDH_256_MASK;
+            case WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_128:
+                return NanCipherSuiteType.PUBLIC_KEY_PASN_128_MASK;
+            case WIFI_AWARE_CIPHER_SUITE_NCS_PK_PASN_256:
+                return NanCipherSuiteType.PUBLIC_KEY_PASN_256_MASK;
         }
         return NanCipherSuiteType.NONE;
     }

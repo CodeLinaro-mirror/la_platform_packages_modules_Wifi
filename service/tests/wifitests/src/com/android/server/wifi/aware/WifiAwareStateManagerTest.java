@@ -177,6 +177,8 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
     private byte[] mNik = "0123456789012345".getBytes();
     private byte[] mPeerNik = "6789012345678901".getBytes();
     private byte[] mPmk = "01234567890123456789012345678901".getBytes();
+    private static final int TEST_USER_ID = 10;
+
     /**
      * Pre-test configuration. Initialize and install mocks.
      */
@@ -230,7 +232,6 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         WifiThreadRunner wifiThreadRunner = new WifiThreadRunner(wifiHandler);
         when(mWifiInjector.getWifiNative()).thenReturn(mWifiNative);
         when(mWifiInjector.getWifiThreadRunner()).thenReturn(wifiThreadRunner);
-        when(mWifiInjector.getWifiAwareLocalLog()).thenReturn(mLocalLog);
         mDut = new WifiAwareStateManager(mWifiInjector, mPairingConfigManager);
         mDut.setNative(mMockNativeManager, mMockNative);
         mDut.start(mMockContext, mMockLooper.getLooper(), mAwareMetricsMock,
@@ -260,6 +261,9 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         mDut.onCapabilitiesUpdateResponse(transactionId.getValue(), getCapabilities());
         mMockLooper.dispatchAll();
         when(mMockAwareDataPathStatemanager.getNumOfNdps()).thenReturn(1);
+        mDut.handleUserSwitch(TEST_USER_ID);
+        verify(mPairingConfigManager).reset();
+        reset(mPairingConfigManager);
     }
 
     /**
@@ -5845,6 +5849,36 @@ public class WifiAwareStateManagerTest extends WifiBaseTest {
         validateInternalClientInfoCleanedUp(clientId1);
 
         verifyNoMoreInteractions(mockCallback1, mMockNative);
+    }
+
+    @Test
+    public void testHandleUserSwitch() {
+        int userId = 20;
+        mDut.handleUserSwitch(userId);
+        mMockLooper.dispatchAll();
+        verify(mPairingConfigManager).reset();
+    }
+
+    @Test
+    public void testHandleUserSwitchSameUser() {
+        mDut.handleUserUnlock(TEST_USER_ID);
+        mMockLooper.dispatchAll();
+        verify(mPairingConfigManager, never()).reset();
+    }
+
+    @Test
+    public void testHandleUserStop() {
+        mDut.handleUserStop(TEST_USER_ID);
+        mMockLooper.dispatchAll();
+        verify(mPairingConfigManager).reset();
+    }
+
+    @Test
+    public void testHandleUserStopDifferentUser() {
+        int userId = 20;
+        mDut.handleUserStop(userId);
+        mMockLooper.dispatchAll();
+        verify(mPairingConfigManager, never()).reset();
     }
 }
 

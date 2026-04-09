@@ -1843,7 +1843,7 @@ public class Nl80211NativeTest {
     }
 
     @Test
-    public void testStartPnoScan_addsDefaultFreqsIfManyNetworksWithoutFreqs() {
+    public void testStartPnoScan_networksWithoutFreqsAboveThreshold_scansForFreqs() {
         mDut = initNl80211Native(false);
         Nl80211Utils.BandInfo bandInfo = new Nl80211Utils.BandInfo.Builder()
                 .addBandCapabilities(NL80211_BAND_2GHZ, createBandCapabilities(NL80211_BAND_2GHZ,
@@ -1851,20 +1851,26 @@ public class Nl80211NativeTest {
                 .addBandCapabilities(NL80211_BAND_5GHZ, createBandCapabilities(NL80211_BAND_5GHZ,
                         5180, 5200, 5220))
                 .build();
-        setupClientModeInterfaceForTest(WIPHY_INDEX_0, bandInfo, null, null);
+        Nl80211Utils.ScanCapabilities scanCaps = new Nl80211Utils.ScanCapabilities.Builder()
+                .setMaxMatchSets(101)
+                .setMaxNumSchedScanSsids(2)
+                .build();
+        setupClientModeInterfaceForTest(WIPHY_INDEX_0, bandInfo, scanCaps, null);
 
+        // Set up pno networks just at the threshold for networks without freqs.
         List<PnoNetwork> pnoNetworks = new ArrayList<>();
-        // Add 4 networks without frequencies and 1 with frequencies.
-        for (int i = 0; i < 4; i++) {
-            PnoNetwork network = new PnoNetwork();
-            network.setSsid(("ssid" + i).getBytes());
-            network.setFrequenciesMhz(new int[0]); // No frequencies
-            pnoNetworks.add(network);
+        for (int i = 0; i < Nl80211Native.PERCENT_NETWORKS_WITH_FREQ_FOR_PNO_SCAN; i++) {
+            PnoNetwork networkWithoutFreq = new PnoNetwork();
+            networkWithoutFreq.setSsid(("ssid_without_freq_" + i).getBytes());
+            pnoNetworks.add(networkWithoutFreq);
         }
-        PnoNetwork networkWithFreq = new PnoNetwork();
-        networkWithFreq.setSsid("ssid_with_freq".getBytes());
-        networkWithFreq.setFrequenciesMhz(new int[]{5220});
-        pnoNetworks.add(networkWithFreq);
+        for (int i = 0; i < 100 - Nl80211Native.PERCENT_NETWORKS_WITH_FREQ_FOR_PNO_SCAN; i++) {
+            PnoNetwork networkWithFreq = new PnoNetwork();
+            networkWithFreq.setSsid(("ssid_with_freq_" + i).getBytes());
+            networkWithFreq.setFrequenciesMhz(new int[]{5220});
+            pnoNetworks.add(networkWithFreq);
+        }
+
         when(mPnoSettings.getPnoNetworks()).thenReturn(pnoNetworks);
         when(mPnoSettings.getIntervalMillis()).thenReturn(15000L);
         when(mPnoSettings.getMin2gRssiDbm()).thenReturn(-70);
@@ -1872,19 +1878,37 @@ public class Nl80211NativeTest {
         when(mPnoSettings.getScanIterations()).thenReturn(5);
         when(mPnoSettings.getScanIntervalMultiplier()).thenReturn(3);
 
+        // Only the match network freqs should be scanned for
         List<Integer> expectedFrequencies = new ArrayList<>();
-        expectedFrequencies.add(2412); // From PNO_SCAN_DEFAULT_FREQS_2G
-        expectedFrequencies.add(2417); // From PNO_SCAN_DEFAULT_FREQS_2G
-        expectedFrequencies.add(5180); // From PNO_SCAN_DEFAULT_FREQS_5G
-        expectedFrequencies.add(5200); // From PNO_SCAN_DEFAULT_FREQS_5G
         expectedFrequencies.add(5220); // From networkWithFreq
-
         when(mNl80211Utils.startPnoScan(
                 eq(CLIENT_IFACE_INDEX), any(), anyLong(), anyInt(), anyInt(), anyBoolean(),
                 anyBoolean(), anyBoolean(), any(), any(), eq(expectedFrequencies)))
                 .thenReturn(WifiScanner.REASON_SUCCEEDED);
 
         boolean result = mDut.startPnoScan(
+                CLIENT_IFACE_NAME, mPnoSettings, mExecutor, mPnoScanRequestCallback);
+
+        assertTrue(result);
+        verify(mNl80211Utils).startPnoScan(
+                eq(CLIENT_IFACE_INDEX), any(), anyLong(), anyInt(), anyInt(), anyBoolean(),
+                anyBoolean(), anyBoolean(), any(), any(), eq(new ArrayList<>(expectedFrequencies)));
+
+        // Add a hidden network without freq to tip the count above the threshold.
+        PnoNetwork hiddenNetworkWithoutFreq = new PnoNetwork();
+        hiddenNetworkWithoutFreq.setSsid("hidden_without_freq".getBytes());
+        hiddenNetworkWithoutFreq.setHidden(true);
+        pnoNetworks.add(hiddenNetworkWithoutFreq);
+
+        // Now both match and default network freqs should be scanned for
+        expectedFrequencies = new ArrayList<>();
+        expectedFrequencies.add(2412); // From PNO_SCAN_DEFAULT_FREQS_2G
+        expectedFrequencies.add(2417); // From PNO_SCAN_DEFAULT_FREQS_2G
+        expectedFrequencies.add(5180); // From PNO_SCAN_DEFAULT_FREQS_5G
+        expectedFrequencies.add(5200); // From PNO_SCAN_DEFAULT_FREQS_5G
+        expectedFrequencies.add(5220); // From networkWithFreq
+
+        result = mDut.startPnoScan(
                 CLIENT_IFACE_NAME, mPnoSettings, mExecutor, mPnoScanRequestCallback);
 
         assertTrue(result);

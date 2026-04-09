@@ -111,7 +111,8 @@ public class Nl80211Native {
     private static final int MAX_SSID_LENGTH = 32;
     @VisibleForTesting
     static final int ENODEV_RESTART_THRESHOLD = 3;
-    private static final int PERCENT_NETWORKS_WITH_FREQ_FOR_PNO_SCAN = 30;
+    @VisibleForTesting
+    static final int PERCENT_NETWORKS_WITH_FREQ_FOR_PNO_SCAN = 30;
     private static final int[] PNO_SCAN_DEFAULT_FREQS_2G =
             {2412, 2417, 2422, 2427, 2432, 2437, 2447, 2452, 2457, 2462};
     private static final int[] PNO_SCAN_DEFAULT_FREQS_5G =
@@ -1596,38 +1597,39 @@ public class Nl80211Native {
                 // Hidden SSIDs
                 if (network.isHidden()) {
                     if (scanSsids.size()
-                            < ifaceInfo.wiphyInfo.scanCapabilities.maxNumSchedScanSsids) {
-                        scanSsids.add(network.getSsid());
-                    } else {
+                            >= ifaceInfo.wiphyInfo.scanCapabilities.maxNumSchedScanSsids) {
                         Log.w(TAG, "Max scheduled scan SSIDs exceeded, skipping: "
                                 + WifiSsid.fromBytes(network.getSsid()));
+                        continue;
                     }
+                    scanSsids.add(network.getSsid());
                 }
 
                 // Match SSIDs
-                if (matchSsids.size() < ifaceInfo.wiphyInfo.scanCapabilities.maxMatchSets) {
-                    matchSsids.add(network.getSsid());
-                } else {
+                if (matchSsids.size() >= ifaceInfo.wiphyInfo.scanCapabilities.maxMatchSets) {
                     Log.w(TAG, "Max PNO match SSIDs exceeded, skipping: "
                             + WifiSsid.fromBytes(network.getSsid()));
-                }
-
-                // Filter unsupported frequencies
-                int[] freqs = network.getFrequenciesMhz();
-                if (freqs.length == 0) {
-                    networksWithoutFreqs++;
                     continue;
                 }
+                matchSsids.add(network.getSsid());
+
+                // Build the set of unique frequencies to scan for.
+                int[] freqs = network.getFrequenciesMhz();
                 for (int freq : freqs) {
-                    if (!allSupportedFreqs.contains(freq)) continue;
-                    uniqueFreqs.add(freq);
+                    if (allSupportedFreqs.contains(freq)) {
+                        uniqueFreqs.add(freq);
+                    } else {
+                        Log.i(TAG, "startPnoScan: Filtering invalid frequency: " + freq);
+                    }
+                }
+                if (freqs.length == 0) {
+                    networksWithoutFreqs++;
                 }
             }
 
             // Scan the default frequencies if we have too many networks without frequency data.
-            if (!pnoNetworks.isEmpty()
-                    && (networksWithoutFreqs * 100
-                    > pnoNetworks.size() * PERCENT_NETWORKS_WITH_FREQ_FOR_PNO_SCAN)) {
+            if (networksWithoutFreqs * 100
+                    > matchSsids.size() * PERCENT_NETWORKS_WITH_FREQ_FOR_PNO_SCAN) {
                 for (int freq : PNO_SCAN_DEFAULT_FREQS_2G) {
                     if (allSupportedFreqs.contains(freq)) uniqueFreqs.add(freq);
                 }

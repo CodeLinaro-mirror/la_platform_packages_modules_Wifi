@@ -48,6 +48,7 @@ import android.net.wifi.WifiNetworkSuggestion;
 import android.net.wifi.WifiScanner;
 import android.net.wifi.WifiSsid;
 import android.net.wifi.hotspot2.PasspointConfiguration;
+import android.net.wifi.util.Environment;
 import android.os.Process;
 import android.os.RemoteCallbackList;
 import android.os.RemoteException;
@@ -247,7 +248,7 @@ public class WifiNetworkSuggestionsManager {
             this.uid = uid;
             this.packageName = packageName;
             this.featureId = featureId;
-            if (Flags.multiUserWifiEnhancement()) {
+            if (Environment.isSdkAtLeastC() && Flags.multiUserWifiEnhancement()) {
                 this.userId = ActivityManager.getCurrentUser();
             }
         }
@@ -333,8 +334,7 @@ public class WifiNetworkSuggestionsManager {
             this.wns.wifiConfiguration.ephemeral = true;
             this.wns.wifiConfiguration.creatorName = perAppInfo.packageName;
             this.wns.wifiConfiguration.creatorUid = perAppInfo.uid;
-            // TODO: b/449013275 Add Environment.isSdkNewerThanB())
-            if (Flags.multiUserWifiEnhancement()) {
+            if (Environment.isSdkAtLeastC() && Flags.multiUserWifiEnhancement()) {
                 this.wns.wifiConfiguration.setCreatorUserId(perAppInfo.userId);
             }
             if (perAppInfo.carrierId == TelephonyManager.UNKNOWN_CARRIER_ID) {
@@ -717,7 +717,7 @@ public class WifiNetworkSuggestionsManager {
         mIntentFilter.addAction(NOTIFICATION_USER_ALLOWED_APP_INTENT_ACTION);
         mIntentFilter.addAction(NOTIFICATION_USER_DISALLOWED_APP_INTENT_ACTION);
         mIntentFilter.addAction(NOTIFICATION_USER_DISMISSED_INTENT_ACTION);
-        if (Flags.monitorIntentForAllUsers()) {
+        if (Flags.monitorIntentForAllUsers() && Environment.isSdkAtLeastC()) {
             mContext.registerReceiverForAllUsers(mBroadcastReceiver, mIntentFilter, null, handler);
         } else {
             mContext.registerReceiver(mBroadcastReceiver, mIntentFilter, null, handler);

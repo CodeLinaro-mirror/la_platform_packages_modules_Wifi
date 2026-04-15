@@ -117,8 +117,7 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
 
             // One ScanResult can be associated with more than one network, hence we calculate all
             // the scores and use the highest one as the ScanResult's score.
-            // TODO: b/449013275 Add Environment.isSdkNewerThanB())
-            if (Flags.multiUserWifiEnhancement()) {
+            if (Environment.isSdkAtLeastC() && Flags.multiUserWifiEnhancement()) {
                 matchedNetworkCandidates =
                         mWifiConfigManager.getSavedNetworksForScanDetail(scanDetail);
             } else {
@@ -229,7 +228,7 @@ public class SavedNetworkNominator implements WifiNetworkSelector.NetworkNominat
         for (Pair<ScanDetail, WifiConfiguration> candidate : candidates) {
             WifiConfiguration config = candidate.second;
             if (config.fromWifiNetworkSuggestion) {
-                return;
+                continue;
             }
             if (!config.allowAutojoin) {
                 continue;

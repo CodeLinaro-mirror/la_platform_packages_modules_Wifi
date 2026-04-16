@@ -164,6 +164,7 @@ import java.net.Inet6Address;
 import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -216,6 +217,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     public static final int INSTANT_MODE_DISABLED = 0;
     public static final int INSTANT_MODE_24GHZ = 1;
     public static final int INSTANT_MODE_5GHZ = 3;
+    public static final int NDP_ID_NOT_SPECIFIED = 0;
 
     /*
      * State machine message types. There are sub-types for the messages (except for TIMEOUTs).
@@ -450,6 +452,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     private int mMaxNdpSessionLimit = 0;
     private String mLastCountryCode = null;
     private Boolean mIs5gAwareSupported = null;
+    private final SecureRandom mRandom = new SecureRandom();
+    private final int mMasterPref = mRandom.nextInt(128);
 
     /**
      * Current logged in user ID.
@@ -1268,7 +1272,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
      * @see android.net.wifi.aware.DiscoverySession#releaseDataPath(PeerHandle)
      */
     public void releaseDataPathRequest(int clientId, int sessionId, int peerId) {
-        endDataPath(peerId, clientId, sessionId);
+        endDataPath(peerId, clientId, sessionId, NDP_ID_NOT_SPECIFIED);
     }
 
     /**
@@ -1535,7 +1539,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
      * Respond to a bootstrapping request
      */
     private void respondToBootstrappingRequest(int clientId, int sessionId, int peerId,
-            int bootstrappingId, boolean accept, int method, byte[] serviceSpecificInfo) {
+            int bootstrappingId, boolean accept, int method, byte[] serviceSpecificInfo,
+            byte[] peerDiscMacAddr) {
         Message msg = mSm.obtainMessage(MESSAGE_TYPE_COMMAND);
         msg.arg1 = COMMAND_TYPE_RESPONSE_BOOTSTRAPPING_REQUEST;
         msg.arg2 = clientId;
@@ -1545,6 +1550,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         msg.getData().putInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_METHOD, method);
         msg.getData().putInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_REQUEST_ID, bootstrappingId);
         msg.getData().putByteArray(MESSAGE_BUNDLE_KEY_SSI_DATA, serviceSpecificInfo);
+        msg.getData().putByteArray(MESSAGE_BUNDLE_KEY_MAC_ADDRESS, peerDiscMacAddr);
         mSm.sendMessage(msg);
     }
 
@@ -1700,12 +1706,13 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     /**
      * Command to terminate the specified data-path.
      */
-    public void endDataPath(int peerId, int clientId, int sessionId) {
+    public void endDataPath(int peerId, int clientId, int sessionId, int ndpId) {
         Message msg = mSm.obtainMessage(MESSAGE_TYPE_COMMAND);
         msg.arg1 = COMMAND_TYPE_END_DATA_PATH;
         msg.arg2 = clientId;
         msg.getData().putInt(MESSAGE_BUNDLE_KEY_SESSION_ID, sessionId);
         msg.getData().putInt(MESSAGE_BUNDLE_KEY_PEER_ID, peerId);
+        msg.getData().putInt(MESSAGE_BUNDLE_KEY_NDP_ID, ndpId);
         msg.getData().putBoolean(MESSAGE_BUNDLE_KEY_IS_LEGACY_API, false);
         mSm.sendMessage(msg);
     }
@@ -2365,6 +2372,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
 
         private static final long AWARE_SEND_MESSAGE_TIMEOUT = 10_000;
         private static final int MESSAGE_QUEUE_DEPTH_PER_UID = 50;
+        private static final int DELAY_FOR_CLUSTER_START_MS = 50;
         private int mSendArrivalSequenceCounter = 0;
         private boolean mSendQueueBlocked = false;
         private final SparseArray<Message> mHostQueuedSendMessages = new SparseArray<>();
@@ -2584,7 +2592,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                                     getClientSessionForPubSubId(session.getPubSubId());
                             if (data != null) {
                                 endDataPath(peerId, data.first.getClientId(),
-                                        data.second.getSessionId());
+                                        data.second.getSessionId(), ndpId);
                             } else {
                                 Log.e(TAG, "Could not find client with active pubsubId?");
                             }
@@ -3133,6 +3141,13 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     break;
                 }
                 case COMMAND_TYPE_PUBLISH: {
+                    if (mClusterId == ALL_ZERO_MAC) {
+                        Message newMsg = mSm.obtainMessage();
+                        newMsg.copyFrom(msg);
+                        mSm.sendMessageDelayed(newMsg, DELAY_FOR_CLUSTER_START_MS);
+                        waitForResponse = false;
+                        break;
+                    }
                     int clientId = msg.arg2;
                     IWifiAwareDiscoverySessionCallback callback =
                             (IWifiAwareDiscoverySessionCallback) msg.obj;
@@ -3153,6 +3168,13 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     break;
                 }
                 case COMMAND_TYPE_SUBSCRIBE: {
+                    if (mClusterId == ALL_ZERO_MAC) {
+                        Message newMsg = mSm.obtainMessage();
+                        newMsg.copyFrom(msg);
+                        mSm.sendMessageDelayed(newMsg, DELAY_FOR_CLUSTER_START_MS);
+                        waitForResponse = false;
+                        break;
+                    }
                     int clientId = msg.arg2;
                     IWifiAwareDiscoverySessionCallback callback =
                             (IWifiAwareDiscoverySessionCallback) msg.obj;
@@ -3259,8 +3281,9 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     boolean accept = data.getBoolean(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_ACCEPT);
                     int bootstrappingId = data.getInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_REQUEST_ID);
                     int method = data.getInt(MESSAGE_BUNDLE_KEY_BOOTSTRAPPING_METHOD);
+                    byte[] peerMac = data.getByteArray(MESSAGE_BUNDLE_KEY_MAC_ADDRESS);
                     waitForResponse = respondToBootstrappingRequestLocal(mCurrentTransactionId,
-                            clientId, sessionId, peerId, bootstrappingId, accept, method);
+                            clientId, sessionId, peerId, bootstrappingId, accept, method, peerMac);
                     break;
                 }
                 case COMMAND_TYPE_TRANSMIT_NEXT_MESSAGE: {
@@ -3384,10 +3407,18 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                         if (client != null) {
                             WifiAwareDiscoverySessionState session = client.getSession(sessionId);
                             if (session != null) {
-                                ndpId = session.getNdpId(peerId);
-                                waitForResponse = session.endDataPath(mCurrentTransactionId, ndpId,
-                                        peerId);
-                                mActiveNdps.delete(ndpId);
+                                ArraySet<Integer> ndps = session.getNdps(peerId);
+                                if (ndpId == NDP_ID_NOT_SPECIFIED) {
+                                    if (ndps != null) {
+                                        for (int ndp : ndps) {
+                                            mActiveNdps.remove(ndp);
+                                        }
+                                    }
+                                } else {
+                                    mActiveNdps.delete(ndpId);
+                                }
+                                waitForResponse = session.endDataPath(mCurrentTransactionId,
+                                        peerId, ndpId);
                                 cleanupNdi();
                             }
                         }
@@ -4086,8 +4117,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             }
             return false;
         }
-        boolean notificationRequired =
-                doesAnyClientNeedIdentityChangeNotifications() || notifyIdentityChange;
         boolean rangingRequired = doesAnyClientNeedRanging();
         int instantMode = getInstantModeFromAllClients();
         boolean enableInstantMode = false;
@@ -4109,7 +4138,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         boolean initialConfiguration = mCurrentAwareConfiguration == null
                 || reEnableAware;
         boolean success = mWifiAwareNativeApi.enableAndConfigure(transactionId, merged,
-                notificationRequired, initialConfiguration,
+                initialConfiguration,
                 mPowerManager.isInteractive(), mPowerManager.isDeviceIdleMode(),
                 rangingRequired, enableInstantMode, instantModeChannel, mClusterIdInt);
         if (!success) {
@@ -4155,6 +4184,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
 
         if (mClients.size() == 0) {
             mCurrentAwareConfiguration = null;
+            mClusterId = ALL_ZERO_MAC;
             mPairingRequest.clear();
             mDataPathMgr.deleteAllInterfaces();
             mCurrentRangingEnabled = false;
@@ -4191,7 +4221,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             return false;
         }
 
-        return mWifiAwareNativeApi.enableAndConfigure(transactionId, merged, notificationReqs,
+        return mWifiAwareNativeApi.enableAndConfigure(transactionId, merged,
                 false, mPowerManager.isInteractive(), mPowerManager.isDeviceIdleMode(),
                 rangingEnabled, enableInstantMode, instantModeChannel, mClusterIdInt);
     }
@@ -4215,7 +4245,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         }
 
         return mWifiAwareNativeApi.enableAndConfigure(transactionId, mergeConfigRequests(null),
-                notificationReqs, false, mPowerManager.isInteractive(),
+                false, mPowerManager.isInteractive(),
                 mPowerManager.isDeviceIdleMode(), rangingEnabled,
                 enableInstantMode, instantModeChannel, mClusterIdInt);
     }
@@ -4464,12 +4494,15 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
     }
 
     private boolean respondToBootstrappingRequestLocal(short transactionId, int clientId,
-            int sessionId, int peerId, int bootstrappingId, boolean accept, int method) {
+            int sessionId, int peerId, int bootstrappingId, boolean accept, int method,
+            byte[] peerDiscMacAddr) {
         String methodString = "respondToBootstrappingRequestLocal";
         if (mVdbg) {
             Log.v(TAG, methodString + ": transactionId=" + transactionId
                     + ", clientId=" + clientId + ", sessionId=" + sessionId + ", peerId=" + peerId
-                    + ", accept=" + accept + ", method" + method);
+                    + ", accept=" + accept + ", method=" + method + ", peerDiscMacAddr="
+                    + (peerDiscMacAddr == null ? "<null>" :
+                           String.valueOf(HexEncoding.encode(peerDiscMacAddr))));
         }
         WifiAwareDiscoverySessionState session = getClientSession(clientId, sessionId,
                 methodString);
@@ -4477,7 +4510,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             return false;
         }
         return session.respondToBootstrapping(transactionId, peerId, bootstrappingId, accept,
-                method);
+                method, peerDiscMacAddr);
     }
 
     private boolean sendFollowonMessageLocal(short transactionId, int clientId, int sessionId,
@@ -5560,7 +5593,6 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
             client.onInterfaceAddressChange(mac);
         }
 
-        mAwareMetrics.recordEnableAware();
         if (mIs5gAwareSupported == null) {
             // Update 5g aware support status if not already set
             if (SdkLevel.isAtLeastS()) {
@@ -5604,10 +5636,10 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
 
         for (int i = 0; i < mClients.size(); ++i) {
             WifiAwareClientState client = mClients.valueAt(i);
-            client.onClusterChange(clusterEventType, clusterId, mCurrentDiscoveryInterfaceMac);
+            if (client.getNotifyIdentityChange()) {
+                client.onClusterChange(clusterEventType, clusterId, mCurrentDiscoveryInterfaceMac);
+            }
         }
-
-        mAwareMetrics.recordEnableAware();
     }
 
     private void onMatchLocal(int pubSubId, int requestorinstanceid, byte[] peerMac,
@@ -5765,6 +5797,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         mClients.clear();
         mPairingRequest.clear();
         mCurrentAwareConfiguration = null;
+        mClusterId = ALL_ZERO_MAC;
         mSm.onAwareDownCleanupSendQueueState();
         mDataPathMgr.onAwareDownCleanupDataPaths();
         mCurrentDiscoveryInterfaceMac = ALL_ZERO_MAC;
@@ -5869,8 +5902,8 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         int responseMethod = data.second.getMatchedBootstrappingMethod(method);
         respondToBootstrappingRequest(data.first.getClientId(), data.second.getSessionId(),
                 data.second.getPeerIdOrAddIfNew(peerId, peerDiscMacAddr, 0,
-                    mWifiManager.getConnectionInfo()),
-                bootstrappingId, responseMethod != 0, responseMethod, serviceSpecificInfo);
+                    mWifiManager.getConnectionInfo()), bootstrappingId,
+                    responseMethod != 0, responseMethod, serviceSpecificInfo, peerDiscMacAddr);
     }
 
     private boolean onBootStrappingConfirmReceivedLocal(int sessionId, int bootstrappingId,
@@ -6116,7 +6149,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         // - discovery window: minimum value if specified, 0 (disable) is considered an infinity
         boolean support5gBand = false;
         boolean support6gBand = false;
-        int masterPreference = 0;
+        int masterPreference = -1;
         boolean clusterIdValid = false;
         int clusterLow = 0;
         int clusterHigh = ConfigRequest.CLUSTER_ID_MAX;
@@ -6179,6 +6212,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                 vendorData = cr.getVendorData();
             }
         }
+        masterPreference = masterPreference == -1 ? mMasterPref : masterPreference;
         ConfigRequest.Builder builder = new ConfigRequest.Builder().setSupport5gBand(support5gBand)
                 .setMasterPreference(masterPreference).setClusterLow(clusterLow)
                 .setClusterHigh(clusterHigh);
@@ -6524,6 +6558,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
         private final String mInterfaceName;
         private boolean mProvisioned = false;
         private DataPathConfirmHandler mConfirmHandlerHandler;
+        private NetworkInterface mNi = null;
 
         IpClientCallbacksImpl(String interfaceName) {
             mInterfaceName = interfaceName;
@@ -6546,6 +6581,7 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                 return;
             }
             if (mProvisioned) {
+                handler.handleProvisionSuccess(mNi);
                 return;
             }
             mConfirmHandlerHandler = handler;
@@ -6583,16 +6619,15 @@ public class WifiAwareStateManager implements WifiAwareShellCommand.DelegatedShe
                     return;
                 }
                 if (mConfirmHandlerHandler != null) {
-                    NetworkInterface ni = null;
                     try {
-                        ni = NetworkInterface.getByName(mInterfaceName);
+                        mNi = NetworkInterface.getByName(mInterfaceName);
                     } catch (SocketException e) {
                         Log.e(TAG, "onProvisioningSuccess, but no interface found: " + e);
                         mConfirmHandlerHandler.handleProvisionFailed();
                         mConfirmHandlerHandler = null;
                         return;
                     }
-                    mConfirmHandlerHandler.handleProvisionSuccess(ni);
+                    mConfirmHandlerHandler.handleProvisionSuccess(mNi);
                     mConfirmHandlerHandler = null;
                 }
                 if (mNetworkAgent != null) {

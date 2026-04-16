@@ -69,7 +69,8 @@ public class WifiGlobals {
     private int mPreviouslyConnectedNetworkWrongPasswordThreshold = 3;
     private boolean mIsWpa3SaeUpgradeOffloadEnabled;
     private boolean mIsWpa3SaeH2eSupported;
-    private boolean mDisableFirmwareRoamingInIdleMode = false;
+    private boolean mIsMultiInternetSameBandConnectionAllowed;
+    private boolean mIsMultiInternetSameBssidConnectionAllowed;
     // This is read from the overlay, cache it after boot up.
 // QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
     private final boolean mIsDisconnectOnlyOnInitialIpReachability;
@@ -103,6 +104,10 @@ public class WifiGlobals {
 // QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
         mIsWpa3SaeH2eSupported = mWifiResourceCache
                 .getBoolean(R.bool.config_wifiSaeH2eSupported);
+        mIsMultiInternetSameBandConnectionAllowed = mWifiResourceCache.getBoolean(
+                R.bool.config_wifiMultiInternetSameBandConnectionAllowed);
+        mIsMultiInternetSameBssidConnectionAllowed = mWifiResourceCache.getBoolean(
+                R.bool.config_wifiMultiInternetSameBssidConnectionAllowed);
         mIsXrPeripheral = mContext.getPackageManager().hasSystemFeature(
                 PackageManager.FEATURE_XR_PERIPHERAL);
         Set<String> unsupportedSsidPrefixes = new ArraySet<>(mWifiResourceCache.getStringArray(
@@ -308,15 +313,6 @@ public class WifiGlobals {
     }
 
     /**
-     * Helper method to check whether this device should disable firmware roaming in idle mode.
-     * @return if the device should disable firmware roaming in idle mode.
-     */
-    public boolean isDisableFirmwareRoamingInIdleMode() {
-        return mWifiResourceCache
-                .getBoolean(R.bool.config_wifiDisableFirmwareRoamingInIdleMode);
-    }
-
-    /**
      * Get the configuration for whether Multi-internet are allowed to
      * connect simultaneously to both 5GHz high and 5GHz low.
      */
@@ -415,6 +411,14 @@ public class WifiGlobals {
      */
     public boolean isWpa3SaeH2eSupported() {
         return mIsWpa3SaeH2eSupported;
+    }
+
+    public boolean isMultiInternetSameBandConnectionAllowed() {
+        return mIsMultiInternetSameBandConnectionAllowed;
+    }
+
+    public boolean isMultiInternetSameBssidConnectionAllowed() {
+        return mIsMultiInternetSameBssidConnectionAllowed;
     }
 
     /**
@@ -744,7 +748,6 @@ public class WifiGlobals {
         pw.println("mIsUsingExternalScorer="
                 + mIsUsingExternalScorer);
         pw.println("mIsWepAllowed=" + mIsWepAllowed.get());
-        pw.println("mDisableFirmwareRoamingInIdleMode=" + mDisableFirmwareRoamingInIdleMode);
 // QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
         pw.println("mIsDisconnectOnlyOnInitialIpReachability=" + mIsDisconnectOnlyOnInitialIpReachability);
 // QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
@@ -754,6 +757,10 @@ public class WifiGlobals {
             pw.println("mIsXrPeripheral=" + mIsXrPeripheral);
         }
         pw.println("mIsWpa3SaeH2eSupported=" + mIsWpa3SaeH2eSupported);
+        pw.println("mIsMultiInternetSameBandConnectionAllowed="
+                + mIsMultiInternetSameBandConnectionAllowed);
+        pw.println("mIsMultiInternetSameBssidConnectionAllowed="
+                + mIsMultiInternetSameBssidConnectionAllowed);
         for (int i = 0; i < mCarrierSpecificEapFailureConfigMapPerCarrierId.size(); i++) {
             int carrierId = mCarrierSpecificEapFailureConfigMapPerCarrierId.keyAt(i);
             SparseArray<CarrierSpecificEapFailureConfig> perFailureMap =

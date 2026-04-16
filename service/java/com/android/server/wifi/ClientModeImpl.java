@@ -296,7 +296,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private final long mId;
 
     private boolean mScreenOn = false;
-    private boolean mIsDeviceIdle = false;
 
     private final String mInterfaceName;
     private final ConcreteClientModeManager mClientModeManager;
@@ -714,6 +713,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     private final WifiInjector mWifiInjector;
 
+    private final WifiPowerStatsManager mWifiPowerStatsManager;
+
     @Nullable
     private StateMachineObituary mObituary = null;
 
@@ -908,6 +909,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mSettingsConfigStore = settingsConfigStore;
         initCapabilitiesAndSecuritySettings();
         mWifiDeviceStateChangeManager = wifiInjector.getWifiDeviceStateChangeManager();
+        mWifiPowerStatsManager = wifiInjector.getWifiPowerStatsManager();
 
         PowerManager powerManager = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
 
@@ -1778,6 +1780,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mRxTime = stats.rx_time;
             mRunningBeaconCount = stats.beacon_rx;
             mWifiInfo.updatePacketRates(stats, mLastLinkLayerStatsUpdate);
+            mWifiPowerStatsManager.updateLatestLinkLayerStats(stats);
         } else {
             long mTxPkts = mFacade.getTxPackets(mInterfaceName);
             long mRxPkts = mFacade.getRxPackets(mInterfaceName);
@@ -2810,7 +2813,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     private void handleScreenStateChanged(boolean screenOn) {
         mScreenOn = screenOn;
-        considerChangingFirmwareRoaming();
         if (mVerboseLoggingEnabled) {
             logd(" handleScreenStateChanged Enter: screenOn=" + screenOn
                     + " mSuspendOptimizationsEnabled="
@@ -4849,6 +4851,20 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return NativeUtil.getMacAddressOrNull(mLastBssid);
     }
 
+    private boolean hasCtrlChar(WifiConfiguration config) {
+        if (config == null || config.preSharedKey == null) {
+            return false;
+        }
+        String preSharedKey = config.preSharedKey;
+        int len = preSharedKey.length();
+        for (int i = 0; i < len; ++i) {
+            if (preSharedKey.charAt(i) < 32 || preSharedKey.charAt(i) >= 127) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void connectToNetwork(WifiConfiguration config) {
         if (mContext.getResources().getBoolean(R.bool.config_wifiUseHalApiToDisableFwRoaming)) {
             // Enable firmware roaming unless targeting a specific BSSID
@@ -4870,6 +4886,20 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             loge("CMD_START_CONNECT Failed to start connection to network " + config);
             mTargetWifiConfiguration = null;
             stopIpClient();
+            if (hasCtrlChar(config) && config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
+                mWifiDiagnostics.triggerBugReportDataCapture(
+                        WifiDiagnostics.REPORT_REASON_AUTH_FAILURE);
+                mWrongPasswordNotifier.onWrongPasswordError(config);
+                mWifiConfigManager.updateNetworkSelectionStatus(
+                        mTargetNetworkId, WifiConfiguration.NetworkSelectionStatus
+                                .DISABLED_BY_WRONG_PASSWORD);
+                mWifiConfigManager.clearRecentFailureReason(mTargetNetworkId);
+                reportConnectionAttemptEnd(
+                        WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE,
+                        WifiMetricsProto.ConnectionEvent.HLF_NONE,
+                        WifiMetricsProto.ConnectionEvent.AUTH_FAILURE_WRONG_PSWD, -1);
+                return;
+            }
             reportConnectionAttemptEnd(
                     WifiMetrics.ConnectionEvent.FAILURE_CONNECT_NETWORK_FAILED,
                     WifiMetricsProto.ConnectionEvent.HLF_NONE,
@@ -5092,7 +5122,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         mWifiBlocklistMonitor.setAllowlistSsids(config.SSID,
                                 Collections.emptyList());
                         mWifiBlocklistMonitor.updateFirmwareRoamingConfiguration(
-                                Set.of(config.SSID));
+                                Set.of(config.SSID), Collections.EMPTY_SET);
                     }
 
                     updateWifiConfigOnStartConnection(config, bssid);
@@ -6401,6 +6431,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         @Override
         public void enterImpl() {
             if (mVerboseLoggingEnabled) Log.v(getTag(), "Entering L2ConnectingState");
+            // Ensure state update and broadcast are sent before any immediate rejection occurs.
+            // This prevents the framework from suppressing the broadcast if it transitions
+            // back to DISCONNECTED so quickly that it perceives no state change.
+            sendNetworkChangeBroadcast(DetailedState.CONNECTING);
             // Make sure we connect: we enter this state prior to connecting to a new
             // network. In some cases supplicant ignores the connect requests (it might not
             // find the target SSID in its cache), Therefore we end up stuck that state, hence the
@@ -8932,55 +8966,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return status == WifiNative.SET_FIRMWARE_ROAMING_SUCCESS;
     }
 
-    private void considerChangingFirmwareRoaming() {
-        if (mClientModeManager.getRole() != ROLE_CLIENT_PRIMARY) {
-            if (mVerboseLoggingEnabled) {
-                Log.v(TAG, "Idle mode changed: iface " + mInterfaceName + " is not primary.");
-            }
-            return;
-        }
-        if (!mWifiGlobals.isDisableFirmwareRoamingInIdleMode()
-                || !mWifiConnectivityHelper.isFirmwareRoamingSupported()) {
-            // feature not enabled, or firmware roaming not supported - no need to continue.
-            if (mVerboseLoggingEnabled) {
-                Log.v(TAG, "Idle mode changed: iface " + mInterfaceName
-                        + " firmware roaming not supported");
-            }
-            return;
-        }
-        if (mIsDeviceIdle && !mScreenOn) {
-            // disable firmware roaming if in idle mode
-            if (mVerboseLoggingEnabled) {
-                Log.v(TAG, "Idle mode changed: iface " + mInterfaceName
-                        + " disabling roaming");
-            }
-            enableRoaming(false);
-            return;
-        }
-        // Exiting idle mode or screen is turning on, so re-enable firmware roaming, but only if the
-        // current use-case is not the local-only use-case. The local-only use-case requires
-        // firmware roaming to be always disabled.
-        WifiConfiguration config = getConnectedWifiConfigurationInternal();
-        if (config == null) {
-            config = getConnectingWifiConfigurationInternal();
-        }
-        if (config != null && getClientRoleForMetrics(config)
-                == WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__ROLE__ROLE_CLIENT_LOCAL_ONLY) {
-            return;
-        }
-        if (mVerboseLoggingEnabled) {
-            Log.v(TAG, "Idle mode changed: iface " + mInterfaceName
-                    + " enabling roaming");
-        }
-        mWifiInjector.getWifiRoamingModeManager().applyWifiRoamingMode(
-                mInterfaceName, mWifiInfo.getSSID());
-    }
-
-    @Override
-    public void onIdleModeChanged(boolean isIdle) {
-        mIsDeviceIdle = isIdle;
-        considerChangingFirmwareRoaming();
-    }
 
     @Override
     public boolean setCountryCode(String countryCode) {
@@ -9217,7 +9202,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             allowlistSsids.add(config.SSID);
         }
         mWifiBlocklistMonitor.setAllowlistSsids(config.SSID, allowlistSsids);
-        mWifiBlocklistMonitor.updateFirmwareRoamingConfiguration(new ArraySet<>(allowlistSsids));
+        mWifiBlocklistMonitor.updateFirmwareRoamingConfiguration(new ArraySet<>(allowlistSsids),
+                mWifiInfo.getBSSID() == null
+                        ? Collections.EMPTY_SET
+                        : new ArraySet<>(List.of(mWifiInfo.getBSSID())));
     }
 
     private boolean checkAndHandleLinkedNetworkRoaming(String associatedBssid) {
@@ -9382,7 +9370,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 }
             }
         }
-        mWifiBlocklistMonitor.updateAndGetBssidBlocklistForSsids(Set.of(configuration.SSID));
         mFrameworkDisconnectReasonOverride = WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__DISCONNECT_DISALLOW_CURRENT_SUGGESTED_NETWORK;
         sendMessageAtFrontOfQueue(CMD_DISCONNECT,
                 StaEvent.DISCONNECT_DISALLOW_CURRENT_SUGGESTED_NETWORK);

@@ -98,7 +98,7 @@ public class AwareIfaceAidlSupplicantImpl {
     // - Bytes 0-2: OUI of Wi-Fi Alliance (50:6F:9A)
     // - Byte 3: NAN type (01)
     private static final byte[] BASE_CLUSTER_ID = MacAddress
-            .fromString("50:6F:9A:01:00:00").toByteArray();
+            .fromString("50:6F:9A:01:01:00").toByteArray();
 
     private final SecureRandom mRandom = new SecureRandom();
 
@@ -209,13 +209,13 @@ public class AwareIfaceAidlSupplicantImpl {
      * @return True if the request was successful, false otherwise.
      */
     public boolean enableAndConfigure(short transactionId, ConfigRequest configRequest,
-            boolean notifyIdentityChange, boolean initialConfiguration,
+            boolean initialConfiguration,
             WifiNanIface.PowerParameters powerParameters) {
         final String methodStr = "enableAndConfigure";
         try {
             if (!checkIfaceAndLogFailure(methodStr)) return false;
             NanConfigRequest configReq = createNanConfigRequest(
-                        configRequest, notifyIdentityChange, powerParameters);
+                        configRequest, powerParameters, initialConfiguration);
             if (initialConfiguration) {
                 NanEnableRequest req = createNanEnableRequest(configRequest, configReq);
                 mWifiNanIface.enableRequest((char) transactionId, req, configReq);
@@ -554,10 +554,10 @@ public class AwareIfaceAidlSupplicantImpl {
      * @see ISupplicantNanIface#respondToNanBootstrappingRequest(char, NanBootstrappingResponse)
      */
     public boolean respondToNanBootstrappingRequest(short transactionId, int bootstrappingId,
-            boolean accept, byte pubSubId, int method) {
+            boolean accept, byte pubSubId, int method, byte[] peerDiscMacAddr) {
         String methodStr = "respondToNanBootstrappingRequest";
         NanBootstrappingResponse request = createNanBootstrappingResponse(bootstrappingId, accept,
-                pubSubId, method);
+                pubSubId, method, peerDiscMacAddr);
         try {
             if (!checkIfaceAndLogFailure(methodStr)) return false;
             mWifiNanIface.respondToBootstrappingIndicationRequest((char) transactionId,
@@ -583,26 +583,30 @@ public class AwareIfaceAidlSupplicantImpl {
     }
 
     private NanConfigRequest createNanConfigRequest(
-            ConfigRequest configRequest, boolean notifyIdentityChange,
-            WifiNanIface.PowerParameters powerParameters) {
+            ConfigRequest configRequest,
+            WifiNanIface.PowerParameters powerParameters, boolean initialConfiguration) {
         NanConfigRequest req = new NanConfigRequest();
         NanBandSpecificConfig[] nanBandSpecificConfigs =
                 createNanBandSpecificConfigs(configRequest);
 
         req.masterPref = (byte) configRequest.mMasterPreference;
-        req.disableStartedClusterIndication = !notifyIdentityChange;
-        req.disableJoinedClusterIndication = !notifyIdentityChange;
+        req.disableStartedClusterIndication = false;
+        req.disableJoinedClusterIndication = false;
         req.includePublishServiceIdsInBeacon = true;
         req.numberOfPublishServiceIdsInBeacon = 0;
         req.includeSubscribeServiceIdsInBeacon = true;
         req.numberOfSubscribeServiceIdsInBeacon = 0;
         req.rssiWindowSize = 8;
-        byte[] clusterId = copyArray(BASE_CLUSTER_ID);
-        byte[] randomPart = new byte[2];
-        mRandom.nextBytes(randomPart);
-        clusterId[clusterId.length - 2] = randomPart[0];
-        clusterId[clusterId.length - 1] = randomPart[1];
-        req.clusterId = clusterId;
+        if (initialConfiguration) {
+            byte[] clusterId = copyArray(BASE_CLUSTER_ID);
+            byte[] randomPart = new byte[2];
+            mRandom.nextBytes(randomPart);
+            clusterId[clusterId.length - 2] = randomPart[0];
+            clusterId[clusterId.length - 1] = randomPart[1];
+            req.clusterId = clusterId;
+        } else {
+            req.clusterId = new byte[6];
+        }
 
         req.bandSpecificConfig = new NanBandSpecificConfig[3];
         req.bandSpecificConfig[NanBandIndex.NAN_BAND_24GHZ] = nanBandSpecificConfigs[0];
@@ -782,12 +786,11 @@ public class AwareIfaceAidlSupplicantImpl {
             req.baseConfig.serviceSpecificInfo = copyArray(publishConfig.mServiceSpecificInfo);
         }
         req.baseConfig.extendedServiceSpecificInfo = copyArray(publishConfig.mServiceSpecificInfo);
+        req.baseConfig.txMatchFilter = copyArray(publishConfig.mMatchFilter);
         if (publishConfig.mPublishType == PublishConfig.PUBLISH_TYPE_UNSOLICITED) {
-            req.baseConfig.txMatchFilter = copyArray(publishConfig.mMatchFilter);
             req.baseConfig.rxMatchFilter = new byte[0];
         } else {
             req.baseConfig.rxMatchFilter = copyArray(publishConfig.mMatchFilter);
-            req.baseConfig.txMatchFilter = new byte[0];
         }
         req.baseConfig.useRssiThreshold = false;
         req.baseConfig.disableDiscoveryTerminationIndication =
@@ -1128,13 +1131,14 @@ public class AwareIfaceAidlSupplicantImpl {
     }
 
     private static NanBootstrappingResponse createNanBootstrappingResponse(int bootstrappingId,
-            boolean accept, byte pubSubId, int method) {
+            boolean accept, byte pubSubId, int method, byte[] peerDiscMacAddr) {
         NanBootstrappingResponse
                 request = new NanBootstrappingResponse();
         request.acceptRequest = accept;
         request.bootstrappingInstanceId = bootstrappingId;
         request.discoverySessionId = pubSubId;
         request.responseBootstrappingMethod = method;
+        request.peerDiscMacAddr = copyArray(peerDiscMacAddr);
         return request;
     }
 

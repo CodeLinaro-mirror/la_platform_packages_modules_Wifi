@@ -141,14 +141,14 @@ public class WifiAwareNativeApiTest extends WifiBaseTest {
         when(mWifiAwareNativeManagerMock.getSupplicantNanIface()).thenReturn(null);
         ArgumentCaptor<WifiNanIface.PowerParameters> powerParamsCaptor = ArgumentCaptor.forClass(
                 WifiNanIface.PowerParameters.class);
-        when(mWifiNanIfaceMock.enableAndConfigure(anyShort(), any(), anyBoolean(),
+        when(mWifiNanIfaceMock.enableAndConfigure(anyShort(), any(),
                 anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt(), anyInt(), any()))
                 .thenReturn(true);
 
         // Call enableAndConfigure without changing the config.
-        mDut.enableAndConfigure((short) 1, null, true, true,
+        mDut.enableAndConfigure((short) 1, null, true,
                 false, true /* isIdle */, true, true, 1, -1);
-        verify(mWifiNanIfaceMock).enableAndConfigure(anyShort(), any(), anyBoolean(),
+        verify(mWifiNanIfaceMock).enableAndConfigure(anyShort(), any(),
                 anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt(),
                 eq(1800),   // PARAM_MAC_RANDOM_INTERVAL_SEC_DEFAULT
                 powerParamsCaptor.capture());
@@ -172,9 +172,9 @@ public class WifiAwareNativeApiTest extends WifiBaseTest {
         setSettablePowerParam(WifiAwareNativeApi.POWER_PARAM_IDLE_KEY,
                 WifiAwareNativeApi.PARAM_DW_24GHZ, Integer.toString(idle24), true);
 
-        mDut.enableAndConfigure((short) 1, null, true, true,
+        mDut.enableAndConfigure((short) 1, null, true,
                 false, true /* isIdle */, true, true, 1, -1);
-        verify(mWifiNanIfaceMock, times(2)).enableAndConfigure(anyShort(), any(), anyBoolean(),
+        verify(mWifiNanIfaceMock, times(2)).enableAndConfigure(anyShort(), any(),
                 anyBoolean(), anyBoolean(), anyBoolean(), anyInt(), anyInt(),
                 eq(1800),   // PARAM_MAC_RANDOM_INTERVAL_SEC_DEFAULT
                 powerParamsCaptor.capture());
@@ -269,10 +269,10 @@ public class WifiAwareNativeApiTest extends WifiBaseTest {
         ArgumentCaptor<WifiNanIface.PowerParameters> powerParamsCaptor = ArgumentCaptor.forClass(
                 WifiNanIface.PowerParameters.class);
         ConfigRequest configRequest = new ConfigRequest.Builder().build();
-        mDut.enableAndConfigure((short) 1, configRequest, true, true, false, true, true, true, 1,
+        mDut.enableAndConfigure((short) 1, configRequest, true, false, true, true, true, 1,
                 -1);
         verify(mAwareIfaceAidlSupplicantImplMock).enableAndConfigure(eq((short) 1),
-                eq(configRequest), eq(true), eq(true), powerParamsCaptor.capture());
+                eq(configRequest), eq(true), powerParamsCaptor.capture());
     }
 
     @Test
@@ -475,16 +475,16 @@ public class WifiAwareNativeApiTest extends WifiBaseTest {
     @Test
     public void testRespondToBootstrappingRequest() {
         when(mWifiAwareNativeManagerMock.getSupplicantNanIface()).thenReturn(null);
-        mDut.respondToBootstrappingRequest((short) 1, 123, true, (byte) 1, 1);
+        mDut.respondToBootstrappingRequest((short) 1, 123, true, (byte) 1, 1, null);
         verify(mWifiNanIfaceMock).respondToBootstrappingRequest(eq((short) 1), eq(123), eq(true),
                 eq((byte) 1), eq(1));
     }
 
     @Test
     public void testRespondToBootstrappingRequestWithSupplicant() {
-        mDut.respondToBootstrappingRequest((short) 1, 123, true, (byte) 1, 1);
+        mDut.respondToBootstrappingRequest((short) 1, 123, true, (byte) 1, 1, null);
         verify(mAwareIfaceAidlSupplicantImplMock).respondToNanBootstrappingRequest(eq((short) 1),
-                eq(123), eq(true), eq((byte) 1), eq(1));
+                eq(123), eq(true), eq((byte) 1), eq(1), eq(null));
     }
 
     @Test

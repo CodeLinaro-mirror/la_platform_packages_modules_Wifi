@@ -17,6 +17,7 @@
 package com.android.server.wifi;
 
 import android.annotation.Nullable;
+import android.content.pm.PackageManager;
 import android.net.wifi.WifiConfiguration;
 import android.net.wifi.WifiContext;
 import android.net.wifi.WifiManager;
@@ -30,6 +31,7 @@ import androidx.annotation.Keep;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.modules.utils.build.SdkLevel;
 import com.android.server.wifi.WifiBlocklistMonitor.CarrierSpecificEapFailureConfig;
+import com.android.wifi.flags.Flags;
 import com.android.wifi.resources.R;
 
 import java.io.FileDescriptor;
@@ -57,6 +59,7 @@ public class WifiGlobals {
     private final AtomicInteger mPollRssiShortIntervalMillis = new AtomicInteger();
     private final AtomicInteger mPollRssiLongIntervalMillis = new AtomicInteger();
     private boolean mIsPollRssiIntervalOverridden = false;
+    private final boolean mIsXrPeripheral;
     private final AtomicBoolean mIpReachabilityDisconnectEnabled = new AtomicBoolean(true);
     private final AtomicBoolean mIsBluetoothConnected = new AtomicBoolean(false);
     // Set default to false to check if the value will be overridden by WifiSettingConfigStore.
@@ -66,7 +69,8 @@ public class WifiGlobals {
     private int mPreviouslyConnectedNetworkWrongPasswordThreshold = 3;
     private boolean mIsWpa3SaeUpgradeOffloadEnabled;
     private boolean mIsWpa3SaeH2eSupported;
-    private boolean mDisableFirmwareRoamingInIdleMode = false;
+    private boolean mIsMultiInternetSameBandConnectionAllowed;
+    private boolean mIsMultiInternetSameBssidConnectionAllowed;
     private final Map<String, List<String>> mCountryCodeToAfcServers;
     // This is set by WifiManager#setVerboseLoggingEnabled(int).
     private int mVerboseLoggingLevel = WifiManager.VERBOSE_LOGGING_LEVEL_DISABLED;
@@ -92,6 +96,12 @@ public class WifiGlobals {
                 R.integer.config_wifiPreviouslyConnectedNetworkWrongPasswordThreshold);
         mIsWpa3SaeH2eSupported = mWifiResourceCache
                 .getBoolean(R.bool.config_wifiSaeH2eSupported);
+        mIsMultiInternetSameBandConnectionAllowed = mWifiResourceCache.getBoolean(
+                R.bool.config_wifiMultiInternetSameBandConnectionAllowed);
+        mIsMultiInternetSameBssidConnectionAllowed = mWifiResourceCache.getBoolean(
+                R.bool.config_wifiMultiInternetSameBssidConnectionAllowed);
+        mIsXrPeripheral = mContext.getPackageManager().hasSystemFeature(
+                PackageManager.FEATURE_XR_PERIPHERAL);
         Set<String> unsupportedSsidPrefixes = new ArraySet<>(mWifiResourceCache.getStringArray(
                 R.array.config_wifiForceDisableMacRandomizationSsidPrefixList));
         mCountryCodeToAfcServers = getCountryCodeToAfcServersMap();
@@ -295,15 +305,6 @@ public class WifiGlobals {
     }
 
     /**
-     * Helper method to check whether this device should disable firmware roaming in idle mode.
-     * @return if the device should disable firmware roaming in idle mode.
-     */
-    public boolean isDisableFirmwareRoamingInIdleMode() {
-        return mWifiResourceCache
-                .getBoolean(R.bool.config_wifiDisableFirmwareRoamingInIdleMode);
-    }
-
-    /**
      * Get the configuration for whether Multi-internet are allowed to
      * connect simultaneously to both 5GHz high and 5GHz low.
      */
@@ -402,6 +403,14 @@ public class WifiGlobals {
      */
     public boolean isWpa3SaeH2eSupported() {
         return mIsWpa3SaeH2eSupported;
+    }
+
+    public boolean isMultiInternetSameBandConnectionAllowed() {
+        return mIsMultiInternetSameBandConnectionAllowed;
+    }
+
+    public boolean isMultiInternetSameBssidConnectionAllowed() {
+        return mIsMultiInternetSameBssidConnectionAllowed;
     }
 
     /**
@@ -631,6 +640,18 @@ public class WifiGlobals {
      * Returns whether the device supports device-to-device when infra STA is disabled.
      */
     public boolean isD2dSupportedWhenInfraStaDisabled() {
+        if (Flags.allowD2dWithoutStaOnXr()) {
+            if (!mWifiResourceCache
+                    .getBoolean(R.bool.config_wifiD2dAllowedControlSupportedWhenInfraStaDisabled)) {
+                return false;
+            }
+            if (mIsXrPeripheral) {
+                // Allowed for XR device
+                return true;
+            }
+            // For non-XR device, check if concurrency supported.
+            return !mIsD2dStaConcurrencySupported.get();
+        }
         return mWifiResourceCache
                 .getBoolean(R.bool.config_wifiD2dAllowedControlSupportedWhenInfraStaDisabled)
                 && !mIsD2dStaConcurrencySupported.get();
@@ -712,10 +733,16 @@ public class WifiGlobals {
         pw.println("mIsUsingExternalScorer="
                 + mIsUsingExternalScorer);
         pw.println("mIsWepAllowed=" + mIsWepAllowed.get());
-        pw.println("mDisableFirmwareRoamingInIdleMode=" + mDisableFirmwareRoamingInIdleMode);
         pw.println("IsD2dSupportedWhenInfraStaDisabled="
                 + isD2dSupportedWhenInfraStaDisabled());
+        if (Flags.allowD2dWithoutStaOnXr()) {
+            pw.println("mIsXrPeripheral=" + mIsXrPeripheral);
+        }
         pw.println("mIsWpa3SaeH2eSupported=" + mIsWpa3SaeH2eSupported);
+        pw.println("mIsMultiInternetSameBandConnectionAllowed="
+                + mIsMultiInternetSameBandConnectionAllowed);
+        pw.println("mIsMultiInternetSameBssidConnectionAllowed="
+                + mIsMultiInternetSameBssidConnectionAllowed);
         for (int i = 0; i < mCarrierSpecificEapFailureConfigMapPerCarrierId.size(); i++) {
             int carrierId = mCarrierSpecificEapFailureConfigMapPerCarrierId.keyAt(i);
             SparseArray<CarrierSpecificEapFailureConfig> perFailureMap =

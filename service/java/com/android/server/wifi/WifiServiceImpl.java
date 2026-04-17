@@ -1103,10 +1103,12 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                                             "User removed broadcast received with no user handle");
                                     return;
                                 }
-                                mWifiThreadRunner.post(() ->
-                                    mWifiConfigManager
-                                            .removeNetworksForUser(userHandle.getIdentifier()),
-                                            TAG + "#handleUserRemoved");
+                                mWifiThreadRunner.post(() -> {
+                                    mWifiConfigManager.removeNetworksForUser(
+                                            userHandle.getIdentifier());
+                                    mWifiNetworkSuggestionsManager.removeSuggestionsForUser(
+                                            userHandle.getIdentifier());
+                                }, TAG + "#handleUserRemoved");
                             } else if (BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED
                                     .equals(action)) {
                                 int state = intent.getIntExtra(
@@ -1226,8 +1228,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         mWifiThreadRunner.post(() -> {
             mWifiConfigManager.handleUserSwitch(userId);
             resetNotificationManager();
-            // TODO: b/449013275 Add Environment.isSdkNewerThanB())
-            if (mFeatureFlags.multiUserWifiEnhancement()) {
+            if (Environment.isSdkAtLeastC() && mFeatureFlags.multiUserWifiEnhancement()) {
                 mActiveModeWarden.handleUserSwitch(userId);
                 mWifiApConfigStore.handleUserSwitch(userId);
                 mSettingsConfigStore.handleUserSwitch(userId);
@@ -1239,8 +1240,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         Log.d(TAG, "Handle user unlock " + userId);
         mWifiThreadRunner.post(() -> {
             mWifiConfigManager.handleUserUnlock(userId);
-            // TODO: b/449013275 Add Environment.isSdkNewerThanB())
-            if (mFeatureFlags.multiUserWifiEnhancement()) {
+            if (Environment.isSdkAtLeastC() && mFeatureFlags.multiUserWifiEnhancement()) {
                 mActiveModeWarden.handleUserUnlock(userId);
                 boolean isScanAlwaysAvailable =
                         mSettingsStore.isScanAlwaysAvailableToggleEnabled();
@@ -1261,8 +1261,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         Log.d(TAG, "Handle user stop " + userId);
         mWifiThreadRunner.post(() -> {
             mWifiConfigManager.handleUserStop(userId);
-            // TODO: b/449013275 Add Environment.isSdkNewerThanB())
-            if (mFeatureFlags.multiUserWifiEnhancement()) {
+            if (Environment.isSdkAtLeastC() && mFeatureFlags.multiUserWifiEnhancement()) {
                 mActiveModeWarden.handleUserStop(userId);
                 mWifiApConfigStore.handleUserStop(userId);
                 mSettingsConfigStore.handleUserStop(userId);
@@ -1373,8 +1372,6 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                         doScan = true;
                     }
                 }
-                mWifiThreadRunner.post(() ->
-                    mActiveModeWarden.onIdleModeChanged(idle), TAG + "#handleIdleModeChanged");
             }
         }
         if (doScan) {
@@ -6838,8 +6835,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         mLog.info("retrieveBackupData uid=%").c(Binder.getCallingUid()).flush();
         Log.d(TAG, "Retrieving backup data");
         List<WifiConfiguration> wifiConfigurations = mWifiThreadRunner.call(
-                // TODO: b/449013275 Add Environment.isSdkNewerThanB())
-                () -> mFeatureFlags.multiUserWifiEnhancement()
+                () -> (Environment.isSdkAtLeastC() && mFeatureFlags.multiUserWifiEnhancement())
                         ? mWifiConfigManager.getConfiguredNetworksCreatedByCurrentUserWithPassword()
                         : mWifiConfigManager.getConfiguredNetworksWithPasswords(),
                 null, TAG + "#retrieveBackupData");
@@ -6867,11 +6863,11 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                     .isChangeEnabled(NOT_OVERRIDE_EXISTING_NETWORKS_ON_RESTORE, callingUid);
             int networkId;
             boolean sharedDevice = false;
-            if (mFeatureFlags.multiUserWifiEnhancement() && Environment.isSdkNewerThanB()) {
+            if (Environment.isSdkAtLeastC() && mFeatureFlags.multiUserWifiEnhancement()) {
                 sharedDevice = mUserManager.getUserCount() > 1;
             }
             for (WifiConfiguration configuration : configurations) {
-                if (mFeatureFlags.multiUserWifiEnhancement() && Environment.isSdkNewerThanB()
+                if (Environment.isSdkAtLeastC() && mFeatureFlags.multiUserWifiEnhancement()
                         && sharedDevice) {
                     if (configuration == null) {
                         continue;
@@ -8009,19 +8005,8 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         if (listener == null) {
             throw new IllegalArgumentException("listener must not be null");
         }
-        enforceAccessPermission();
         int uid = Binder.getCallingUid();
         mWifiPermissionsUtil.checkPackage(uid, packageName);
-        long callingIdentity = Binder.clearCallingIdentity();
-        try {
-            if (!mWifiPermissionsUtil.doesUidBelongToCurrentUserOrDeviceOwner(uid)) {
-                Log.e(TAG, "UID " + uid + " not visible to the current user");
-                throw new SecurityException("UID " + uid + " not visible to the current user");
-            }
-        } finally {
-            // restore calling identity
-            Binder.restoreCallingIdentity(callingIdentity);
-        }
         if (mVerboseLoggingEnabled) {
             mLog.info("removeLocalOnlyConnectionFailureListener uid=%")
                     .c(uid).flush();
@@ -8073,12 +8058,8 @@ public class WifiServiceImpl extends IWifiManager.Stub {
             @NonNull ILocalOnlyDisconnectionStatusListener listener, @NonNull String packageName) {
         Objects.requireNonNull(listener, "Listener must not be null");
         Objects.requireNonNull(packageName, "packageName must not be null");
-        enforceAccessPermission();
         int uid = Binder.getCallingUid();
         mWifiPermissionsUtil.checkPackage(uid, packageName);
-        if (!mWifiPermissionsUtil.checkRequestCompanionProfileAutomotiveProjectionPermission(uid)) {
-            throw new SecurityException("UID " + uid + " has no permission to access API");
-        }
         if (mVerboseLoggingEnabled) {
             mLog.info("removeLocalOnlyDisconnectionStatusListener uid=%")
                     .c(uid).flush();
@@ -8411,19 +8392,9 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     @Override
     public void removeSuggestionUserApprovalStatusListener(
             ISuggestionUserApprovalStatusListener listener, String packageName) {
-        enforceAccessPermission();
         int uid = Binder.getCallingUid();
         mWifiPermissionsUtil.checkPackage(uid, packageName);
         long callingIdentity = Binder.clearCallingIdentity();
-        try {
-            if (!mWifiPermissionsUtil.doesUidBelongToCurrentUserOrDeviceOwner(uid)) {
-                Log.e(TAG, "UID " + uid + " not visible to the current user");
-                throw new SecurityException("UID " + uid + " not visible to the current user");
-            }
-        } finally {
-            // restore calling identity
-            Binder.restoreCallingIdentity(callingIdentity);
-        }
         if (mVerboseLoggingEnabled) {
             mLog.info("removeSuggestionUserApprovalStatusListener uid=%")
                     .c(uid).flush();
@@ -8524,6 +8495,19 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         return channels;
     }
 
+    private List<WifiAvailableChannel> getStoredAwareAvailableChannels(
+            @WifiScanner.WifiBand int band) {
+        List<WifiAvailableChannel> channels = new ArrayList<>();
+        for (int freq : getStoredSoftApAvailableFreqs()) {
+            if ((band & ScanResult.toBand(freq)) == 0) {
+                continue;
+            }
+            channels.add(new WifiAvailableChannel(freq, WifiAvailableChannel.OP_MODE_WIFI_AWARE,
+                    ScanResult.CHANNEL_WIDTH_20MHZ));
+        }
+        return channels;
+    }
+
     private List<Integer> getStoredSoftApAvailableFreqs() {
         List<Integer> freqs = new ArrayList<>();
         try {
@@ -8595,8 +8579,17 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                 () -> mWifiNative.getUsableChannels(band, mode, filter), null,
                 TAG + "#getUsableChannels");
         if (channels == null) {
+            if (MainlineSupplicantAidlManager.hasPcFeature(mContext)
+                    && mode == WifiAvailableChannel.OP_MODE_WIFI_AWARE) {
+                // Temporary solution for desktop
+                List<WifiAvailableChannel> storedChannels = getStoredAwareAvailableChannels(band);
+                if (!storedChannels.isEmpty()) {
+                    return storedChannels;
+                }
+            }
             throw new UnsupportedOperationException();
         }
+
         return channels;
     }
 

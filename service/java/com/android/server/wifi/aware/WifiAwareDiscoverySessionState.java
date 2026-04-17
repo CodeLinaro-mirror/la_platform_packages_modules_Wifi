@@ -19,7 +19,6 @@ package com.android.server.wifi.aware;
 import static android.net.wifi.aware.AwareDataPathRequest.DATA_PATH_CONNECTION_FAILURE_REASON_INTERNAL_FAILURE;
 import static android.net.wifi.aware.AwareDataPathRequest.DATA_PATH_CONNECTION_FAILURE_REASON_NO_RESOURCE;
 import static android.net.wifi.aware.AwareDataPathRequest.DATA_PATH_CONNECTION_FAILURE_REASON_PEER_NOT_FOUND;
-import static android.net.wifi.aware.AwareDataPathRequest.DATA_PATH_CONNECTION_FAILURE_REASON_REJECT_BY_PEER;
 import static android.net.wifi.aware.WifiAwareManager.WIFI_AWARE_RESUME_INTERNAL_ERROR;
 import static android.net.wifi.aware.WifiAwareManager.WIFI_AWARE_SUSPEND_INTERNAL_ERROR;
 
@@ -28,9 +27,9 @@ import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_5
 import static com.android.server.wifi.aware.WifiAwareStateManager.INSTANT_MODE_DISABLED;
 import static com.android.server.wifi.aware.WifiAwareStateManager.NAN_PAIRING_REQUEST_TYPE_SETUP;
 import static com.android.server.wifi.aware.WifiAwareStateManager.NAN_PAIRING_REQUEST_TYPE_VERIFICATION;
+import static com.android.server.wifi.aware.WifiAwareStateManager.NDP_ID_NOT_SPECIFIED;
 
 import android.annotation.NonNull;
-import android.net.MacAddress;
 import android.net.wifi.OuiKeyedData;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiScanner;
@@ -39,7 +38,6 @@ import android.net.wifi.aware.IWifiAwareDiscoverySessionCallback;
 import android.net.wifi.aware.PeerHandle;
 import android.net.wifi.aware.PublishConfig;
 import android.net.wifi.aware.SubscribeConfig;
-import android.net.wifi.aware.WifiAwareChannelInfo;
 import android.net.wifi.aware.WifiAwareDataPathSecurityConfig;
 import android.net.wifi.aware.WifiAwareManager;
 import android.net.wifi.aware.WifiAwareNetworkInfo;
@@ -47,6 +45,7 @@ import android.net.wifi.rtt.RangingResult;
 import android.net.wifi.util.HexEncoding;
 import android.os.RemoteException;
 import android.os.SystemClock;
+import android.util.ArraySet;
 import android.util.Log;
 import android.util.SparseArray;
 import android.util.SparseIntArray;
@@ -56,12 +55,11 @@ import com.android.server.wifi.proto.WifiStatsLog;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
-import java.net.Inet6Address;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Manages the state of a single Aware discovery session (publish or subscribe).
@@ -92,7 +90,8 @@ public class WifiAwareDiscoverySessionState {
     private boolean mIsSuspendable;
     private boolean mIsSuspended;
     private final HashSet<String> mPairedPeers = new HashSet<>();
-    private final SparseIntArray mNdpIdByPeerId = new SparseIntArray();
+    private final SparseArray<ArraySet<Integer>> mNdpIdByPeerId = new SparseArray<>();
+    private final SparseIntArray mInfoPerPeerId = new SparseIntArray();
 
     static class PeerInfo {
         PeerInfo(int instanceId, byte[] mac, PeerHandle peerHandle) {
@@ -180,6 +179,13 @@ public class WifiAwareDiscoverySessionState {
     }
 
     /**
+     * Get the pairing configuration.
+     */
+    public AwarePairingConfig getPairingConfig() {
+        return mPairingConfig;
+    }
+
+    /**
      * Check if the peer is paired.
      */
     public boolean isPeerPaired(byte[] mac) {
@@ -187,9 +193,9 @@ public class WifiAwareDiscoverySessionState {
     }
 
     /**
-     * Get the ndp id of the peer
+     * Get all NDP Ids associated with this peer
      */
-    public int getNdpId(int peerId) {
+    public ArraySet<Integer> getNdps(int peerId) {
         return mNdpIdByPeerId.get(peerId);
     }
 
@@ -197,11 +203,13 @@ public class WifiAwareDiscoverySessionState {
      * Get the peer id of the ndp id
      */
     public int getPeerId(int ndpId) {
-        int index = mNdpIdByPeerId.indexOfValue(ndpId);
-        if (index < 0) {
-            return 0;
+        for (int i = 0; i < mNdpIdByPeerId.size(); i++) {
+            ArraySet<Integer> values = mNdpIdByPeerId.valueAt(i);
+            if (values.contains(ndpId)) {
+                return mNdpIdByPeerId.keyAt(i);
+            }
         }
-        return mNdpIdByPeerId.keyAt(index);
+        return 0;
     }
 
     /**
@@ -287,6 +295,7 @@ public class WifiAwareDiscoverySessionState {
                     "onSessionTerminatedLocal onSessionTerminated(): RemoteException (FYI): " + e);
         }
         mCallback = null;
+        mNdpIdByPeerId.clear();
 
         if (mIsPublishSession) {
             mWifiAwareNativeApi.stopPublish((short) 0, mPubSubId);
@@ -522,7 +531,7 @@ public class WifiAwareDiscoverySessionState {
         boolean success = mWifiAwareNativeApi.initiatePairing(transactionId,
                 peerInfo.mInstanceId, peerInfo.mMac, nik,
                 mPairingConfig != null && mPairingConfig.isPairingCacheEnabled(),
-                requestType, pmk, password, akm, cipherSuite);
+                requestType, pmk, password, akm, cipherSuite, mPubSubId);
         if (!success) {
             if (requestType == NAN_PAIRING_REQUEST_TYPE_VERIFICATION) {
                 return false;
@@ -573,7 +582,7 @@ public class WifiAwareDiscoverySessionState {
 
         boolean success = mWifiAwareNativeApi.respondToPairingRequest(transactionId, pairingId,
                 accept, nik, mPairingConfig != null && mPairingConfig.isPairingCacheEnabled(),
-                requestType, pmk, password, akm, cipherSuite);
+                requestType, pmk, password, akm, cipherSuite, mPubSubId, peerInfo.mMac);
         if (!success) {
             if (requestType == NAN_PAIRING_REQUEST_TYPE_VERIFICATION) {
                 return false;
@@ -641,7 +650,7 @@ public class WifiAwareDiscoverySessionState {
      * @return True if the send success
      */
     public boolean respondToBootstrapping(short transactionId,
-            int peerId, int bootstrappingId, boolean accept, int method) {
+            int peerId, int bootstrappingId, boolean accept, int method, byte[] peerDiscMacAddr) {
         PeerInfo peerInfo = mPeerInfoByRequestorInstanceId.get(peerId);
         if (peerInfo == null) {
             Log.e(TAG, "initiateBootstrapping: attempting to send pairing request to"
@@ -650,7 +659,7 @@ public class WifiAwareDiscoverySessionState {
         }
 
         return mWifiAwareNativeApi.respondToBootstrappingRequest(transactionId,
-                bootstrappingId, accept, mPubSubId, method);
+                bootstrappingId, accept, mPubSubId, method, peerDiscMacAddr);
     }
 
     /**
@@ -693,7 +702,7 @@ public class WifiAwareDiscoverySessionState {
     public boolean respondToDataPathRequest(short transactionId, int peerId, boolean accept,
             int ndpId, String interfaceName, Capabilities capabilities,
             WifiAwareDataPathSecurityConfig securityConfig, boolean isLegacyApi, byte[] appInfo,
-            byte[] peerMac) {
+            byte[] peerMac, byte[] ndiInitMac) {
         byte[] peer = peerMac;
         if (!isLegacyApi) {
             if (interfaceName == null) {
@@ -708,11 +717,13 @@ public class WifiAwareDiscoverySessionState {
                 return false;
             }
             peer = peerInfo.mMac;
-            appInfo = new byte[0];
+            if (appInfo == null) {
+                appInfo = new byte[0];
+            }
         }
         boolean success = mWifiAwareNativeApi.respondToDataPathRequest(transactionId, accept, ndpId,
                 interfaceName, appInfo, false, capabilities, securityConfig, mPubSubId,
-                isPeerPaired(peer));
+                isPeerPaired(peer), peer, ndiInitMac);
         if (!success && !isLegacyApi) {
             onDataPathRequestFailure(peerId, DATA_PATH_CONNECTION_FAILURE_REASON_INTERNAL_FAILURE);
         }
@@ -723,14 +734,33 @@ public class WifiAwareDiscoverySessionState {
      * Terminate a data path
      * @see WifiAwareNativeApi#endDataPath(short, int)
      */
-    public boolean endDataPath(short transactionId, int ndpId, int peerId) {
-        mNdpIdByPeerId.delete(peerId);
+    public boolean endDataPath(short transactionId, int peerId, int ndpId) {
+        ArraySet<Integer> ndps = mNdpIdByPeerId.get(peerId);
+        boolean success = false;
+        if (ndpId != NDP_ID_NOT_SPECIFIED) {
+            // If NDP is specified, means only end a single data path, this is for the timeout case
+            success = mWifiAwareNativeApi.endDataPath(transactionId, ndpId);
+            if (ndps != null) {
+                ndps.remove(ndpId);
+                if (!ndps.isEmpty()) {
+                    // If there is still active datapath, will not send callback
+                    return success;
+                }
+            }
+        } else if (ndps != null) {
+            // If ndpId is not specified, means disconnect the peer, all associated NDPs will be
+            // ended.
+            for (int ndp : ndps) {
+                success |= mWifiAwareNativeApi.endDataPath(transactionId, ndp);
+            }
+        }
+        mNdpIdByPeerId.remove(peerId);
         try {
             mCallback.onDataPathDisconnected(peerId);
         } catch (RemoteException e) {
             Log.w(TAG, "endDataPath: RemoteException (FYI): " + e);
         }
-        return mWifiAwareNativeApi.endDataPath(transactionId, ndpId);
+        return success;
     }
 
     /**
@@ -759,11 +789,19 @@ public class WifiAwareDiscoverySessionState {
             vendorDataArray = new OuiKeyedData[vendorDataList.size()];
             vendorDataList.toArray(vendorDataArray);
         }
+        int infoHashCode = Objects.hash(peerId, Arrays.hashCode(serviceSpecificInfo),
+                Arrays.hashCode(matchFilter), Arrays.hashCode(vendorDataArray));
 
         try {
             if (rangingIndication == 0) {
-                mCallback.onMatch(peerId, serviceSpecificInfo, matchFilter, peerCipherSuite, scid,
-                        pairingAlias, pairingConfig, vendorDataArray);
+                int oldHashCode = mInfoPerPeerId.get(peerId);
+                if (oldHashCode != infoHashCode) {
+                    mInfoPerPeerId.put(peerId, infoHashCode);
+                    // only send callback when there is an info change
+                    mCallback.onMatch(peerId, serviceSpecificInfo, matchFilter, peerCipherSuite,
+                            scid,
+                            pairingAlias, pairingConfig, vendorDataArray);
+                }
             } else {
                 mCallback.onMatchWithDistance(peerId, serviceSpecificInfo, matchFilter, rangeMm,
                         peerCipherSuite, scid, pairingAlias, pairingConfig, vendorDataArray);
@@ -795,6 +833,7 @@ public class WifiAwareDiscoverySessionState {
             return;
         }
         mPairedPeers.remove(HexEncoding.encodeToString(peerInfo.mMac));
+        mInfoPerPeerId.delete(peerId);
 
         try {
             mCallback.onMatchExpired(peerId);
@@ -925,7 +964,12 @@ public class WifiAwareDiscoverySessionState {
      * Event that receive the data path request success
      */
     public boolean onDataPathRequestSuccess(int peerId, int ndpId) {
-        mNdpIdByPeerId.put(peerId, ndpId);
+        ArraySet<Integer> ndps = mNdpIdByPeerId.get(peerId);
+        if (ndps == null) {
+            ndps = new ArraySet<>();
+            mNdpIdByPeerId.put(peerId, ndps);
+        }
+        ndps.add(ndpId);
         return true;
     }
 
@@ -953,51 +997,32 @@ public class WifiAwareDiscoverySessionState {
     }
 
     /**
-     * Event that receive the data path confirm from the peer
+     * Event that receive the data path confirm success from the peer
      */
-    public boolean onDataPathConfirm(int ndpId, byte[] mac, boolean accept,
-            int reason, byte[] message, List<WifiAwareChannelInfo> channelInfo) {
+    public void onDataPathConfirmSuccess(int ndpId, WifiAwareNetworkInfo info) {
+        int peerId = getPeerId(ndpId);
+        if (peerId == 0) {
+            Log.e(TAG, "onDataPathConfirm: unknown peer id");
+            return;
+        }
+
+        try {
+            mCallback.onDatapathConnected(peerId, info);
+        } catch (RemoteException e) {
+                Log.w(TAG, "onDatapathConnected: RemoteException (FYI): " + e);
+        }
+    }
+
+    /**
+     * Event that receive the data path confirm failure from the peer
+     */
+    public boolean onDataPathConfirmFailed(int ndpId, int reason) {
         int peerId = getPeerId(ndpId);
         if (peerId == 0) {
             Log.e(TAG, "onDataPathConfirm: unknown peer id");
             return false;
         }
-        if (accept) {
-            int peerPort = 0;
-            int peerProtocol = -1;
-            byte[] peerAddress = null;
-            Inet6Address peerIpv6Address = null;
-            if (!mIsPublishSession) {
-                WifiAwareDataPathStateManager.NetworkInformationData.ParsedResults peerServerInfo =
-                        WifiAwareDataPathStateManager.NetworkInformationData.parseTlv(message);
-                if (peerServerInfo != null) {
-                    peerPort = peerServerInfo.port;
-                    peerProtocol = peerServerInfo.transportProtocol;
-                    peerAddress = peerServerInfo.ipv6Override;
-                }
-            }
-            if (peerAddress == null) {
-                peerAddress = MacAddress.fromBytes(mac).getLinkLocalIpv6FromEui48Mac().getAddress();
-            }
-            try {
-                peerIpv6Address = Inet6Address.getByAddress(null, peerAddress, null);
-            } catch (UnknownHostException e) {
-                if (mDbg) {
-                    Log.d(TAG, "onDataPathConfirm: error obtaining scoped IPv6 address -- " + e);
-                }
-                peerIpv6Address = null;
-            }
-            WifiAwareNetworkInfo info = new WifiAwareNetworkInfo(peerIpv6Address, peerPort,
-                    peerProtocol, channelInfo);
-            try {
-                mCallback.onDatapathConnected(peerId, info);
-            } catch (RemoteException e) {
-                Log.w(TAG, "onDatapathConnected: RemoteException (FYI): " + e);
-            }
-        } else {
-            mNdpIdByPeerId.delete(peerId);
-            onDataPathRequestFailure(peerId, DATA_PATH_CONNECTION_FAILURE_REASON_REJECT_BY_PEER);
-        }
+        onDataPathRequestFailure(peerId, reason);
         return true;
     }
 
@@ -1010,7 +1035,15 @@ public class WifiAwareDiscoverySessionState {
             Log.e(TAG, "onDataPathTerminated: unknown peer id");
             return;
         }
-        mNdpIdByPeerId.delete(peerId);
+        ArraySet<Integer> ndps = mNdpIdByPeerId.get(peerId);
+        ndps.remove(ndpId);
+        if (!ndps.isEmpty()) {
+            if (mDbg) {
+                Log.v(TAG, "Still have active NDP with this peer");
+            }
+            return;
+        }
+        mNdpIdByPeerId.remove(peerId);
         try {
             mCallback.onDataPathDisconnected(peerId);
         } catch (RemoteException e) {

@@ -17,6 +17,7 @@
 package com.android.server.wifi.aware;
 
 import android.annotation.NonNull;
+import android.net.wifi.WifiContext;
 import android.os.Handler;
 import android.os.WorkSource;
 import android.util.Log;
@@ -49,6 +50,7 @@ public class WifiAwareNativeManager {
     private WifiNanIface mVendorHalNanIface = null;
     private WifiNative.Iface mWifiNativeNanIface;
     private AwareIfaceAidlSupplicantImpl mSupplicantNanIface;
+    private final WifiContext mContext;
     private InterfaceDestroyedListener mInterfaceDestroyedListener;
     private final SupplicantDeathHandler mSupplicantDeathHandler = new SupplicantDeathHandler();
     private int mReferenceCount = 0;
@@ -65,6 +67,7 @@ public class WifiAwareNativeManager {
         mFeatureFlags = featureFlags;
         mWifiAwareNativeCallback = wifiAwareNativeCallback;
         mMainlineSupplicant = wifiInjector.getMainlineSupplicantAidlManager();
+        mContext = wifiInjector.getContext();
     }
 
     /**
@@ -142,13 +145,10 @@ public class WifiAwareNativeManager {
             return;
         }
 
-        //TODO(448421897): check the supplicant capability
-        boolean useSupplicant = mFeatureFlags.wifiAwareSupplicantSolution()
-                && mMainlineSupplicant.isAwareSupported();
-
         mInterfaceDestroyedListener = new InterfaceDestroyedListener();
+        // Get the NAN interface from the vendor HAL.
         mWifiNativeNanIface = mWifiNative.createNanIface(mInterfaceDestroyedListener,
-                mHandler, requestorWs, useSupplicant);
+                mHandler, requestorWs);
         if (mWifiNativeNanIface != null) {
             mVendorHalNanIface = (WifiNanIface) mWifiNativeNanIface.iface;
         }
@@ -158,6 +158,8 @@ public class WifiAwareNativeManager {
             return;
         }
         if (mVerboseLoggingEnabled) Log.v(TAG, "Obtained a WifiNanIface");
+        boolean useSupplicant = mMainlineSupplicant.isServiceAvailableMockable(mContext)
+                && MainlineSupplicantAidlManager.hasPcFeature(mContext);
         if (useSupplicant) {
             mMainlineSupplicant.registerDeathHandler(mSupplicantDeathHandler);
             if (!mMainlineSupplicant.isInitializationComplete()) {
@@ -168,6 +170,7 @@ public class WifiAwareNativeManager {
                     return;
                 }
             }
+            // Use the NAN interface name from the vendor HAL interface.
             mSupplicantNanIface = mMainlineSupplicant.getWifiNanIface(mWifiNativeNanIface.name);
             if (mSupplicantNanIface == null) {
                 Log.e(TAG, "Unable to get WifiNanIface from the supplicant daemon");
@@ -214,8 +217,10 @@ public class WifiAwareNativeManager {
         if (mReferenceCount != 0) {
             return;
         }
+        // Remove the NAN interface from the supplicant first before vendor HAL clean the interface
+        // name.
         if (mSupplicantNanIface != null) {
-            mMainlineSupplicant.removeWifiNanIface();
+            mMainlineSupplicant.removeWifiNanIface(mWifiNativeNanIface.name);
             mSupplicantNanIface = null;
         }
         mInterfaceDestroyedListener.active = false;
@@ -258,16 +263,18 @@ public class WifiAwareNativeManager {
             Log.d(TAG, "awareIsDown: mWifiNanIface=" + mVendorHalNanIface
                     + ", mReferenceCount =" + mReferenceCount);
         }
+        // Remove the NAN interface from the supplicant first before vendor HAL clean the interface
+        // name.
+        if (mSupplicantNanIface != null) {
+            mMainlineSupplicant.removeWifiNanIface(mWifiNativeNanIface.name);
+            mSupplicantNanIface = null;
+        }
         if (mWifiNativeNanIface != null) {
             final int nanIfaceId = mWifiNativeNanIface.id;
             // HAL may be stop when Nan is toredown,
             // clean mNanIface first to avoid infinite loop in clean up
             mWifiNativeNanIface = null;
             mWifiNative.teardownNanIface(nanIfaceId);
-        }
-        if (mSupplicantNanIface != null) {
-            mMainlineSupplicant.removeWifiNanIface();
-            mSupplicantNanIface = null;
         }
         mMainlineSupplicant.unregisterDeathHandler(mSupplicantDeathHandler);
         mVendorHalNanIface = null;

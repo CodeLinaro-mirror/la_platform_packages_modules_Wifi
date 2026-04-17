@@ -49,7 +49,7 @@ public class TestUtils {
         }
 
         public boolean enableAndConfigure(short transactionId, ConfigRequest configRequest,
-                boolean notifyIdentityChange, boolean initialConfiguration, boolean isInteractive,
+                boolean initialConfiguration, boolean isInteractive,
                 boolean isIdle, boolean rangingEnabled, boolean isInstantCommunicationEnabled,
                 int instantModeChannel, int clusterId) {
             addTransactionId(transactionId);
@@ -117,7 +117,7 @@ public class TestUtils {
                 String interfaceName, byte[] appInfo,
                 boolean isOutOfBand, Capabilities capabilities,
                 WifiAwareDataPathSecurityConfig securityConfig, byte pubSubId,
-                boolean frameProtectionEnabled) {
+                boolean frameProtectionEnabled, byte[] peerMac, byte[] ndiInitMac) {
             addTransactionId(transactionId);
             return true;
         }
@@ -129,20 +129,20 @@ public class TestUtils {
 
         public boolean respondToPairingRequest(short transactionId, int pairingId, boolean accept,
                 byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-                String password, int akm, int cipherSuite) {
+                String password, int akm, int cipherSuite, byte pubSubID, byte[] peerMac) {
             addTransactionId(transactionId);
             return true;
         }
 
         public boolean initiatePairing(short transactionId, int peerId, byte[] peer,
                 byte[] pairingIdentityKey, boolean enablePairingCache, int requestType, byte[] pmk,
-                String password, int akm, int cipherSuite) {
+                String password, int akm, int cipherSuite, byte pubSubID) {
             addTransactionId(transactionId);
             return true;
         }
 
         public boolean respondToBootstrappingRequest(short transactionId, int bootstrappingId,
-                boolean accept, byte pubSubId, int method) {
+                boolean accept, byte pubSubId, int method, byte[] peerDiscMacAddr) {
             addTransactionId(transactionId);
             return true;
         }

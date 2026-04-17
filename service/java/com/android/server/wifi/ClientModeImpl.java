@@ -296,7 +296,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private final long mId;
 
     private boolean mScreenOn = false;
-    private boolean mIsDeviceIdle = false;
 
     private final String mInterfaceName;
     private final ConcreteClientModeManager mClientModeManager;
@@ -698,6 +697,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     private final WifiInjector mWifiInjector;
 
+    private final WifiPowerStatsManager mWifiPowerStatsManager;
+
     @Nullable
     private StateMachineObituary mObituary = null;
 
@@ -892,6 +893,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mSettingsConfigStore = settingsConfigStore;
         initCapabilitiesAndSecuritySettings();
         mWifiDeviceStateChangeManager = wifiInjector.getWifiDeviceStateChangeManager();
+        mWifiPowerStatsManager = wifiInjector.getWifiPowerStatsManager();
 
         PowerManager powerManager = (PowerManager) mContext.getSystemService(Context.POWER_SERVICE);
 
@@ -1059,6 +1061,17 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         if (mIpClient != null) {
             mIpClient.setMulticastFilter(enabled);
         }
+    }
+
+    /**
+     * Wrapper that gets the current multicast filter state from WifiMulticastLockManager.
+     */
+    private void setCurrentMulticastFilter() {
+        // Primary CMM: Disable filtering if the lock manager indicates that multicast is enabled
+        // Secondary CMM: Always filter multicast packets
+        boolean enableFilter = isPrimary()
+                ? !mWifiInjector.getWifiMulticastLockManager().isMulticastEnabled() : true;
+        setMulticastFilter(enableFilter);
     }
 
     /*
@@ -1751,6 +1764,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mRxTime = stats.rx_time;
             mRunningBeaconCount = stats.beacon_rx;
             mWifiInfo.updatePacketRates(stats, mLastLinkLayerStatsUpdate);
+            mWifiPowerStatsManager.updateLatestLinkLayerStats(stats);
         } else {
             long mTxPkts = mFacade.getTxPackets(mInterfaceName);
             long mRxPkts = mFacade.getRxPackets(mInterfaceName);
@@ -2346,12 +2360,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     @Override
     protected boolean recordLogRec(Message msg) {
-        switch (msg.what) {
-            case CMD_RSSI_POLL:
-                return mVerboseLoggingEnabled;
-            default:
-                return true;
-        }
+        return switch (msg.what) {
+            case CMD_RSSI_POLL -> mVerboseLoggingEnabled;
+            default -> true;
+        };
     }
 
     /**
@@ -2655,152 +2667,83 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     @Override
     protected String getWhatToString(int what) {
-        switch (what) {
-            case CMD_ACCEPT_UNVALIDATED:
-                return "CMD_ACCEPT_UNVALIDATED";
-            case CMD_ADD_KEEPALIVE_PACKET_FILTER_TO_APF:
-                return "CMD_ADD_KEEPALIVE_PACKET_FILTER_TO_APF";
-            case CMD_BLUETOOTH_CONNECTION_STATE_CHANGE:
-                return "CMD_BLUETOOTH_CONNECTION_STATE_CHANGE";
-            case CMD_CONFIG_ND_OFFLOAD:
-                return "CMD_CONFIG_ND_OFFLOAD";
-            case CMD_CONNECTING_WATCHDOG_TIMER:
-                return "CMD_CONNECTING_WATCHDOG_TIMER";
-            case CMD_CONNECT_NETWORK:
-                return "CMD_CONNECT_NETWORK";
-            case CMD_DISCONNECT:
-                return "CMD_DISCONNECT";
-            case CMD_ENABLE_RSSI_POLL:
-                return "CMD_ENABLE_RSSI_POLL";
-            case CMD_INSTALL_PACKET_FILTER:
-                return "CMD_INSTALL_PACKET_FILTER";
-            case CMD_IP_CONFIGURATION_LOST:
-                return "CMD_IP_CONFIGURATION_LOST";
-            case CMD_IP_CONFIGURATION_SUCCESSFUL:
-                return "CMD_IP_CONFIGURATION_SUCCESSFUL";
-            case CMD_IP_REACHABILITY_LOST:
-                return "CMD_IP_REACHABILITY_LOST";
-            case CMD_IP_REACHABILITY_FAILURE:
-                return "CMD_IP_REACHABILITY_FAILURE";
-            case CMD_IPCLIENT_STARTUP_TIMEOUT:
-                return "CMD_IPCLIENT_STARTUP_TIMEOUT";
-            case CMD_IPV4_PROVISIONING_FAILURE:
-                return "CMD_IPV4_PROVISIONING_FAILURE";
-            case CMD_IPV4_PROVISIONING_SUCCESS:
-                return "CMD_IPV4_PROVISIONING_SUCCESS";
-            case CMD_NETWORK_STATUS:
-                return "CMD_NETWORK_STATUS";
-            case CMD_ONESHOT_RSSI_POLL:
-                return "CMD_ONESHOT_RSSI_POLL";
-            case CMD_POST_DHCP_ACTION:
-                return "CMD_POST_DHCP_ACTION";
-            case CMD_PRE_DHCP_ACTION:
-                return "CMD_PRE_DHCP_ACTION";
-            case CMD_PRE_DHCP_ACTION_COMPLETE:
-                return "CMD_PRE_DHCP_ACTION_COMPLETE";
-            case CMD_READ_PACKET_FILTER:
-                return "CMD_READ_PACKET_FILTER";
-            case CMD_REASSOCIATE:
-                return "CMD_REASSOCIATE";
-            case CMD_RECONNECT:
-                return "CMD_RECONNECT";
-            case CMD_REMOVE_KEEPALIVE_PACKET_FILTER_FROM_APF:
-                return "CMD_REMOVE_KEEPALIVE_PACKET_FILTER_FROM_APF";
-            case CMD_RESET_SIM_NETWORKS:
-                return "CMD_RESET_SIM_NETWORKS";
-            case CMD_ROAM_WATCHDOG_TIMER:
-                return "CMD_ROAM_WATCHDOG_TIMER";
-            case CMD_RSSI_POLL:
-                return "CMD_RSSI_POLL";
-            case CMD_SAVE_NETWORK:
-                return "CMD_SAVE_NETWORK";
-            case CMD_SCREEN_STATE_CHANGED:
-                return "CMD_SCREEN_STATE_CHANGED";
-            case CMD_SET_FALLBACK_PACKET_FILTERING:
-                return "CMD_SET_FALLBACK_PACKET_FILTERING";
-            case CMD_SET_MAX_DTIM_MULTIPLIER:
-                return "CMD_SET_MAX_DTIM_MULTIPLIER";
-            case CMD_SET_SUSPEND_OPT_ENABLED:
-                return "CMD_SET_SUSPEND_OPT_ENABLED";
-            case CMD_START_CONNECT:
-                return "CMD_START_CONNECT";
-            case CMD_START_FILS_CONNECTION:
-                return "CMD_START_FILS_CONNECTION";
-            case CMD_START_IP_PACKET_OFFLOAD:
-                return "CMD_START_IP_PACKET_OFFLOAD";
-            case CMD_START_ROAM:
-                return "CMD_START_ROAM";
-            case CMD_STOP_IP_PACKET_OFFLOAD:
-                return "CMD_STOP_IP_PACKET_OFFLOAD";
-            case CMD_UNWANTED_NETWORK:
-                return "CMD_UNWANTED_NETWORK";
-            case CMD_UPDATE_LINKPROPERTIES:
-                return "CMD_UPDATE_LINKPROPERTIES";
-            case CMD_IPCLIENT_CREATED:
-                return "CMD_IPCLIENT_CREATED";
-            case CMD_ACCEPT_EAP_SERVER_CERTIFICATE:
-                return "CMD_ACCEPT_EAP_SERVER_CERTIFICATE";
-            case CMD_REJECT_EAP_INSECURE_CONNECTION:
-                return "CMD_REJECT_EAP_SERVER_CERTIFICATE";
-            case WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT:
-                return "SUPPLICANT_STATE_CHANGE_EVENT";
-            case WifiMonitor.AUTHENTICATION_FAILURE_EVENT:
-                return "AUTHENTICATION_FAILURE_EVENT";
-            case WifiMonitor.SUP_REQUEST_IDENTITY:
-                return "SUP_REQUEST_IDENTITY";
-            case WifiMonitor.NETWORK_CONNECTION_EVENT:
-                return "NETWORK_CONNECTION_EVENT";
-            case WifiMonitor.NETWORK_DISCONNECTION_EVENT:
-                return "NETWORK_DISCONNECTION_EVENT";
-            case WifiMonitor.ASSOCIATED_BSSID_EVENT:
-                return "ASSOCIATED_BSSID_EVENT";
-            case WifiMonitor.TARGET_BSSID_EVENT:
-                return "TARGET_BSSID_EVENT";
-            case WifiMonitor.ASSOCIATION_REJECTION_EVENT:
-                return "ASSOCIATION_REJECTION_EVENT";
-            case WifiMonitor.ANQP_DONE_EVENT:
-                return "ANQP_DONE_EVENT";
-            case WifiMonitor.RX_HS20_ANQP_ICON_EVENT:
-                return "RX_HS20_ANQP_ICON_EVENT";
-            case WifiMonitor.GAS_QUERY_DONE_EVENT:
-                return "GAS_QUERY_DONE_EVENT";
-            case WifiMonitor.HS20_REMEDIATION_EVENT:
-                return "HS20_REMEDIATION_EVENT";
-            case WifiMonitor.HS20_DEAUTH_IMMINENT_EVENT:
-                return "HS20_DEAUTH_IMMINENT_EVENT";
-            case WifiMonitor.HS20_TERMS_AND_CONDITIONS_ACCEPTANCE_REQUIRED_EVENT:
-                return "HS20_TERMS_AND_CONDITIONS_ACCEPTANCE_REQUIRED_EVENT";
-            case WifiMonitor.GAS_QUERY_START_EVENT:
-                return "GAS_QUERY_START_EVENT";
-            case WifiMonitor.MBO_OCE_BSS_TM_HANDLING_DONE:
-                return "MBO_OCE_BSS_TM_HANDLING_DONE";
-            case WifiMonitor.TRANSITION_DISABLE_INDICATION:
-                return "TRANSITION_DISABLE_INDICATION";
-            case WifiP2pServiceImpl.GROUP_CREATING_TIMED_OUT:
-                return "GROUP_CREATING_TIMED_OUT";
-            case WifiP2pServiceImpl.P2P_CONNECTION_CHANGED:
-                return "P2P_CONNECTION_CHANGED";
-            case WifiP2pServiceImpl.DISCONNECT_WIFI_REQUEST:
-                return "DISCONNECT_WIFI_REQUEST";
-            case WifiP2pServiceImpl.DISCONNECT_WIFI_RESPONSE:
-                return "DISCONNECT_WIFI_RESPONSE";
-            case WifiP2pServiceImpl.SET_MIRACAST_MODE:
-                return "SET_MIRACAST_MODE";
-            case WifiP2pServiceImpl.BLOCK_DISCOVERY:
-                return "BLOCK_DISCOVERY";
-            case WifiMonitor.NETWORK_NOT_FOUND_EVENT:
-                return "NETWORK_NOT_FOUND_EVENT";
-            case WifiMonitor.TOFU_CERTIFICATE_EVENT:
-                return "TOFU_CERTIFICATE_EVENT";
-            case WifiMonitor.BSS_FREQUENCY_CHANGED_EVENT:
-                return "BSS_FREQUENCY_CHANGED_EVENT";
-            case RunnerState.STATE_ENTER_CMD:
-                return "Enter";
-            case RunnerState.STATE_EXIT_CMD:
-                return "Exit";
-            default:
-                return "what:" + what;
-        }
+        return switch (what) {
+            case CMD_ACCEPT_UNVALIDATED -> "CMD_ACCEPT_UNVALIDATED";
+            case CMD_ADD_KEEPALIVE_PACKET_FILTER_TO_APF ->
+                "CMD_ADD_KEEPALIVE_PACKET_FILTER_TO_APF";
+            case CMD_BLUETOOTH_CONNECTION_STATE_CHANGE -> "CMD_BLUETOOTH_CONNECTION_STATE_CHANGE";
+            case CMD_CONFIG_ND_OFFLOAD -> "CMD_CONFIG_ND_OFFLOAD";
+            case CMD_CONNECTING_WATCHDOG_TIMER -> "CMD_CONNECTING_WATCHDOG_TIMER";
+            case CMD_CONNECT_NETWORK -> "CMD_CONNECT_NETWORK";
+            case CMD_DISCONNECT -> "CMD_DISCONNECT";
+            case CMD_ENABLE_RSSI_POLL -> "CMD_ENABLE_RSSI_POLL";
+            case CMD_INSTALL_PACKET_FILTER -> "CMD_INSTALL_PACKET_FILTER";
+            case CMD_IP_CONFIGURATION_LOST -> "CMD_IP_CONFIGURATION_LOST";
+            case CMD_IP_CONFIGURATION_SUCCESSFUL -> "CMD_IP_CONFIGURATION_SUCCESSFUL";
+            case CMD_IP_REACHABILITY_LOST -> "CMD_IP_REACHABILITY_LOST";
+            case CMD_IP_REACHABILITY_FAILURE -> "CMD_IP_REACHABILITY_FAILURE";
+            case CMD_IPCLIENT_STARTUP_TIMEOUT -> "CMD_IPCLIENT_STARTUP_TIMEOUT";
+            case CMD_IPV4_PROVISIONING_FAILURE -> "CMD_IPV4_PROVISIONING_FAILURE";
+            case CMD_IPV4_PROVISIONING_SUCCESS -> "CMD_IPV4_PROVISIONING_SUCCESS";
+            case CMD_NETWORK_STATUS -> "CMD_NETWORK_STATUS";
+            case CMD_ONESHOT_RSSI_POLL -> "CMD_ONESHOT_RSSI_POLL";
+            case CMD_POST_DHCP_ACTION -> "CMD_POST_DHCP_ACTION";
+            case CMD_PRE_DHCP_ACTION -> "CMD_PRE_DHCP_ACTION";
+            case CMD_PRE_DHCP_ACTION_COMPLETE -> "CMD_PRE_DHCP_ACTION_COMPLETE";
+            case CMD_READ_PACKET_FILTER -> "CMD_READ_PACKET_FILTER";
+            case CMD_REASSOCIATE -> "CMD_REASSOCIATE";
+            case CMD_RECONNECT -> "CMD_RECONNECT";
+            case CMD_REMOVE_KEEPALIVE_PACKET_FILTER_FROM_APF ->
+                "CMD_REMOVE_KEEPALIVE_PACKET_FILTER_FROM_APF";
+            case CMD_RESET_SIM_NETWORKS -> "CMD_RESET_SIM_NETWORKS";
+            case CMD_ROAM_WATCHDOG_TIMER -> "CMD_ROAM_WATCHDOG_TIMER";
+            case CMD_RSSI_POLL -> "CMD_RSSI_POLL";
+            case CMD_SAVE_NETWORK -> "CMD_SAVE_NETWORK";
+            case CMD_SCREEN_STATE_CHANGED -> "CMD_SCREEN_STATE_CHANGED";
+            case CMD_SET_FALLBACK_PACKET_FILTERING -> "CMD_SET_FALLBACK_PACKET_FILTERING";
+            case CMD_SET_MAX_DTIM_MULTIPLIER -> "CMD_SET_MAX_DTIM_MULTIPLIER";
+            case CMD_SET_SUSPEND_OPT_ENABLED -> "CMD_SET_SUSPEND_OPT_ENABLED";
+            case CMD_START_CONNECT -> "CMD_START_CONNECT";
+            case CMD_START_FILS_CONNECTION -> "CMD_START_FILS_CONNECTION";
+            case CMD_START_IP_PACKET_OFFLOAD -> "CMD_START_IP_PACKET_OFFLOAD";
+            case CMD_START_ROAM -> "CMD_START_ROAM";
+            case CMD_STOP_IP_PACKET_OFFLOAD -> "CMD_STOP_IP_PACKET_OFFLOAD";
+            case CMD_UNWANTED_NETWORK -> "CMD_UNWANTED_NETWORK";
+            case CMD_UPDATE_LINKPROPERTIES -> "CMD_UPDATE_LINKPROPERTIES";
+            case CMD_IPCLIENT_CREATED -> "CMD_IPCLIENT_CREATED";
+            case CMD_ACCEPT_EAP_SERVER_CERTIFICATE -> "CMD_ACCEPT_EAP_SERVER_CERTIFICATE";
+            case CMD_REJECT_EAP_INSECURE_CONNECTION -> "CMD_REJECT_EAP_SERVER_CERTIFICATE";
+            case WifiMonitor.SUPPLICANT_STATE_CHANGE_EVENT -> "SUPPLICANT_STATE_CHANGE_EVENT";
+            case WifiMonitor.AUTHENTICATION_FAILURE_EVENT -> "AUTHENTICATION_FAILURE_EVENT";
+            case WifiMonitor.SUP_REQUEST_IDENTITY -> "SUP_REQUEST_IDENTITY";
+            case WifiMonitor.NETWORK_CONNECTION_EVENT -> "NETWORK_CONNECTION_EVENT";
+            case WifiMonitor.NETWORK_DISCONNECTION_EVENT -> "NETWORK_DISCONNECTION_EVENT";
+            case WifiMonitor.ASSOCIATED_BSSID_EVENT -> "ASSOCIATED_BSSID_EVENT";
+            case WifiMonitor.TARGET_BSSID_EVENT -> "TARGET_BSSID_EVENT";
+            case WifiMonitor.ASSOCIATION_REJECTION_EVENT -> "ASSOCIATION_REJECTION_EVENT";
+            case WifiMonitor.ANQP_DONE_EVENT -> "ANQP_DONE_EVENT";
+            case WifiMonitor.RX_HS20_ANQP_ICON_EVENT -> "RX_HS20_ANQP_ICON_EVENT";
+            case WifiMonitor.GAS_QUERY_DONE_EVENT -> "GAS_QUERY_DONE_EVENT";
+            case WifiMonitor.HS20_REMEDIATION_EVENT -> "HS20_REMEDIATION_EVENT";
+            case WifiMonitor.HS20_DEAUTH_IMMINENT_EVENT -> "HS20_DEAUTH_IMMINENT_EVENT";
+            case WifiMonitor.HS20_TERMS_AND_CONDITIONS_ACCEPTANCE_REQUIRED_EVENT ->
+                "HS20_TERMS_AND_CONDITIONS_ACCEPTANCE_REQUIRED_EVENT";
+            case WifiMonitor.GAS_QUERY_START_EVENT -> "GAS_QUERY_START_EVENT";
+            case WifiMonitor.MBO_OCE_BSS_TM_HANDLING_DONE -> "MBO_OCE_BSS_TM_HANDLING_DONE";
+            case WifiMonitor.TRANSITION_DISABLE_INDICATION -> "TRANSITION_DISABLE_INDICATION";
+            case WifiP2pServiceImpl.GROUP_CREATING_TIMED_OUT -> "GROUP_CREATING_TIMED_OUT";
+            case WifiP2pServiceImpl.P2P_CONNECTION_CHANGED -> "P2P_CONNECTION_CHANGED";
+            case WifiP2pServiceImpl.DISCONNECT_WIFI_REQUEST -> "DISCONNECT_WIFI_REQUEST";
+            case WifiP2pServiceImpl.DISCONNECT_WIFI_RESPONSE -> "DISCONNECT_WIFI_RESPONSE";
+            case WifiP2pServiceImpl.SET_MIRACAST_MODE -> "SET_MIRACAST_MODE";
+            case WifiP2pServiceImpl.BLOCK_DISCOVERY -> "BLOCK_DISCOVERY";
+            case WifiMonitor.NETWORK_NOT_FOUND_EVENT -> "NETWORK_NOT_FOUND_EVENT";
+            case WifiMonitor.TOFU_CERTIFICATE_EVENT -> "TOFU_CERTIFICATE_EVENT";
+            case WifiMonitor.BSS_FREQUENCY_CHANGED_EVENT -> "BSS_FREQUENCY_CHANGED_EVENT";
+            case RunnerState.STATE_ENTER_CMD -> "Enter";
+            case RunnerState.STATE_EXIT_CMD -> "Exit";
+            default -> "what:" + what;
+        };
     }
 
     /** Check whether this connection is the primary connection on the device. */
@@ -2845,7 +2788,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     private void handleScreenStateChanged(boolean screenOn) {
         mScreenOn = screenOn;
-        considerChangingFirmwareRoaming();
         if (mVerboseLoggingEnabled) {
             logd(" handleScreenStateChanged Enter: screenOn=" + screenOn
                     + " mSuspendOptimizationsEnabled="
@@ -4208,6 +4150,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         switch(reason) {
             case StaIfaceReasonCode.UNSPECIFIED:
             case StaIfaceReasonCode.DEAUTH_LEAVING:
+            // Most driver and firmware implementations use the RESERVED reason code for
+            // disconnections caused by continuous beacon loss
+            case StaIfaceReasonCode.RESERVED:
                 logi("Keep PMK cache for network disconnection reason " + reason);
                 break;
             default:
@@ -4673,8 +4618,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      */
     private void setupClientMode() {
         Log.d(getTag(), "setupClientMode() ifacename = " + mInterfaceName);
-
-        setMulticastFilter(true);
         registerForWifiMonitorEvents();
         if (isPrimary()) {
             mWifiLastResortWatchdog.clearAllFailureCounts();
@@ -4873,6 +4816,20 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return NativeUtil.getMacAddressOrNull(mLastBssid);
     }
 
+    private boolean hasCtrlChar(WifiConfiguration config) {
+        if (config == null || config.preSharedKey == null) {
+            return false;
+        }
+        String preSharedKey = config.preSharedKey;
+        int len = preSharedKey.length();
+        for (int i = 0; i < len; ++i) {
+            if (preSharedKey.charAt(i) < 32 || preSharedKey.charAt(i) >= 127) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private void connectToNetwork(WifiConfiguration config) {
         if (mContext.getResources().getBoolean(R.bool.config_wifiUseHalApiToDisableFwRoaming)) {
             // Enable firmware roaming unless targeting a specific BSSID
@@ -4894,6 +4851,20 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             loge("CMD_START_CONNECT Failed to start connection to network " + config);
             mTargetWifiConfiguration = null;
             stopIpClient();
+            if (hasCtrlChar(config) && config.isSecurityType(WifiConfiguration.SECURITY_TYPE_PSK)) {
+                mWifiDiagnostics.triggerBugReportDataCapture(
+                        WifiDiagnostics.REPORT_REASON_AUTH_FAILURE);
+                mWrongPasswordNotifier.onWrongPasswordError(config);
+                mWifiConfigManager.updateNetworkSelectionStatus(
+                        mTargetNetworkId, WifiConfiguration.NetworkSelectionStatus
+                                .DISABLED_BY_WRONG_PASSWORD);
+                mWifiConfigManager.clearRecentFailureReason(mTargetNetworkId);
+                reportConnectionAttemptEnd(
+                        WifiMetrics.ConnectionEvent.FAILURE_AUTHENTICATION_FAILURE,
+                        WifiMetricsProto.ConnectionEvent.HLF_NONE,
+                        WifiMetricsProto.ConnectionEvent.AUTH_FAILURE_WRONG_PSWD, -1);
+                return;
+            }
             reportConnectionAttemptEnd(
                     WifiMetrics.ConnectionEvent.FAILURE_CONNECT_NETWORK_FAILED,
                     WifiMetricsProto.ConnectionEvent.HLF_NONE,
@@ -5116,7 +5087,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         mWifiBlocklistMonitor.setAllowlistSsids(config.SSID,
                                 Collections.emptyList());
                         mWifiBlocklistMonitor.updateFirmwareRoamingConfiguration(
-                                Set.of(config.SSID));
+                                Set.of(config.SSID), Collections.EMPTY_SET);
                     }
 
                     updateWifiConfigOnStartConnection(config, bssid);
@@ -6421,6 +6392,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         @Override
         public void enterImpl() {
             if (mVerboseLoggingEnabled) Log.v(getTag(), "Entering L2ConnectingState");
+            // Ensure state update and broadcast are sent before any immediate rejection occurs.
+            // This prevents the framework from suppressing the broadcast if it transitions
+            // back to DISCONNECTED so quickly that it perceives no state change.
+            sendNetworkChangeBroadcast(DetailedState.CONNECTING);
             // Make sure we connect: we enter this state prior to connecting to a new
             // network. In some cases supplicant ignores the connect requests (it might not
             // find the target SSID in its cache), Therefore we end up stuck that state, hence the
@@ -7388,7 +7363,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 case CMD_IPCLIENT_CREATED: {
                     if (!isFromCurrentIpClientCallbacks(message)) break;
                     setIpClientManager((IpClientManager) message.obj);
-                    setMulticastFilter(true);
                     transitionTo(mL3ProvisioningState);
                     break;
                 }
@@ -8919,55 +8893,6 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         return status == WifiNative.SET_FIRMWARE_ROAMING_SUCCESS;
     }
 
-    private void considerChangingFirmwareRoaming() {
-        if (mClientModeManager.getRole() != ROLE_CLIENT_PRIMARY) {
-            if (mVerboseLoggingEnabled) {
-                Log.v(TAG, "Idle mode changed: iface " + mInterfaceName + " is not primary.");
-            }
-            return;
-        }
-        if (!mWifiGlobals.isDisableFirmwareRoamingInIdleMode()
-                || !mWifiConnectivityHelper.isFirmwareRoamingSupported()) {
-            // feature not enabled, or firmware roaming not supported - no need to continue.
-            if (mVerboseLoggingEnabled) {
-                Log.v(TAG, "Idle mode changed: iface " + mInterfaceName
-                        + " firmware roaming not supported");
-            }
-            return;
-        }
-        if (mIsDeviceIdle && !mScreenOn) {
-            // disable firmware roaming if in idle mode
-            if (mVerboseLoggingEnabled) {
-                Log.v(TAG, "Idle mode changed: iface " + mInterfaceName
-                        + " disabling roaming");
-            }
-            enableRoaming(false);
-            return;
-        }
-        // Exiting idle mode or screen is turning on, so re-enable firmware roaming, but only if the
-        // current use-case is not the local-only use-case. The local-only use-case requires
-        // firmware roaming to be always disabled.
-        WifiConfiguration config = getConnectedWifiConfigurationInternal();
-        if (config == null) {
-            config = getConnectingWifiConfigurationInternal();
-        }
-        if (config != null && getClientRoleForMetrics(config)
-                == WifiStatsLog.WIFI_CONNECTION_RESULT_REPORTED__ROLE__ROLE_CLIENT_LOCAL_ONLY) {
-            return;
-        }
-        if (mVerboseLoggingEnabled) {
-            Log.v(TAG, "Idle mode changed: iface " + mInterfaceName
-                    + " enabling roaming");
-        }
-        mWifiInjector.getWifiRoamingModeManager().applyWifiRoamingMode(
-                mInterfaceName, mWifiInfo.getSSID());
-    }
-
-    @Override
-    public void onIdleModeChanged(boolean isIdle) {
-        mIsDeviceIdle = isIdle;
-        considerChangingFirmwareRoaming();
-    }
 
     @Override
     public boolean setCountryCode(String countryCode) {
@@ -9204,7 +9129,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             allowlistSsids.add(config.SSID);
         }
         mWifiBlocklistMonitor.setAllowlistSsids(config.SSID, allowlistSsids);
-        mWifiBlocklistMonitor.updateFirmwareRoamingConfiguration(new ArraySet<>(allowlistSsids));
+        mWifiBlocklistMonitor.updateFirmwareRoamingConfiguration(new ArraySet<>(allowlistSsids),
+                mWifiInfo.getBSSID() == null
+                        ? Collections.EMPTY_SET
+                        : new ArraySet<>(List.of(mWifiInfo.getBSSID())));
     }
 
     private boolean checkAndHandleLinkedNetworkRoaming(String associatedBssid) {
@@ -9369,11 +9297,16 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 }
             }
         }
-        mWifiBlocklistMonitor.updateAndGetBssidBlocklistForSsids(Set.of(configuration.SSID));
+        mFrameworkDisconnectReasonOverride = WifiStatsLog.WIFI_DISCONNECT_REPORTED__FAILURE_CODE__DISCONNECT_DISALLOW_CURRENT_SUGGESTED_NETWORK;
+        sendMessageAtFrontOfQueue(CMD_DISCONNECT,
+                StaEvent.DISCONNECT_DISALLOW_CURRENT_SUGGESTED_NETWORK);
     }
 
     private void setIpClientManager(IpClientManager ipClientManager) {
         mIpClient = ipClientManager;
         mWifiScoreReport.setIpClientManager(ipClientManager);
+        if (mIpClient != null) {
+            setCurrentMulticastFilter();
+        }
     }
 }

@@ -62,6 +62,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -104,6 +105,7 @@ import org.mockito.MockitoAnnotations;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -981,11 +983,13 @@ public class Nl80211NativeTest {
     public void testStartScan_success() {
         mDut = initNl80211Native(false);
         Nl80211Utils.ScanCapabilities scanCapabilities = new Nl80211Utils.ScanCapabilities.Builder()
-                .setMaxNumScanSsids(2)
+                .setMaxNumScanSsids(10)
                 .build();
         setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, scanCapabilities, null);
         Set<Integer> freqs = new HashSet<>(List.of(2412, 5180));
         List<byte[]> hiddenSsids = List.of("hidden1".getBytes(), "hidden2".getBytes());
+        List<byte[]> expectedSsids = List.of(new byte[0], "hidden1".getBytes(),
+                "hidden2".getBytes());
         Bundle extraParams = new Bundle();
         extraParams.putBoolean(Nl80211Native.SCANNING_PARAM_ENABLE_6GHZ_RNR, true);
         extraParams.putByteArray(Nl80211Native.EXTRA_SCANNING_PARAM_VENDOR_IES,
@@ -993,15 +997,21 @@ public class Nl80211NativeTest {
 
         when(mNl80211Utils.triggerScan(
                 eq(CLIENT_IFACE_INDEX), anyInt(),
-                eq(freqs), eq(hiddenSsids), eq(new byte[]{0x01, 0x02})))
+                eq(freqs), any(), eq(new byte[]{0x01, 0x02})))
                 .thenReturn(WifiScanner.REASON_SUCCEEDED);
 
         int result = mDut.startScan(CLIENT_IFACE_NAME, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
                 freqs, hiddenSsids, extraParams);
         assertEquals(WifiScanner.REASON_SUCCEEDED, result);
+        ArgumentCaptor<List<byte[]>> ssidsCaptor = ArgumentCaptor.forClass(List.class);
         verify(mNl80211Utils).triggerScan(
-                eq(CLIENT_IFACE_INDEX), anyInt(), eq(freqs), eq(hiddenSsids),
+                eq(CLIENT_IFACE_INDEX), anyInt(), eq(freqs), ssidsCaptor.capture(),
                 eq(new byte[]{0x01, 0x02}));
+        List<byte[]> ssids = ssidsCaptor.getValue();
+        assertEquals(expectedSsids.size(), ssids.size());
+        for (int i = 0; i < expectedSsids.size(); i++) {
+            assertArrayEquals(expectedSsids.get(i), ssids.get(i));
+        }
     }
 
     @Test
@@ -1031,14 +1041,16 @@ public class Nl80211NativeTest {
     @Test
     public void testStartScan_emptyHiddenSsids_triggersWildcardScan() {
         mDut = initNl80211Native(false);
-        setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
+        Nl80211Utils.ScanCapabilities scanCapabilities = new Nl80211Utils.ScanCapabilities.Builder()
+                .setMaxNumScanSsids(2)
+                .build();
+        setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, scanCapabilities, null);
 
         List<byte[]> emptySsids = new ArrayList<>();
-        List<byte[]> expectedSsids = List.of(new byte[0]);
 
         when(mNl80211Utils.triggerScan(
                 eq(CLIENT_IFACE_INDEX), anyInt(),
-                eq(null), eq(expectedSsids), eq(null)))
+                eq(null), any(), eq(null)))
                 .thenReturn(WifiScanner.REASON_SUCCEEDED);
 
         int result = mDut.startScan(CLIENT_IFACE_NAME, WifiScanner.SCAN_TYPE_LOW_LATENCY,
@@ -1058,25 +1070,32 @@ public class Nl80211NativeTest {
     public void testStartScan_withHiddenSsids_trimsCorrectly() {
         mDut = initNl80211Native(false);
         Nl80211Utils.ScanCapabilities scanCapabilities = new Nl80211Utils.ScanCapabilities.Builder()
-                .setMaxNumScanSsids(1)
+                .setMaxNumScanSsids(2)
                 .build();
         setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, scanCapabilities, null);
 
         byte[] ssid1 = "ssid1".getBytes();
         byte[] ssid2 = "ssid2".getBytes();
         List<byte[]> hiddenSsids = List.of(ssid1, ssid2);
-        List<byte[]> expectedTrimmedSsids = List.of(ssid1); // Only first one should be taken
+        // Only the wildcard SSID & ssid1 should be taken as the maximum number of SSID is set to 2
+        List<byte[]> expectedTrimmedSsids = List.of(new byte[0], ssid1);
 
         when(mNl80211Utils.triggerScan(
-                eq(CLIENT_IFACE_INDEX), anyInt(), eq(null), eq(expectedTrimmedSsids), eq(null)))
+                eq(CLIENT_IFACE_INDEX), anyInt(), eq(null), any(), eq(null)))
                 .thenReturn(WifiScanner.REASON_SUCCEEDED);
 
         int result = mDut.startScan(CLIENT_IFACE_NAME, WifiScanner.SCAN_TYPE_HIGH_ACCURACY,
                 null, hiddenSsids, null);
         assertEquals(WifiScanner.REASON_SUCCEEDED, result);
+        ArgumentCaptor<List<byte[]>> ssidsCaptor = ArgumentCaptor.forClass(List.class);
         verify(mNl80211Utils).triggerScan(
                 eq(CLIENT_IFACE_INDEX), anyInt(),
-                eq(null), eq(expectedTrimmedSsids), eq(null));
+                eq(null), ssidsCaptor.capture(), eq(null));
+        List<byte[]> ssids = ssidsCaptor.getValue();
+        assertEquals(expectedTrimmedSsids.size(), ssids.size());
+        for (int i = 0; i < expectedTrimmedSsids.size(); i++) {
+            assertArrayEquals(expectedTrimmedSsids.get(i), ssids.get(i));
+        }
     }
 
     /** Test that startScan correctly handles extra scanning parameters. */
@@ -1729,7 +1748,7 @@ public class Nl80211NativeTest {
         mDut = initNl80211Native(false);
         Nl80211Utils.ScanCapabilities scanCapabilities = new Nl80211Utils.ScanCapabilities.Builder()
                 .setMaxNumScanSsids(0)
-                .setMaxNumSchedScanSsids(1)
+                .setMaxNumSchedScanSsids(2)
                 .build();
         Nl80211Utils.WiphyInfo wiphyInfo = new Nl80211Utils.WiphyInfo.Builder()
                 .setBandInfo(new Nl80211Utils.BandInfo.Builder().build())
@@ -1768,7 +1787,13 @@ public class Nl80211NativeTest {
         assertTrue(result);
         verify(mNl80211Utils).startPnoScan(
                 eq(CLIENT_IFACE_INDEX), any(), anyLong(), anyInt(), anyInt(), anyBoolean(),
-                anyBoolean(), anyBoolean(), eq(List.of(ssid1)), any(), any());
+                anyBoolean(), anyBoolean(),
+                argThat(list ->
+                        list.size() == 2
+                                && Arrays.equals(list.get(0), new byte[0])
+                                && Arrays.equals(list.get(1), ssid1)
+                ),
+                any(), any());
     }
 
     @Test
@@ -2721,13 +2746,6 @@ public class Nl80211NativeTest {
                 eq(NL80211_CMD_REG_CHANGE), any());
         verify(mNl80211Proxy).registerBroadcastCallback(
                 eq(NetlinkConstants.NL80211_CMD_WIPHY_REG_CHANGE), any());
-
-        // Tear down the interface and verify that the callbacks are unregistered.
-        mDut.tearDownClientInterface(CLIENT_IFACE_NAME);
-        verify(mNl80211Proxy).unregisterBroadcastCallback(
-                eq(NL80211_CMD_REG_CHANGE), any());
-        verify(mNl80211Proxy).unregisterBroadcastCallback(
-                eq(NetlinkConstants.NL80211_CMD_WIPHY_REG_CHANGE), any());
     }
 
     @Test
@@ -2739,17 +2757,10 @@ public class Nl80211NativeTest {
                 eq(NL80211_CMD_REG_CHANGE), any());
         verify(mNl80211Proxy).registerBroadcastCallback(
                 eq(NetlinkConstants.NL80211_CMD_WIPHY_REG_CHANGE), any());
-
-        // Tear down the interface and verify that the callbacks are unregistered.
-        mDut.tearDownSoftApInterface(AP_IFACE_NAME);
-        verify(mNl80211Proxy).unregisterBroadcastCallback(
-                eq(NL80211_CMD_REG_CHANGE), any());
-        verify(mNl80211Proxy).unregisterBroadcastCallback(
-                eq(NetlinkConstants.NL80211_CMD_WIPHY_REG_CHANGE), any());
     }
 
     @Test
-    public void testCountryCodeCallbackUnregisteredAfterLastInterfaceTornDown() {
+    public void testCountryCodeCallbackUnregisteredOnTearDownInterfaces() {
         mDut = initNl80211Native(false);
 
         // Setup two ifaces
@@ -2767,8 +2778,15 @@ public class Nl80211NativeTest {
         verify(mNl80211Proxy, never()).unregisterBroadcastCallback(
                 eq(NetlinkConstants.NL80211_CMD_WIPHY_REG_CHANGE), any());
 
-        // Tear down client iface (the last iface) should unregister the callbacks
+        // Tear down client iface should not unregister the callbacks.
         mDut.tearDownClientInterface(CLIENT_IFACE_NAME);
+        verify(mNl80211Proxy, never()).unregisterBroadcastCallback(
+                eq(NL80211_CMD_REG_CHANGE), any());
+        verify(mNl80211Proxy, never()).unregisterBroadcastCallback(
+                eq(NetlinkConstants.NL80211_CMD_WIPHY_REG_CHANGE), any());
+
+        // Tear down client iface should not unregister the callbacks.
+        mDut.tearDownInterfaces();
         verify(mNl80211Proxy).unregisterBroadcastCallback(eq(NL80211_CMD_REG_CHANGE), any());
         verify(mNl80211Proxy).unregisterBroadcastCallback(
                 eq(NetlinkConstants.NL80211_CMD_WIPHY_REG_CHANGE), any());
@@ -2863,12 +2881,13 @@ public class Nl80211NativeTest {
     }
 
     @Test
-    public void testCountryCodeChanged_sameCode_doesNotNotifyListeners() {
+    public void testCountryCodeChanged_sameCode_notifiesListeners() {
         mDut = initNl80211Native(false);
         when(mNl80211Utils.getCountryCode(WIPHY_INDEX_0)).thenReturn(COUNTRY_CODE);
         setupClientModeInterfaceForTest(WIPHY_INDEX_0, null, null, null);
         mDut.registerCountryCodeChangedListener(mExecutor, mCountryCodeChangedListener);
         // Reset to clear the notification from initial setup.
+        reset(mExecutor);
         reset(mCountryCodeChangedListener);
 
         ArgumentCaptor<Nl80211BroadcastMonitor.Nl80211BroadcastCallback> callbackCaptor =
@@ -2884,8 +2903,10 @@ public class Nl80211NativeTest {
 
         callbackCaptor.getValue().onEvent(NL80211_CMD_REG_CHANGE, regChangeMsg);
 
-        verify(mExecutor, never()).execute(any());
-        verify(mCountryCodeChangedListener, never()).onCountryCodeChanged(anyString());
+        ArgumentCaptor<Runnable> runnableCaptor = ArgumentCaptor.forClass(Runnable.class);
+        verify(mExecutor).execute(runnableCaptor.capture());
+        runnableCaptor.getValue().run();
+        verify(mCountryCodeChangedListener).onCountryCodeChanged(COUNTRY_CODE);
     }
 
     /**
@@ -3224,6 +3245,92 @@ public class Nl80211NativeTest {
                 mWificondManager, mWifiInjector, false);
         assertNull(nl80211Native.getWifiChipStats(CLIENT_IFACE_NAME));
         verify(mNl80211Utils, never()).getWifiChipStats(anyString());
+    }
+
+    @Test
+    public void testGeneratePnoScanPlans_success() {
+        mDut = initNl80211Native(false);
+        PnoSettings pnoSettings = new PnoSettings();
+        pnoSettings.setIntervalMillis(10000L);
+        pnoSettings.setScanIntervalMultiplier(2);
+        pnoSettings.setScanIterations(3);
+
+        Nl80211Utils.ScanCapabilities scanCapabilities = new Nl80211Utils.ScanCapabilities.Builder()
+                .setMaxNumScanPlans(2)
+                .setMaxScanPlanIntervalSeconds(60)
+                .setMaxScanPlanIterations(5)
+                .build();
+
+        List<Nl80211Utils.PnoScanPlan> plans = mDut.generatePnoScanPlans(pnoSettings,
+                scanCapabilities);
+
+        assertEquals(2, plans.size());
+        assertEquals(10000, plans.get(0).intervalMs);
+        assertEquals(3, plans.get(0).iterations);
+        assertEquals(20000, plans.get(1).intervalMs);
+        // The last plan's iterations is typically ignored/don't matter for the kernel logic
+        // but we verify the calculation of the interval.
+    }
+
+    @Test
+    public void testGeneratePnoScanPlans_unsupportedNumPlans() {
+        mDut = initNl80211Native(false);
+        PnoSettings pnoSettings = new PnoSettings();
+        pnoSettings.setIntervalMillis(10000L);
+        pnoSettings.setScanIntervalMultiplier(2);
+
+        // Driver only supports 1 scan plan, but our code requests 2.
+        Nl80211Utils.ScanCapabilities scanCapabilities = new Nl80211Utils.ScanCapabilities.Builder()
+                .setMaxNumScanPlans(1)
+                .setMaxScanPlanIntervalSeconds(60)
+                .setMaxScanPlanIterations(5)
+                .build();
+
+        List<Nl80211Utils.PnoScanPlan> plans = mDut.generatePnoScanPlans(pnoSettings,
+                scanCapabilities);
+
+        assertTrue(plans.isEmpty());
+    }
+
+    @Test
+    public void testGeneratePnoScanPlans_intervalTooLong() {
+        mDut = initNl80211Native(false);
+        PnoSettings pnoSettings = new PnoSettings();
+        pnoSettings.setIntervalMillis(30000L);
+        pnoSettings.setScanIntervalMultiplier(3); // Max interval = 90s
+
+        // Driver only supports up to 60s intervals.
+        Nl80211Utils.ScanCapabilities scanCapabilities = new Nl80211Utils.ScanCapabilities.Builder()
+                .setMaxNumScanPlans(2)
+                .setMaxScanPlanIntervalSeconds(60)
+                .setMaxScanPlanIterations(5)
+                .build();
+
+        List<Nl80211Utils.PnoScanPlan> plans = mDut.generatePnoScanPlans(pnoSettings,
+                scanCapabilities);
+
+        assertTrue(plans.isEmpty());
+    }
+
+    @Test
+    public void testGeneratePnoScanPlans_tooManyIterations() {
+        mDut = initNl80211Native(false);
+        PnoSettings pnoSettings = new PnoSettings();
+        pnoSettings.setIntervalMillis(10000L);
+        pnoSettings.setScanIntervalMultiplier(2);
+        pnoSettings.setScanIterations(10);
+
+        // Driver only supports up to 5 iterations.
+        Nl80211Utils.ScanCapabilities scanCapabilities = new Nl80211Utils.ScanCapabilities.Builder()
+                .setMaxNumScanPlans(2)
+                .setMaxScanPlanIntervalSeconds(60)
+                .setMaxScanPlanIterations(5)
+                .build();
+
+        List<Nl80211Utils.PnoScanPlan> plans = mDut.generatePnoScanPlans(pnoSettings,
+                scanCapabilities);
+
+        assertTrue(plans.isEmpty());
     }
 
     private Nl80211Utils.BandCapabilities createBandCapabilities(int bandIndex, int... freqs) {

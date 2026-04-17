@@ -424,6 +424,10 @@ public class WifiConnectivityManager {
     @VisibleForTesting
     public boolean filterMultiInternetFrequency(int primaryFreq, int secondaryFreq,
             String interfaceName) {
+        if (mWifiGlobals.isMultiInternetSameBandConnectionAllowed()
+                && primaryFreq == secondaryFreq) {
+            return true;
+        }
         return mWifiGlobals.isSupportMultiInternetDual5G()
                 ? ScanResult.isValidCombinedBandForDual5GHz(primaryFreq, secondaryFreq)
                 : isSimultaneousBandSupported(
@@ -477,11 +481,10 @@ public class WifiConnectivityManager {
             return false;
         }
         final WifiInfo primaryInfo = primaryCcm.getConnectionInfo();
-        final int primaryBand = ScanResult.toBand(primaryInfo.getFrequency());
-
         List<WifiCandidates.Candidate> secondaryCmmCandidates;
+        boolean allowSameBssidConnection = mWifiGlobals.isMultiInternetSameBssidConnectionAllowed();
         if (mMultiInternetManager.isStaConcurrencyForMultiInternetMultiApAllowed()) {
-            if (primaryCcm.isMlo()) {
+            if (primaryCcm.isMlo() && !allowSameBssidConnection) {
                 // For an MLO connection, select candidate BSSIDs that are not affiliated or the
                 // primary link's BSSID, as the primary's BSSID may differ from its link MAC
                 // address.
@@ -497,7 +500,10 @@ public class WifiConnectivityManager {
                         .filter(c -> {
                             return filterMultiInternetFrequency(
                                     primaryInfo.getFrequency(), c.getFrequency(),
-                                    primaryCcm.getInterfaceName());
+                                    primaryCcm.getInterfaceName())
+                                    && (allowSameBssidConnection
+                                    || !TextUtils.equals(c.getKey().bssid.toString(),
+                                    primaryCcm.getConnectedBssid()));
                         })
                         .collect(Collectors.toList());
             }
@@ -506,8 +512,11 @@ public class WifiConnectivityManager {
             secondaryCmmCandidates = candidates.stream().filter(c -> {
                 return filterMultiInternetFrequency(primaryInfo.getFrequency(), c.getFrequency(),
                         primaryCcm.getInterfaceName())
-                        && !primaryCcm.isAffiliatedLinkBssid(c.getKey().bssid) && TextUtils.equals(
-                        c.getKey().matchInfo.networkSsid, primaryInfo.getSSID())
+                        && (allowSameBssidConnection
+                        || (!primaryCcm.isAffiliatedLinkBssid(c.getKey().bssid)
+                        && !TextUtils.equals(c.getKey().bssid.toString(),
+                        primaryCcm.getConnectedBssid())))
+                        && TextUtils.equals(c.getKey().matchInfo.networkSsid, primaryInfo.getSSID())
                         && c.getKey().networkId == primaryInfo.getNetworkId()
                         && c.getKey().securityType == primaryInfo.getCurrentSecurityType();
             }).collect(Collectors.toList());
@@ -669,7 +678,8 @@ public class WifiConnectivityManager {
 
         List<WifiNetworkSelector.ClientModeManagerState> cmmStates = new ArrayList<>();
         WifiNetworkSelector.ClientModeManagerState primaryCmmState = null;
-        Set<String> connectedSsids = new HashSet<>();
+        Set<String> connectedSsids = new ArraySet<>();
+        Set<String> connectedBssids = new ArraySet<>();
         boolean hasExistingSecondaryCmm = false;
         for (ClientModeManager clientModeManager :
                 mActiveModeWarden.getInternetConnectivityClientModeManagers()) {
@@ -682,6 +692,7 @@ public class WifiConnectivityManager {
             WifiInfo wifiInfo = clientModeManager.getConnectionInfo();
             if (clientModeManager.isConnected()) {
                 connectedSsids.add(wifiInfo.getSSID());
+                connectedBssids.add(wifiInfo.getBSSID());
             }
             WifiNetworkSelector.ClientModeManagerState cmmState =
                     new WifiNetworkSelector.ClientModeManagerState(clientModeManager);
@@ -714,7 +725,7 @@ public class WifiConnectivityManager {
             }
         }
         Set<String> bssidBlocklist = mWifiBlocklistMonitor.updateAndGetBssidBlocklistForSsids(
-                connectedSsids);
+                connectedSsids, connectedBssids);
         updateUserDisabledList(scanDetails);
         // Clear expired recent failure statuses
         mConfigManager.cleanupExpiredRecentFailureReasons();
@@ -970,7 +981,7 @@ public class WifiConnectivityManager {
             List<WifiCandidates.Candidate> candidates) {
         boolean deviceIsMoving = mDeviceMobilityState == WifiManager.DEVICE_MOBILITY_STATE_LOW_MVMT
                 || mDeviceMobilityState == WifiManager.DEVICE_MOBILITY_STATE_HIGH_MVMT;
-        if (!Flags.filterCarrierNetworksWhileInMotion() || !deviceIsMoving) {
+        if (!deviceIsMoving) {
             return candidates;
         }
         if (candidates == null || candidates.isEmpty()) {

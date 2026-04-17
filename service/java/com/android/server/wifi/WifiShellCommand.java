@@ -2745,7 +2745,13 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                                         }
 
                                         public void onServiceDiscovered(ServiceDiscoveryInfo info) {
-                                            sPeerHandle = info.getPeerHandle();
+                                            PeerHandle peerHandle = info.getPeerHandle();
+                                            if (peerHandle.equals(sPeerHandle)) {
+                                                Log.i(TAG, "onServiceDiscovered: same peer "
+                                                         + sPeerHandle.peerId);
+                                                return;
+                                            }
+                                            sPeerHandle = peerHandle;
                                             Log.d(TAG, "onServiceDiscovered " + sPeerHandle.peerId);
                                             if (pairingEnabled && SdkLevel.isAtLeastU()
                                                     && info.getPairedAlias() == null) {
@@ -2758,6 +2764,30 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                                         public void onPairingSetupSucceeded(
                                                 PeerHandle peerHandle, String alias) {
                                             Log.d(TAG, "onPairingSetupSucceeded");
+                                        }
+
+                                        public void onPairingSetupFailed(
+                                                PeerHandle peerHandle) {
+                                            Log.d(TAG, "onPairingSetupFailed");
+                                            if (peerHandle.equals(sPeerHandle)) {
+                                                sPeerHandle = null;
+                                            }
+                                        }
+
+                                        public void onPairingVerificationFailed(
+                                                PeerHandle peerHandle) {
+                                            Log.d(TAG, "onPairingVerificationFailed");
+                                            if (peerHandle.equals(sPeerHandle)) {
+                                                sPeerHandle = null;
+                                            }
+                                        }
+
+                                        public void onBootstrappingFailed(
+                                                PeerHandle peerHandle) {
+                                            Log.d(TAG, "onBootstrappingFailed");
+                                            if (peerHandle.equals(sPeerHandle)) {
+                                                sPeerHandle = null;
+                                            }
                                         }
 
                                         public void onPairingVerificationSucceed(
@@ -3489,7 +3519,13 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                         return -1;
                     }
 
-                    WifiChipStats stats = pwrManager.getWlanPwrStats();
+                    if (pwrManager.isPowerStatsApiSupported()) {
+                        pw.println("Source: New Power Stats API");
+                    } else {
+                        pw.println("Source: Legacy Link Layer Stats");
+                    }
+
+                    WifiChipStats stats = pwrManager.getPowerStatsForMetrics();
 
                     if (stats != null) {
                         pw.println("SUCCESS: Wi-Fi Power Stats:");

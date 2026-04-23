@@ -45,6 +45,7 @@ import static android.net.wifi.WifiManager.LocalOnlyHotspotCallback.ERROR_INCOMP
 import static android.net.wifi.WifiManager.LocalOnlyHotspotCallback.ERROR_NO_CHANNEL;
 import static android.net.wifi.WifiManager.LocalOnlyHotspotCallback.ERROR_TETHERING_DISALLOWED;
 import static android.net.wifi.WifiManager.LocalOnlyHotspotCallback.REQUEST_REGISTERED;
+import static android.net.wifi.WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_NONE;
 import static android.net.wifi.WifiManager.NOT_OVERRIDE_EXISTING_NETWORKS_ON_RESTORE;
 import static android.net.wifi.WifiManager.SAP_START_FAILURE_GENERAL;
 import static android.net.wifi.WifiManager.SAP_START_FAILURE_NO_CHANNEL;
@@ -4051,11 +4052,18 @@ public class WifiServiceImplTest extends WifiBaseTest {
 
     private static class FakeLohsCallback extends ILocalOnlyHotspotCallback.Stub {
         boolean mIsStarted = false;
+        int mLohsType = LOCAL_ONLY_HOTSPOT_TYPE_NONE;
         SoftApConfiguration mSoftApConfig = null;
 
         @Override
         public void onHotspotStarted(SoftApConfiguration softApConfig) {
             mIsStarted = true;
+            this.mSoftApConfig = softApConfig;
+        }
+
+       @Override
+        public void onHotspotStartedWithType(int lohsType, SoftApConfiguration softApConfig) {
+            mLohsType = lohsType;
             this.mSoftApConfig = softApConfig;
         }
 

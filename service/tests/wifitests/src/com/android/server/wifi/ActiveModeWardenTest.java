@@ -22,6 +22,7 @@ import static android.net.wifi.WifiManager.WIFI_AP_STATE_FAILED;
 import static android.net.wifi.WifiManager.WIFI_STATE_DISABLED;
 import static android.net.wifi.WifiManager.WIFI_STATE_DISABLING;
 import static android.net.wifi.WifiManager.WIFI_STATE_ENABLED;
+import static android.net.wifi.WifiManager.LOCAL_ONLY_HOTSPOT_TYPE_NONE;
 
 import static com.android.dx.mockito.inline.extended.ExtendedMockito.mockitoSession;
 import static com.android.server.wifi.ActiveModeManager.ROLE_CLIENT_LOCAL_ONLY;
@@ -493,7 +494,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
     private void enterSoftApActiveMode() throws Exception {
         enterSoftApActiveMode(
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
-                mSoftApCapability, TEST_COUNTRYCODE, null));
+                mSoftApCapability, TEST_COUNTRYCODE, null, LOCAL_ONLY_HOTSPOT_TYPE_NONE));
     }
 
     private int mTimesCreatedSoftApManager = 1;
@@ -1092,7 +1093,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
     public void doesntCallWifiServiceCallbackOnLOHSStateChanged() throws Exception {
         enterSoftApActiveMode(new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_LOCAL_ONLY, null, mSoftApCapability, TEST_COUNTRYCODE,
-                null));
+                null, LOCAL_ONLY_HOTSPOT_TYPE_NONE));
 
         mSoftApListener.onStarted(mSoftApManager);
         SoftApState softApState = new SoftApState(
@@ -1160,7 +1161,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         configBuilder.setSsid("ThisIsAConfig");
         SoftApModeConfiguration softApConfig = new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(), mSoftApCapability,
-                TEST_COUNTRYCODE, null);
+                TEST_COUNTRYCODE, null, LOCAL_ONLY_HOTSPOT_TYPE_NONE);
         enterSoftApActiveMode(softApConfig);
     }
 
@@ -1187,12 +1188,12 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         configBuilder1.setSsid("ThisIsAConfig");
         SoftApModeConfiguration softApConfig1 = new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, configBuilder1.build(),
-                mSoftApCapability, TEST_COUNTRYCODE, null);
+                mSoftApCapability, TEST_COUNTRYCODE, null, LOCAL_ONLY_HOTSPOT_TYPE_NONE);
         Builder configBuilder2 = new SoftApConfiguration.Builder();
         configBuilder2.setSsid("ThisIsASecondConfig");
         SoftApModeConfiguration softApConfig2 = new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, configBuilder2.build(),
-                mSoftApCapability, TEST_COUNTRYCODE, null);
+                mSoftApCapability, TEST_COUNTRYCODE, null, LOCAL_ONLY_HOTSPOT_TYPE_NONE);
 
         when(mSoftApManager.getSoftApModeConfiguration()).thenReturn(softApConfig1);
         doAnswer(new Answer<SoftApManager>() {
@@ -1389,12 +1390,12 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         when(mWifiInjector.getWifiApConfigStore()).thenReturn(mWifiApConfigStore);
         SoftApModeConfiguration tetherConfig =
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
-                mSoftApCapability, TEST_COUNTRYCODE, null);
+                mSoftApCapability, TEST_COUNTRYCODE, null, LOCAL_ONLY_HOTSPOT_TYPE_NONE);
         SoftApConfiguration lohsConfigWC = mWifiApConfigStore.generateLocalOnlyHotspotConfig(
                 mContext, null, mSoftApCapability, false);
         SoftApModeConfiguration lohsConfig =
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_LOCAL_ONLY, lohsConfigWC,
-                mSoftApCapability, TEST_COUNTRYCODE, null);
+                mSoftApCapability, TEST_COUNTRYCODE, null, LOCAL_ONLY_HOTSPOT_TYPE_NONE);
 
         // mock SoftAPManagers
         when(mSoftApManager.getRole()).thenReturn(ROLE_SOFTAP_TETHERED);
@@ -1733,7 +1734,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                         null,
                         mSoftApCapability,
                         TEST_COUNTRYCODE,
-                        null),
+                        null,
+                        LOCAL_ONLY_HOTSPOT_TYPE_NONE),
                 TEST_WORKSOURCE);
         mLooper.dispatchAll();
 
@@ -1787,7 +1789,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                         null,
                         mSoftApCapability,
                         TEST_COUNTRYCODE,
-                        null),
+                        null,
+                        LOCAL_ONLY_HOTSPOT_TYPE_NONE),
                 TEST_WORKSOURCE);
         mLooper.dispatchAll();
 
@@ -1846,7 +1849,8 @@ public class ActiveModeWardenTest extends WifiBaseTest {
                         null,
                         mSoftApCapability,
                         TEST_COUNTRYCODE,
-                        null),
+                        null,
+                        LOCAL_ONLY_HOTSPOT_TYPE_NONE),
                 TEST_WORKSOURCE);
         mLooper.dispatchAll();
 
@@ -2583,7 +2587,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         // try to start Soft AP
         mActiveModeWarden.startSoftAp(
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
-                mSoftApCapability, TEST_COUNTRYCODE, null), TEST_WORKSOURCE);
+                mSoftApCapability, TEST_COUNTRYCODE, null, LOCAL_ONLY_HOTSPOT_TYPE_NONE), TEST_WORKSOURCE);
         mLooper.dispatchAll();
 
         verify(mWifiInjector, never())
@@ -2603,7 +2607,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         // try to start LOHS
         mActiveModeWarden.startSoftAp(
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_LOCAL_ONLY, null,
-                mSoftApCapability, TEST_COUNTRYCODE, null), TEST_WORKSOURCE);
+                mSoftApCapability, TEST_COUNTRYCODE, null, LOCAL_ONLY_HOTSPOT_TYPE_NONE), TEST_WORKSOURCE);
         mLooper.dispatchAll();
 
         verify(mWifiInjector, never())
@@ -2652,7 +2656,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         // Turn on SoftAp.
         mActiveModeWarden.startSoftAp(
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
-                mSoftApCapability, TEST_COUNTRYCODE, null), TEST_WORKSOURCE);
+                mSoftApCapability, TEST_COUNTRYCODE, null, LOCAL_ONLY_HOTSPOT_TYPE_NONE), TEST_WORKSOURCE);
         mLooper.dispatchAll();
         verify(mWifiInjector)
                 .makeSoftApManager(any(), any(), any(), eq(TEST_WORKSOURCE), any(), anyBoolean());
@@ -2730,7 +2734,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
 
         mActiveModeWarden.startSoftAp(
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
-                mSoftApCapability, TEST_COUNTRYCODE, null), TEST_WORKSOURCE);
+                mSoftApCapability, TEST_COUNTRYCODE, null, LOCAL_ONLY_HOTSPOT_TYPE_NONE), TEST_WORKSOURCE);
         // add an "unexpected" sta mode stop to simulate a single interface device
         mClientListener.onStopped(mClientModeManager);
         mLooper.dispatchAll();
@@ -2766,7 +2770,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
 
         mActiveModeWarden.startSoftAp(
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
-                mSoftApCapability, TEST_COUNTRYCODE, null), TEST_WORKSOURCE);
+                mSoftApCapability, TEST_COUNTRYCODE, null, LOCAL_ONLY_HOTSPOT_TYPE_NONE), TEST_WORKSOURCE);
         mLooper.dispatchAll();
 
         when(mSettingsStore.isWifiToggleEnabled()).thenReturn(true);
@@ -5915,7 +5919,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         enterSoftApActiveMode();
         SoftApModeConfiguration config = new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, null, mSoftApCapability, TEST_COUNTRYCODE,
-                null);
+                null, LOCAL_ONLY_HOTSPOT_TYPE_NONE);
 
         mActiveModeWarden.restartSoftApForCcChange(config, TEST_WORKSOURCE);
         mLooper.dispatchAll();
@@ -5929,7 +5933,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         enterSoftApActiveMode();
         SoftApModeConfiguration config = new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, null, mSoftApCapability, TEST_COUNTRYCODE,
-                null);
+                null, LOCAL_ONLY_HOTSPOT_TYPE_NONE);
         mActiveModeWarden.restartSoftApForCcChange(config, TEST_WORKSOURCE);
         mLooper.dispatchAll();
         ArgumentCaptor<ActiveModeManager.Listener<SoftApManager>> softApListenerCaptor =
@@ -5950,7 +5954,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         enterSoftApActiveMode();
         SoftApModeConfiguration config = new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, null, mSoftApCapability, TEST_COUNTRYCODE,
-                null);
+                null, LOCAL_ONLY_HOTSPOT_TYPE_NONE);
         mActiveModeWarden.emergencyCallbackModeChanged(true);
         mActiveModeWarden.restartSoftApForCcChange(config, TEST_WORKSOURCE);
         mLooper.dispatchAll();
@@ -5964,7 +5968,7 @@ public class ActiveModeWardenTest extends WifiBaseTest {
         enterSoftApActiveMode();
         SoftApModeConfiguration config = new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, null, mSoftApCapability, TEST_COUNTRYCODE,
-                null);
+                null, LOCAL_ONLY_HOTSPOT_TYPE_NONE);
         mActiveModeWarden.restartSoftApForCcChange(config, TEST_WORKSOURCE);
         mLooper.dispatchAll();
         ArgumentCaptor<ActiveModeManager.Listener<SoftApManager>> softApListenerCaptor =

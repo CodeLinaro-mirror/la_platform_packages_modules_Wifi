@@ -56,7 +56,7 @@ public final class WifiAwareService extends SystemService {
             HalDeviceManager halDeviceManager = wifiInjector.getHalDeviceManager();
 
             WifiAwareStateManager wifiAwareStateManager = new WifiAwareStateManager(wifiInjector,
-                    new PairingConfigManager());
+                    wifiInjector.getPairingConfigManager());
             WifiAwareNativeCallback wifiAwareNativeCallback = new WifiAwareNativeCallback(
                     wifiAwareStateManager);
             WifiAwareNativeManager wifiAwareNativeManager = new WifiAwareNativeManager(
@@ -78,6 +78,21 @@ public final class WifiAwareService extends SystemService {
         } else if (phase == SystemService.PHASE_BOOT_COMPLETED) {
             mImpl.startLate();
         }
+    }
+
+    @Override
+    public void onUserSwitching(TargetUser from, TargetUser to) {
+        mImpl.handleUserSwitch(to.getUserHandle().getIdentifier());
+    }
+
+    @Override
+    public void onUserUnlocking(TargetUser user) {
+        mImpl.handleUserUnlock(user.getUserHandle().getIdentifier());
+    }
+
+    @Override
+    public void onUserStopping(TargetUser user) {
+        mImpl.handleUserStop(user.getUserHandle().getIdentifier());
     }
 }
 

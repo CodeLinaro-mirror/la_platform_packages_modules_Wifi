@@ -817,4 +817,30 @@ public class WifiAwareServiceImpl extends IWifiAwareManager.Stub {
     private void enforceNetworkStackPermission() {
         mContext.enforceCallingOrSelfPermission(Manifest.permission.NETWORK_STACK, TAG);
     }
+
+    private boolean checkNetworkStackPermission() {
+        return mContext.checkCallingOrSelfPermission(Manifest.permission.NETWORK_STACK)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * Handle user switch event
+     */
+    public void handleUserSwitch(int userId) {
+        mStateManager.handleUserSwitch(userId);
+    }
+
+    /**
+     * Handle user unlock event
+     */
+    public void handleUserUnlock(int userId) {
+        mStateManager.handleUserUnlock(userId);
+    }
+
+    /**
+     * Handle user stop event
+     */
+    public void handleUserStop(int userId) {
+        mStateManager.handleUserStop(userId);
+    }
 }

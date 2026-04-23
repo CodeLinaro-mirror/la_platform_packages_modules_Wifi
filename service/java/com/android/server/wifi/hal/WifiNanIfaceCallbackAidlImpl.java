@@ -437,7 +437,8 @@ public class WifiNanIfaceCallbackAidlImpl extends IWifiNanIfaceEventCallback.Stu
                         NanRangingIndication.fromAidl(event.rangingIndicationType),
                         event.rangingMeasurementInMm,
                         event.scid,
-                        toPublicDataPathCipherSuites(event.peerCipherType),
+                        toPublicDataPathCipherSuites(event.peerCipherType)
+                            | toPublicPairingCipherSuites(event.peerCipherType),
                         event.peerNira.nonce,
                         event.peerNira.tag,
                         createPublicPairingConfig(event.peerPairingConfig));
@@ -638,7 +639,7 @@ public class WifiNanIfaceCallbackAidlImpl extends IWifiNanIfaceEventCallback.Stu
             NpkSecurityAssociation npksa) {
         return new PairingSecurityAssociationInfo(npksa.peerNanIdentityKey,
                 npksa.localNanIdentityKey, npksa.npk,
-                createPublicPairingAkm(npksa.akm), toPublicDataPathCipherSuites(npksa.cipherType));
+                createPublicPairingAkm(npksa.akm), toPublicPairingCipherSuites(npksa.cipherType));
     }
 
     private static int createPublicPairingAkm(int aidlAkm) {

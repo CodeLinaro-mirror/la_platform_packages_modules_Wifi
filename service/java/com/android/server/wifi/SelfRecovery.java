@@ -85,7 +85,7 @@ public class SelfRecovery {
     private int mSelfRecoveryReason;
     private long mLastSelfRecoveryTimeStampMillis = -1L;
     // Self recovery state
-    private @RecoveryState int mRecoveryState;
+    private volatile @RecoveryState int mRecoveryState;
     private SubsystemRestartListenerInternal mSubsystemRestartListener;
 
     /**

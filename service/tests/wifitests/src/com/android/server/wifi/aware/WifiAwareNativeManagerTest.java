@@ -39,6 +39,7 @@ import androidx.test.filters.SmallTest;
 
 import com.android.server.wifi.HalDeviceManager;
 import com.android.server.wifi.MainlineSupplicantAidlManager;
+import com.android.server.wifi.SelfRecovery;
 import com.android.server.wifi.WifiBaseTest;
 import com.android.server.wifi.WifiInjector;
 import com.android.server.wifi.WifiNative;
@@ -75,6 +76,7 @@ public class WifiAwareNativeManagerTest extends WifiBaseTest {
     @Mock private AwareIfaceAidlSupplicantImpl mSupplicantNanIface;
     @Mock private WifiContext mContext;
     @Mock private PackageManager mPackageManager;
+    @Mock private SelfRecovery mSelfRecovery;
     private ArgumentCaptor<HalDeviceManager.ManagerStatusListener> mManagerStatusListenerCaptor =
             ArgumentCaptor.forClass(HalDeviceManager.ManagerStatusListener.class);
     private ArgumentCaptor<HalDeviceManager.InterfaceDestroyedListener>
@@ -96,11 +98,13 @@ public class WifiAwareNativeManagerTest extends WifiBaseTest {
         when(mWifiNanIfaceMock.registerFrameworkCallback(any())).thenReturn(true);
         when(mWifiInjector.getMainlineSupplicantAidlManager()).thenReturn(mMainlineSupplicant);
         when(mWifiInjector.getContext()).thenReturn(mContext);
+        when(mWifiInjector.getSelfRecovery()).thenReturn(mSelfRecovery);
         when(mContext.getPackageManager()).thenReturn(mPackageManager);
         when(mMainlineSupplicant.isInitializationComplete()).thenReturn(false);
         when(mMainlineSupplicant.getWifiNanIface(anyString())).thenReturn(mSupplicantNanIface);
         when(mMainlineSupplicant.startDaemon()).thenReturn(true);
         when(mFeatureFlags.wifiAwareSupplicantSolution()).thenReturn(false);
+        when(mSelfRecovery.isRecoveryInProgress()).thenReturn(false);
         when(mSupplicantNanIface.registerFrameworkCallback(any())).thenReturn(true);
         mDut = new WifiAwareNativeManager(mWifiAwareStateManagerMock, mHalDeviceManager,
                 mWifiAwareNativeCallback, mWifiNative, mFeatureFlags, mWifiInjector);

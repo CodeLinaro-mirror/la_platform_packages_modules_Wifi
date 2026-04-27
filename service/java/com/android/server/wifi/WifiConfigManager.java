@@ -340,10 +340,8 @@ public class WifiConfigManager {
     // Keep order of network connection.
     private final LruConnectionTracker mLruConnectionTracker;
     private final BuildProperties mBuildProperties;
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
     private final ConnectedFreqManager mConnectedFreqManager;
     private final ConnectedFreqManager.ConnectedFreqStoreData mConnectedFreqStoreData;
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
 
     /**
      * Local log used for debugging any WifiConfigManager issues.
@@ -374,9 +372,7 @@ public class WifiConfigManager {
      * will get used.
      */
     private final Map<String, String> mRandomizedMacAddressMapping;
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
     private final HashMap<String, HashMap<String,String>> mConnectedFreqMap;
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
 
     /**
      * Store the network update listeners.
@@ -505,9 +501,7 @@ public class WifiConfigManager {
         mUserTemporarilyDisabledList =
                 new MissingCounterTimerLockList<>(SCAN_RESULT_MISSING_COUNT_THRESHOLD, mClock);
         mRandomizedMacAddressMapping = new HashMap<>();
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mConnectedFreqMap = new HashMap<>();
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mListeners = new ArraySet<>();
         mNonCarrierMergedNetworksStatusTracker = new NonCarrierMergedNetworksStatusTracker(mClock);
         mNonCarrierMergedNetworksStatusTracker.setListener(
@@ -531,16 +525,12 @@ public class WifiConfigManager {
         mNetworkListSharedStoreData = networkListSharedStoreData;
         mNetworkListUserStoreData = networkListUserStoreData;
         mRandomizedMacStoreData = randomizedMacStoreData;
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mConnectedFreqManager = new ConnectedFreqManager(mClock, mContext);
         mConnectedFreqStoreData = mConnectedFreqManager.new ConnectedFreqStoreData();
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mWifiConfigStore.registerStoreData(mNetworkListSharedStoreData);
         mWifiConfigStore.registerStoreData(mNetworkListUserStoreData);
         mWifiConfigStore.registerStoreData(mRandomizedMacStoreData);
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mWifiConfigStore.registerStoreData(mConnectedFreqStoreData);
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
 
         mLocalLog = new LocalLog(
                 context.getSystemService(ActivityManager.class).isLowRamDevice() ? 128 : 256);
@@ -764,9 +754,7 @@ public class WifiConfigManager {
         mWifiConfigStore.enableVerboseLogging(mVerboseLoggingEnabled);
         mWifiKeyStore.enableVerboseLogging(mVerboseLoggingEnabled);
         mWifiBlocklistMonitor.enableVerboseLogging(mVerboseLoggingEnabled);
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mConnectedFreqManager.enableVerboseLogging(mVerboseLoggingEnabled);
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
     }
 
     /**
@@ -2153,9 +2141,7 @@ public class WifiConfigManager {
         // Stage the backup of the SettingsProvider package which backs this up.
         mBackupManagerProxy.notifyDataChanged();
         mWifiBlocklistMonitor.handleNetworkRemoved(config.SSID);
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mConnectedFreqManager.removeNetwork(config.getProfileKey());
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
 
         localLog("removeNetworkInternal: removed config."
                 + " netId=" + config.networkId
@@ -3018,9 +3004,7 @@ public class WifiConfigManager {
 
         WifiScoreCard.PerNetwork network = mWifiScoreCard.lookupNetwork(config.SSID);
         network.addFrequency(scanResult.frequency);
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mConnectedFreqManager.addFrequency(config.getProfileKey(), scanResult.frequency);
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         ScanDetailCache scanDetailCache = getOrCreateScanDetailCacheForNetwork(config);
         if (scanDetailCache == null) {
             Log.e(TAG, "Could not allocate scan cache for " + config.getPrintableSsid());
@@ -3794,9 +3778,7 @@ public class WifiConfigManager {
         mUserTemporarilyDisabledList.clear();
         mNonCarrierMergedNetworksStatusTracker.clear();
         mRandomizedMacAddressMapping.clear();
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mConnectedFreqMap.clear();
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mScanDetailCaches.clear();
         clearLastSelectedNetwork();
     }
@@ -3848,10 +3830,8 @@ public class WifiConfigManager {
      */
     private void loadInternalDataFromSharedStore(
             List<WifiConfiguration> configurations,
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
             Map<String, String> macAddressMapping,
             HashMap<String, HashMap<String, String>> connectedFreqListMap) {
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
 
         BitSet supportedFeatures = mWifiInjector.getActiveModeWarden()
                 .getPrimaryClientModeManager().getSupportedFeaturesBitSet();
@@ -3883,10 +3863,8 @@ public class WifiConfigManager {
             }
         }
         mRandomizedMacAddressMapping.putAll(macAddressMapping);
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mConnectedFreqMap.putAll(connectedFreqListMap);
         mConnectedFreqManager.addAll(connectedFreqListMap);
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
     }
 
     /**
@@ -3973,16 +3951,12 @@ public class WifiConfigManager {
     private void loadInternalData(
             List<WifiConfiguration> sharedConfigurations,
             List<WifiConfiguration> userConfigurations,
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
             Map<String, String> macAddressMapping,
             HashMap<String, HashMap<String, String>> connectedFreqListMap) {
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         // Clear out all the existing in-memory lists and load the lists from what was retrieved
         // from the config store.
         clearInternalData();
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         loadInternalDataFromSharedStore(sharedConfigurations, macAddressMapping, connectedFreqListMap);
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         loadInternalDataFromUserStore(userConfigurations);
         generateRandomizedMacAddresses();
         if (mConfiguredNetworks.sizeForAllUsers() == 0) {
@@ -4006,13 +3980,9 @@ public class WifiConfigManager {
         // On user builds, ignore the failure and let the user create new networks.
         Log.w(TAG, "Ignoring config store errors on user build");
         if (!onlyUserStore) {
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
             HashMap<String, HashMap<String, String>> freqMap = new HashMap<>();
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
             loadInternalData(Collections.emptyList(), Collections.emptyList(),
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
                     Collections.emptyMap(), freqMap);
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         } else {
             loadInternalDataFromUserStore(Collections.emptyList());
         }
@@ -4056,10 +4026,8 @@ public class WifiConfigManager {
         }
         loadInternalData(mNetworkListSharedStoreData.getConfigurations(),
                 mNetworkListUserStoreData.getConfigurations(),
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
                 mRandomizedMacStoreData.getMacMapping(),
                 mConnectedFreqStoreData.getFreqList());
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         return true;
     }
 
@@ -4097,13 +4065,11 @@ public class WifiConfigManager {
         return true;
     }
 
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
     public List<Integer> connectedFreqList(String configKey, long ageInMillis) {
         List<Integer> results = new ArrayList<>();
         results = mConnectedFreqManager.getConnectedFreqList(configKey, ageInMillis);
         return results;
     }
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
     /**
      * Save the current snapshot of the in-memory lists to the config store.
      *
@@ -4146,14 +4112,10 @@ public class WifiConfigManager {
         ArrayList<WifiConfiguration> userConfigurations = new ArrayList<>();
         // List of network IDs for legacy Passpoint configuration to be removed.
         List<Integer> legacyPasspointNetId = new ArrayList<>();
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mConnectedFreqMap.clear();
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         for (WifiConfiguration config : mConfiguredNetworks.valuesForAllUsers()) {
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
             HashMap<String, String> connectedFreqListMap = mConnectedFreqManager.getFrequencyListMap(config.getProfileKey());
             mConnectedFreqMap.put(config.getProfileKey(), connectedFreqListMap);
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
             // Ignore ephemeral networks and non-legacy Passpoint configurations.
             if (config.ephemeral || (config.isPasspoint() && !config.isLegacyPasspointConfig)) {
                 continue;
@@ -4198,9 +4160,7 @@ public class WifiConfigManager {
         mNetworkListSharedStoreData.setConfigurations(sharedConfigurations);
         mNetworkListUserStoreData.setConfigurations(userConfigurations);
         mRandomizedMacStoreData.setMacMapping(mRandomizedMacAddressMapping);
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         mConnectedFreqStoreData.setFreqList(mConnectedFreqMap);
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
 
         try {
             long start = mClock.getElapsedSinceBootMillis();

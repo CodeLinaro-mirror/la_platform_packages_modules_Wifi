@@ -17,20 +17,21 @@
 package com.android.server.wifi.ml_connected_scorer;
 
 import static com.android.server.wifi.ConnectedScorer.WIFI_MAX_SCORE;
+import static com.android.server.wifi.ml_connected_scorer.Flags.EXIT_DATA_STALL_COUNT;
+import static com.android.server.wifi.ml_connected_scorer.Flags.EXIT_DATA_STALL_SPEED_THRESHOLD_KBPS;
 import static com.android.server.wifi.ml_connected_scorer.Flags.HYSTERESIS_NETWORK_STATUS_CHANGE_MILLIS;
 import static com.android.server.wifi.ml_connected_scorer.Flags.MIN_TIME_TO_WAIT_BEFORE_BLOCK_BSSID_MILLIS;
-import static com.android.server.wifi.proto.nano.WifiMetricsProto.WifiIsUnusableEvent.TYPE_UNKNOWN;
 import static com.android.server.wifi.proto.nano.WifiMetricsProto.WifiIsUnusableEvent.TYPE_DATA_STALL_BAD_TX;
-import static com.android.server.wifi.proto.nano.WifiMetricsProto.WifiIsUnusableEvent.TYPE_DATA_STALL_TX_WITHOUT_RX;
 import static com.android.server.wifi.proto.nano.WifiMetricsProto.WifiIsUnusableEvent.TYPE_DATA_STALL_BOTH;
+import static com.android.server.wifi.proto.nano.WifiMetricsProto.WifiIsUnusableEvent.TYPE_DATA_STALL_TX_WITHOUT_RX;
 import static com.android.server.wifi.proto.nano.WifiMetricsProto.WifiIsUnusableEvent.TYPE_FIRMWARE_ALERT;
 import static com.android.server.wifi.proto.nano.WifiMetricsProto.WifiIsUnusableEvent.TYPE_IP_REACHABILITY_LOST;
-
+import static com.android.server.wifi.proto.nano.WifiMetricsProto.WifiIsUnusableEvent.TYPE_UNKNOWN;
 import static com.google.common.truth.Truth.assertThat;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -46,7 +47,7 @@ import android.util.SparseArray;
 import androidx.test.filters.SmallTest;
 
 import com.android.server.wifi.ConnectedScoreResult;
-
+import com.android.wifi.flags.FeatureFlags;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
@@ -70,12 +71,13 @@ public final class MlConnectedScorerTest {
     @Mock WifiUsabilityClassifier mMockClassifier;
     @Mock WifiUsabilityClassifierFactory mMockFactory;
     @Mock MlConnectedScorerHelper mMockHelper;
+    @Mock FeatureFlags mMockFeatureFlags;
     @Mock WifiInfo mMockWifiInfo;
 
     @Before
     public void setUp() {
         MockitoAnnotations.initMocks(this);
-        mScorer = new MlConnectedScorer(mMockFactory, mMockHelper);
+        mScorer = new MlConnectedScorer(mMockFactory, mMockHelper, mMockFeatureFlags);
         when(mMockFactory.getClassifier(anyInt())).thenReturn(mMockClassifier);
         when(mMockClassifier.calculateScore(any())).thenReturn(TEST_MODEL_SCORE);
         when(mMockHelper.isTimeStampGapTooLarge(any(WifiUsabilityStatsEntry.class),
@@ -98,42 +100,116 @@ public final class MlConnectedScorerTest {
 
     @Test
     public void generateScoreResult_dataStallBadTx_wifiUnusable() {
+        when(mMockFeatureFlags.handleL2DataStallInMlScorer()).thenReturn(true);
         WifiUsabilityStatsEntry stats = getUsabilityStats(TIME_STAMP_MS, TYPE_DATA_STALL_BAD_TX);
         ConnectedScoreResult result = mScorer.generateScoreResult(mMockWifiInfo,
                 stats, TIME_STAMP_MS, true);
         assertEquals(0, result.adjustedScore());
         assertFalse(result.isWifiUsable());
+        assertTrue(result.shouldTriggerScan());
+    }
+
+    @Test
+    public void generateScoreResult_continuousDataStallBadTx_wifiAlwaysUnusable() {
+        when(mMockFeatureFlags.handleL2DataStallInMlScorer()).thenReturn(true);
+        for (int i = 0; i < 20; i++) {
+            WifiUsabilityStatsEntry stats =
+                    getUsabilityStats(TIME_STAMP_MS, TYPE_DATA_STALL_BAD_TX);
+            ConnectedScoreResult result = mScorer.generateScoreResult(mMockWifiInfo,
+                    stats, TIME_STAMP_MS, true);
+            assertEquals(0, result.adjustedScore());
+            assertFalse(result.isWifiUsable());
+            assertTrue(result.shouldTriggerScan());
+        }
+    }
+
+    @Test
+    public void generateScoreResult_dataStallBadTx_wifiUnusable_notRecover() {
+        when(mMockFeatureFlags.handleL2DataStallInMlScorer()).thenReturn(true);
+        WifiUsabilityStatsEntry stats = getUsabilityStats(TIME_STAMP_MS, TYPE_DATA_STALL_BAD_TX);
+        ConnectedScoreResult result = mScorer.generateScoreResult(mMockWifiInfo,
+                stats, TIME_STAMP_MS, true);
+        assertEquals(0, result.adjustedScore());
+        assertFalse(result.isWifiUsable());
+        assertTrue(result.shouldTriggerScan());
+
+        when(mMockWifiInfo.getCalculatedTxKbps())
+                .thenReturn(EXIT_DATA_STALL_SPEED_THRESHOLD_KBPS - 1);
+        when(mMockWifiInfo.getCalculatedRxKbps())
+                .thenReturn(EXIT_DATA_STALL_SPEED_THRESHOLD_KBPS - 1);
+        for (int i = 0; i < 20; i++) {
+            stats = getUsabilityStats(TIME_STAMP_MS, TYPE_UNKNOWN);
+            result = mScorer.generateScoreResult(mMockWifiInfo,
+                    stats, TIME_STAMP_MS + i * THREE_SECONDS_MS, true);
+            assertEquals("i=" + i, 0, result.adjustedScore());
+            assertFalse(result.isWifiUsable());
+            assertTrue(result.shouldTriggerScan());
+        }
+    }
+
+    @Test
+    public void generateScoreResult_dataStallBadTx_wifiUnusable_thenRecover() {
+        when(mMockFeatureFlags.handleL2DataStallInMlScorer()).thenReturn(true);
+        WifiUsabilityStatsEntry stats = getUsabilityStats(TIME_STAMP_MS, TYPE_DATA_STALL_BAD_TX);
+        ConnectedScoreResult result = mScorer.generateScoreResult(mMockWifiInfo,
+                stats, TIME_STAMP_MS, true);
+        assertEquals(0, result.adjustedScore());
+        assertFalse(result.isWifiUsable());
+        assertTrue(result.shouldTriggerScan());
+
+        when(mMockWifiInfo.getCalculatedTxKbps()).thenReturn(EXIT_DATA_STALL_SPEED_THRESHOLD_KBPS);
+        when(mMockWifiInfo.getCalculatedRxKbps()).thenReturn(EXIT_DATA_STALL_SPEED_THRESHOLD_KBPS);
+        for (int i = 0; i < EXIT_DATA_STALL_COUNT - 1; i++) {
+            stats = getUsabilityStats(TIME_STAMP_MS, TYPE_UNKNOWN);
+            result = mScorer.generateScoreResult(mMockWifiInfo,
+                    stats, TIME_STAMP_MS + i * THREE_SECONDS_MS, true);
+            assertEquals("i=" + i, 0, result.adjustedScore());
+            assertFalse(result.isWifiUsable());
+            assertTrue(result.shouldTriggerScan());
+        }
+        stats = getUsabilityStats(TIME_STAMP_MS, TYPE_UNKNOWN);
+        result = mScorer.generateScoreResult(mMockWifiInfo,
+                stats, TIME_STAMP_MS + 2 * THREE_SECONDS_MS, true);
+        assertNotEquals(0, result.adjustedScore());
+        assertTrue(result.isWifiUsable());
+        assertFalse(result.shouldTriggerScan());
     }
 
     @Test
     public void generateScoreResult_dataStallBadTx_wifiAlwaysUnusable() {
+        when(mMockFeatureFlags.handleL2DataStallInMlScorer()).thenReturn(true);
         WifiUsabilityStatsEntry stats = getUsabilityStats(TIME_STAMP_MS, TYPE_DATA_STALL_BAD_TX);
         ConnectedScoreResult result = mScorer.generateScoreResult(mMockWifiInfo,
                 stats, TIME_STAMP_MS, true);
         assertEquals(0, result.adjustedScore());
         assertFalse(result.isWifiUsable());
+        assertTrue(result.shouldTriggerScan());
 
         for (int i = 1; i < 20; i++) {
             stats = getUsabilityStats(TIME_STAMP_MS, TYPE_UNKNOWN);
             result = mScorer.generateScoreResult(mMockWifiInfo,
                     stats, TIME_STAMP_MS + i * THREE_SECONDS_MS, true);
-            assertEquals(0, result.adjustedScore());
+            assertEquals("i=" + i, 0, result.adjustedScore());
             assertFalse(result.isWifiUsable());
+            assertTrue(result.shouldTriggerScan());
         }
     }
 
     @Test
     public void generateScoreResult_dataStallTxWithoutRx_wifiUnusable() {
+        when(mMockFeatureFlags.handleL2DataStallInMlScorer()).thenReturn(true);
         WifiUsabilityStatsEntry stats = getUsabilityStats(TIME_STAMP_MS,
                 TYPE_DATA_STALL_TX_WITHOUT_RX);
         ConnectedScoreResult result = mScorer.generateScoreResult(mMockWifiInfo,
                 stats, TIME_STAMP_MS, true);
         assertEquals(0, result.adjustedScore());
         assertFalse(result.isWifiUsable());
+        assertTrue(result.shouldTriggerScan());
     }
 
     @Test
     public void generateScoreResult_dataStallTxWithoutRx_wifiUnusableThenUsable() {
+        when(mMockFeatureFlags.handleL2DataStallInMlScorer()).thenReturn(true);
         WifiUsabilityStatsEntry stats = getUsabilityStats(TIME_STAMP_MS,
                 TYPE_DATA_STALL_TX_WITHOUT_RX);
         ConnectedScoreResult result = mScorer.generateScoreResult(mMockWifiInfo,
@@ -149,33 +225,40 @@ public final class MlConnectedScorerTest {
                 stats, TIME_STAMP_MS + THREE_SECONDS_MS, true);
         assertNotEquals(0, result.adjustedScore());
         assertTrue(result.isWifiUsable());
+        assertFalse(result.shouldTriggerScan());
     }
 
     @Test
     public void generateScoreResult_dataStallBoth_wifiUnusable() {
+        when(mMockFeatureFlags.handleL2DataStallInMlScorer()).thenReturn(true);
         WifiUsabilityStatsEntry stats = getUsabilityStats(TIME_STAMP_MS, TYPE_DATA_STALL_BOTH);
         ConnectedScoreResult result = mScorer.generateScoreResult(mMockWifiInfo,
                 stats, TIME_STAMP_MS, true);
         assertEquals(0, result.adjustedScore());
         assertFalse(result.isWifiUsable());
+        assertTrue(result.shouldTriggerScan());
     }
 
     @Test
     public void generateScoreResult_firmwareAlert_wifiUnusable() {
+        when(mMockFeatureFlags.handleL2DataStallInMlScorer()).thenReturn(true);
         WifiUsabilityStatsEntry stats = getUsabilityStats(TIME_STAMP_MS, TYPE_FIRMWARE_ALERT);
         ConnectedScoreResult result = mScorer.generateScoreResult(mMockWifiInfo,
                 stats, TIME_STAMP_MS, true);
         assertEquals(0, result.adjustedScore());
         assertFalse(result.isWifiUsable());
+        assertTrue(result.shouldTriggerScan());
     }
 
     @Test
     public void generateScoreResult_ipReachabilityLost_wifiUnusable() {
+        when(mMockFeatureFlags.handleL2DataStallInMlScorer()).thenReturn(true);
         WifiUsabilityStatsEntry stats = getUsabilityStats(TIME_STAMP_MS, TYPE_IP_REACHABILITY_LOST);
         ConnectedScoreResult result = mScorer.generateScoreResult(mMockWifiInfo,
                 stats, TIME_STAMP_MS, true);
         assertEquals(0, result.adjustedScore());
         assertFalse(result.isWifiUsable());
+        assertTrue(result.shouldTriggerScan());
     }
 
     @Test

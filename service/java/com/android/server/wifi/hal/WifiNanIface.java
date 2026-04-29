@@ -800,16 +800,21 @@ public class WifiNanIface implements WifiHal.WifiInterface {
         /**
          * Indicates that a data-path (NDP) setup has been completed. Received by both the
          * Initiator and Responder.
-         * @param status Status the operation (see {@link NanStatusCode}).
-         * @param ndpInstanceId ID of the data-path.
+         *
+         * @param status               Status the operation (see {@link NanStatusCode}).
+         * @param ndpInstanceId        ID of the data-path.
          * @param dataPathSetupSuccess Indicates whether the data-path setup succeeded (true)
          *                             or failed (false).
-         * @param peerNdiMacAddr MAC address of the peer's data-interface (not its
-         *                       management/discovery interface).
-         * @param appInfo Arbitrary information communicated from the peer as part of the
-         *                data-path setup process. There is no semantic meaning to  these bytes.
-         *                They are passed from sender to receiver as-is with no parsing.
-         * @param channelInfos
+         * @param peerNdiMacAddr       MAC address of the peer's data-interface (not its
+         *                             management/discovery interface).
+         * @param appInfo              Arbitrary information communicated from the peer as part of
+         *                             the
+         *                             data-path setup process. There is no semantic meaning to
+         *                             these bytes.
+         *                             They are passed from sender to receiver as-is with no
+         *                             parsing.
+         * @param channelInfos         Channel information for the data-path.
+         *
          */
         void eventDataPathConfirm(int status, int ndpInstanceId, boolean dataPathSetupSuccess,
                 byte[] peerNdiMacAddr, byte[] appInfo, List<WifiAwareChannelInfo> channelInfos);
@@ -842,8 +847,7 @@ public class WifiNanIface implements WifiHal.WifiInterface {
          * Indicates that the pairing is finished
          */
         void eventPairingConfirm(int pairingId, boolean accept, int reason, int requestType,
-                boolean enableCache,
-                PairingConfigManager.PairingSecurityAssociationInfo npksa);
+                boolean enableCache);
 
         /**
          * Indicates that the bootstrapping request is from the peer device.
@@ -862,6 +866,14 @@ public class WifiNanIface implements WifiHal.WifiInterface {
          * the suspension mode
          */
         void eventSuspensionModeChanged(boolean isSuspended);
+
+        /**
+         * Indicates that the security association has been received. Will be used for pairing
+         * verification
+         */
+        void eventPairingSecurityAssociationReceived(int pairId,
+                PairingConfigManager.PairingSecurityAssociationInfo npksa);
+
 
         /**
          * Invoked when ranging results are available.

@@ -1006,7 +1006,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     private void registerBroadcastReceiver(@Nullable BroadcastReceiver receiver,
             IntentFilter filter, @Nullable String broadcastPermission,
             @Nullable Handler scheduler) {
-        if (mFeatureFlags.monitorIntentForAllUsers()) {
+        if (mFeatureFlags.monitorIntentForAllUsers() && Environment.isSdkAtLeastC()) {
             mContext.registerReceiverForAllUsers(receiver, filter, broadcastPermission, scheduler);
         } else {
             mContext.registerReceiver(receiver, filter, broadcastPermission, scheduler);
@@ -4932,7 +4932,8 @@ public class WifiServiceImpl extends IWifiManager.Stub {
         if (!SdkLevel.isAtLeastS()) {
             throw new UnsupportedOperationException();
         }
-        if (!isSettingsOrSuw(Binder.getCallingPid(), Binder.getCallingUid())) {
+        int uid = Binder.getCallingUid();
+        if (!isSettingsOrSuw(Binder.getCallingPid(), uid)) {
             throw new SecurityException(TAG + ": Permission denied");
         }
 
@@ -4957,13 +4958,13 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                 ConcreteClientModeManager cmm = (ConcreteClientModeManager) clientModeManager;
                 if ((cmm.getRole() == ROLE_CLIENT_SECONDARY_LONG_LIVED && cmm.isSecondaryInternet())
                         || cmm.getRole() == ROLE_CLIENT_SECONDARY_TRANSIENT) {
-                    clientModeManager.disconnect();
+                    clientModeManager.disconnect(uid);
                 }
             }
             // Disconnect the primary CMM last to avoid STA+STA features handling the
             // primary STA disconnecting (such as promoting the secondary to primary), potentially
             // resulting in messy and unexpected state transitions.
-            mActiveModeWarden.getPrimaryClientModeManager().disconnect();
+            mActiveModeWarden.getPrimaryClientModeManager().disconnect(uid);
         }, TAG + "#startRestrictingAutoJoinToSubscriptionId");
     }
 
@@ -6726,6 +6727,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                     mWifiCarrierInfoManager.clear();
                     notifyFactoryReset();
                     mContext.resetResourceCache();
+                    mWifiInjector.getPairingConfigManager().reset();
                 }, TAG + "#factoryReset3");
     }
 

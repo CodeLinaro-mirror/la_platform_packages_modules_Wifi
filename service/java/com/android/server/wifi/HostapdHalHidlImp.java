@@ -243,7 +243,7 @@ public class HostapdHalHidlImp implements IHostapdHal {
     @Override
     public boolean isApInfoCallbackSupported() {
         synchronized (mLock) {
-            return isV1_3() || useVendorHostapdHal();
+            return isV1_3();
         }
     }
 
@@ -426,6 +426,32 @@ public class HostapdHalHidlImp implements IHostapdHal {
             }
             mSoftApHalCallbacks.put(ifaceName, listener);
             Log.i(TAG, "registerApCallback Successful in " + ifaceName);
+            return true;
+        }
+    }
+
+    /**
+     * Register the provided callback handler for SoftAp events on the specified iface from
+     * vendor hal interface.
+     * <p>
+     * Note that only one callback can be registered per iface at a time - any registration on the
+     * same iface overrides previous registrations.
+     *
+     * @param ifaceName Name of the interface.
+     * @param listener Callback listener for AP events.
+     * @return true on success, false on failure.
+     */
+    @Override
+    public boolean registerApVendorCallback(@NonNull String ifaceName,
+            @NonNull SoftApHalCallback listener) {
+        synchronized (mLock) {
+            if (listener == null) {
+                Log.e(TAG, "registerApVendorCallback called with a null callback");
+                return false;
+            }
+
+            mSoftApHalCallbacks.put(ifaceName, listener);
+            Log.i(TAG, "registerApVendorCallback Successful in " + ifaceName);
             return true;
         }
     }

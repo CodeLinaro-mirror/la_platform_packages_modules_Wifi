@@ -1213,6 +1213,31 @@ public final class ScanResult implements Parcelable {
     }
 
     /**
+     * Returns the band type for the ScanResult according to its frequency.
+     * @hide
+     * return 0 means 2.4G band
+     * return 1 means 5G or 6G band
+     * return 2 means other band expect 2.4G/5G/6G band
+     */
+    public static int toBandType(int frequency) {
+        if (ScanResult.is24GHz(frequency)) {
+            return 0;
+        } else if (ScanResult.is5GHz(frequency)
+            || ScanResult.is6GHz(frequency)) {
+            return 1;
+        }
+        return 2;
+    }
+
+    /**
+     * Returns the band type for the ScanResult according to its frequency.
+     * @hide
+     */
+    public int getBandType() {
+        return ScanResult.toBandType(this.frequency);
+    }
+
+    /**
      * @hide
      */
     public boolean is24GHz() {

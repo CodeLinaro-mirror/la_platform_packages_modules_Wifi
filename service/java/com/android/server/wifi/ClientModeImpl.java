@@ -227,6 +227,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private static final int DISASSOC_AP_BUSY_DISABLE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
     @VisibleForTesting public static final long CONNECTING_WATCHDOG_TIMEOUT_MS = 30_000; // 30 secs.
     @VisibleForTesting public static final long CONNECTING_WATCHDOG_SHORT_TIMEOUT_MS = 8_000;
+    private static final int TIME_WAIT_FOR_DICONNECT_COMPLETE_MS = 200;
     public static final int PROVISIONING_TIMEOUT_FILS_CONNECTION_MS = 36_000; // 36 secs.
     private static final float LINK_SPEED_UPDATE_THRESHOLD = 0.20f;
     @VisibleForTesting
@@ -307,6 +308,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     private ConnectivityDiagnosticsManager mConnectivityDiagnosticsManager;
 
     private boolean mFailedToResetMacAddress = false;
+    private boolean mMacRandomizationPending = false;
     private int mLastSignalLevel = -1;
     private int mLastTxKbps = -1;
     private int mLastRxKbps = -1;
@@ -624,6 +626,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     @VisibleForTesting
     static final int CMD_REJECT_EAP_INSECURE_CONNECTION                 = BASE + 302;
+    /**
+     * Delayed MAC randomization to avoid aborting initial scan.
+     */
+    static final int CMD_DELAYED_MAC_RANDOMIZATION                      = BASE + 303;
 
     /* Tracks if suspend optimizations need to be disabled by DHCP,
      * screen or due to high perf mode.
@@ -4926,11 +4932,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             Log.d(getTag(), "entering ConnectableState: ifaceName = " + mInterfaceName);
             setSuspendOptimizationsNative(SUSPEND_DUE_TO_HIGH_PERF, true);
             if (mWifiGlobals.isConnectedMacRandomizationEnabled()) {
-                mFailedToResetMacAddress = !mWifiNative.setStaMacAddress(
-                        mInterfaceName, MacAddressUtils.createRandomUnicastAddress());
-                if (mFailedToResetMacAddress) {
-                    Log.e(getTag(), "Failed to set random MAC address on ClientMode creation");
-                }
+                mMacRandomizationPending = true;
+                sendMessageDelayed(CMD_DELAYED_MAC_RANDOMIZATION, 30_000);
             }
             mWifiInfo.setMacAddress(mWifiNative.getMacAddress(mInterfaceName));
             updateCurrentConnectionInfo();
@@ -4994,6 +4997,20 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         @Override
         public boolean processMessageImpl(Message message) {
             switch (message.what) {
+                case CMD_DELAYED_MAC_RANDOMIZATION:
+                    if (mMacRandomizationPending) {
+                        mMacRandomizationPending = false;
+                        if (getCurrentState() == mDisconnectedState) {
+                            // Randomize MAC only if still not connected to wifi
+                            mFailedToResetMacAddress = !mWifiNative.setStaMacAddress(
+                                    mInterfaceName, MacAddressUtils.createRandomUnicastAddress());
+                            if (mFailedToResetMacAddress) {
+                                Log.e(getTag(), "Failed to set random MAC address after delay");
+                            }
+                            mWifiInfo.setMacAddress(mWifiNative.getMacAddress(mInterfaceName));
+                        }
+                    }
+                    break;
                 case CMD_IPCLIENT_CREATED:
                     if (!isFromCurrentIpClientCallbacks(message)) break;
                     if (mIpClient != null) {
@@ -6032,6 +6049,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     }
                     if (state == SupplicantState.COMPLETED) {
                         mWifiScoreReport.noteNudCheck();
+                    }
+                    if (state == SupplicantState.ASSOCIATED) {
+                        boolean mIsDisconnect = mWifiConnectivityManager.disconnectSecondaryClientIfNecessary(isPrimary(), stateChangeResult.frequencyMhz);
+                        Log.d(TAG, "SecondarySTA should be disconnected: " + mIsDisconnect);
                     }
                     break;
                 }
@@ -8242,7 +8263,29 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
      * @param bssid BSSID of the network
      */
     public void startConnectToNetwork(int networkId, int uid, String bssid) {
+        if (mClientModeManager.getRole() == ROLE_CLIENT_PRIMARY) {
+            WifiConfiguration config =
+                    mWifiConfigManager.getConfiguredNetworkWithoutMasking(networkId);
+            //Before disconnecting 2nd STA, need to know the freq of selected candidate network
+            //Here do the selecting candidate before handling CMD_START_CONNECT, otherwise
+            //it could not make sure disconnect 2nd STA completed before primary STA prepare to connect
+            //since selecting condidate is followed by connecting candidate.
+            selectCandidateBeforePrepareToConnect(config);
+            if (mWifiConnectivityManager.disconnectSecondaryClientIfNecessary(
+                    mWifiConfigManager.getConfiguredNetworkWithoutMasking(networkId))){
+                Log.d(TAG, "Need to disconnect 2nd STA before connection");
+                //delay to make sure disconnect 2nd STA completed before primary STA prepare to connect
+                sendMessageDelayed(CMD_START_CONNECT, networkId, uid, bssid, TIME_WAIT_FOR_DICONNECT_COMPLETE_MS);
+                return;
+            }
+
+        }
         sendMessage(CMD_START_CONNECT, networkId, uid, bssid);
+    }
+
+    void selectCandidateBeforePrepareToConnect(WifiConfiguration config) {
+        List<ScanResult> scanResults = mScanRequestProxy.getScanResults();
+        selectCandidateSecurityParamsIfNecessary(config, scanResults);
     }
 
     /**

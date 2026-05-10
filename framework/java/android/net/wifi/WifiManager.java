@@ -2054,6 +2054,12 @@ public class WifiManager {
      */
     private static final int MAX_ACTIVE_LOCKS = 50;
 
+    /**
+     * Maximum length for the WifiLock or MulticastLock tag.
+     * @hide
+     */
+    public static final int MAX_LOCK_TAG_LENGTH = 255;
+
     /** Indicates an invalid SSID. */
     public static final String UNKNOWN_SSID = "<unknown ssid>";
 
@@ -8528,6 +8534,9 @@ public class WifiManager {
         private WorkSource mWorkSource;
 
         private WifiLock(int lockType, String tag) {
+            if (tag != null && tag.length() > MAX_LOCK_TAG_LENGTH) {
+                Log.w(TAG, "Lock tag exceeds max length " + MAX_LOCK_TAG_LENGTH);
+            }
             mTag = tag;
             mLockType = lockType;
             mBinder = new Binder();
@@ -8707,7 +8716,7 @@ public class WifiManager {
      * @param tag a tag for the WifiLock to identify it in debugging messages.  This string is
      *            never shown to the user under normal conditions, but should be descriptive
      *            enough to identify your application and the specific WifiLock within it, if it
-     *            holds multiple WifiLocks.
+     *            holds multiple WifiLocks. The maximum string length is 255.
      *
      * @return a new, unacquired WifiLock with the given tag.
      *
@@ -8888,7 +8897,7 @@ public class WifiManager {
      * @param tag a tag for the WifiLock to identify it in debugging messages.  This string is
      *            never shown to the user under normal conditions, but should be descriptive
      *            enough to identify your application and the specific WifiLock within it, if it
-     *            holds multiple WifiLocks.
+     *            holds multiple WifiLocks. The maximum string length is 255.
      *
      * @return a new, unacquired WifiLock with the given tag.
      *
@@ -8909,6 +8918,7 @@ public class WifiManager {
      *            normal conditions, but should be descriptive enough to
      *            identify your application and the specific MulticastLock
      *            within it, if it holds multiple MulticastLocks.
+     *            The maximum string length is 255.
      *
      * @return a new, unacquired MulticastLock with the given tag.
      *
@@ -8934,6 +8944,9 @@ public class WifiManager {
         private boolean mHeld;
 
         private MulticastLock(String tag) {
+            if (tag != null && tag.length() > MAX_LOCK_TAG_LENGTH) {
+                Log.w(TAG, "Lock tag exceeds max length " + MAX_LOCK_TAG_LENGTH);
+            }
             mTag = tag;
             mBinder = new Binder();
             mRefCount = 0;

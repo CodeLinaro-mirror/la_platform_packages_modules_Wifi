@@ -199,6 +199,7 @@ public class WifiConnectivityManager {
     private boolean mVerboseLoggingEnabled = false;
     private boolean mWifiEnabled = false;
     private boolean mAutoJoinEnabled = false; // disabled by default, enabled by external triggers
+    private int  mScanResultCount = 0;
     private boolean mRunning = false;
     private boolean mScreenOn = false;
     private int mWifiState = WIFI_STATE_UNKNOWN;
@@ -777,6 +778,34 @@ public class WifiConnectivityManager {
                     candidatesPartitioned.getOrDefault(false, Collections.emptyList());
             List<WifiCandidates.Candidate> secondaryCmmCandidates =
                     candidatesPartitioned.getOrDefault(true, Collections.emptyList());
+            // As customer required, oem paid/private network for secondary STA should have different
+            // band with primary connected STA, add check if primary STA had connected, the candidates
+            // for secondary STA should avoid to in same band as primary STA.
+            if (mContext.getResources().getBoolean(
+                    R.bool.config_wifiAllowConnectPolicyForDualStation)) {
+                //mScanResultCount has 3 values: 0, 1, 2
+                //0 means wifi disable
+                //1 means 1st scan result after wifi enable, need to clear candidates for 2nd STA
+                //when wifi enable auto-join to avoid band confliction with primary STA
+                //2 means 2nd and afterwards scan result after wifi enable
+                if (mScanResultCount < 2)
+                    mScanResultCount++;
+                final ConcreteClientModeManager primaryCcm = mActiveModeWarden
+                        .getPrimaryClientModeManagerNullable();
+                if (primaryCcm != null && (primaryCcm.isConnecting() || primaryCcm.isConnected())) {
+                    final WifiInfo primaryInfo = primaryCcm.getConnectionInfo();
+                    final int primaryBandType = ScanResult.toBandType(primaryInfo.getFrequency());
+                    secondaryCmmCandidates = secondaryCmmCandidates.stream()
+                            .filter(c -> ScanResult.toBandType(c.getFrequency()) != primaryBandType)
+                            .collect(Collectors.toList());
+                    Log.d(TAG, "Filter out the candidates for secondary STA which band type same as first STA connected");
+                }
+                if ((mScanResultCount == 1) && (mAutoJoinEnabled == true) && (primaryCmmCandidates.size() != 0)) {
+                    secondaryCmmCandidates.clear();
+                    Log.d(TAG, "clear candidates for 2nd STA to avoid band confliction with primary STA");
+                }
+            }
+
             // Some oem paid/private suggestions found, use secondary cmm flow.
             if (!secondaryCmmCandidates.isEmpty()) {
                 handleCandidatesFromScanResultsUsingSecondaryCmmIfAvailable(
@@ -2724,8 +2753,7 @@ public class WifiConnectivityManager {
                 mWifiMetrics.enterDeviceMobilityState(newState);
             }
         }
-        if (mScreenOn && newState == WifiManager.DEVICE_MOBILITY_STATE_STATIONARY
-                && Flags.scanOptimizationWithMobilityChange()) {
+        if (mScreenOn && newState == WifiManager.DEVICE_MOBILITY_STATE_STATIONARY) {
             startConnectivityScan(false);
         }
     }
@@ -3761,6 +3789,7 @@ public class WifiConnectivityManager {
         localLog("Set WiFi " + (enable ? "enabled" : "disabled"));
 
         if (!enable) {
+            mScanResultCount = 0;
             resetOnWifiDisable();
         }
         mWifiEnabled = enable;
@@ -3864,4 +3893,123 @@ public class WifiConnectivityManager {
         mExternalPnoScanRequestManager.dump(fd, pw, args);
         mConnectivityHelper.dump(fd, pw, args);
     }
+
+    /**
+     * Disconnect secondary STA if a primary STA is going to connect with AP that is
+     * on same band with secondary STA. Please note There is a prerequisite: this
+     * function works depends on find the primaryCmmCandidate in scan results based on
+     * targetNetwork
+     */
+    public boolean disconnectSecondaryClientIfNecessary(WifiConfiguration targetNetwork) {
+        boolean needDisconnect = false;
+        ScanResult primaryCmmCandidate = null;
+        WifiInfo primaryInfo;
+        WifiInfo secondaryInfo;
+        //5G band and 6G band belong to one band type
+        int primaryBandType;
+        int secondaryBandType;
+        if (!mContext.getResources().getBoolean(
+                R.bool.config_wifiAllowConnectPolicyForDualStation))
+            return needDisconnect;
+
+        // If secondary connection is not oem paid/private, return false
+        if (!((mOemPaidConnectionAllowed || mOemPrivateConnectionAllowed)
+                && mActiveModeWarden.isStaStaConcurrencySupportedForRestrictedConnections()))
+            return needDisconnect;
+
+        final ConcreteClientModeManager primaryCcm = mActiveModeWarden
+                .getPrimaryClientModeManagerNullable();
+        final ConcreteClientModeManager secondaryCcm = mActiveModeWarden
+                .getClientModeManagerInRole(ROLE_CLIENT_SECONDARY_LONG_LIVED);
+
+        if (targetNetwork != null)
+            primaryCmmCandidate = targetNetwork.getNetworkSelectionStatus().getCandidate();
+
+        if (secondaryCcm != null &&
+                (secondaryCcm.isConnecting() || secondaryCcm.isConnected())) {
+            secondaryInfo = secondaryCcm.getConnectionInfo();
+           /* If secondary STA has two multi links, then disconnect directly since
+            * wifi chip supports up to two band simultaneously. Once secondary STA
+            * has two links, it will occupy two band, then it will conflict with
+            * primary STA.
+            */
+            if (secondaryInfo.getAssociatedMloLinks().size() == 2) {
+                Log.d(TAG, "2nd STA has two Mlo links, need to disconnect");
+                needDisconnect = true;
+            }
+
+            secondaryBandType = ScanResult.toBandType(secondaryInfo.getFrequency());
+            if (primaryCmmCandidate != null && (primaryCmmCandidate.getBandType() == secondaryBandType)) {
+                needDisconnect = true;
+            }
+        }
+
+        if (needDisconnect == true)
+            secondaryCcm.disconnect();
+
+        return needDisconnect;
+    }
+
+    /* Fix the case that: No scan result for the user selected network
+     * When user select network for primary STA, but there is no scan result
+     * which match with the select network. Then
+     * disconnectSecondaryClientIfNecessary(WifiConfiguration targetNetwork)
+     * will not work due to no find candidate for primary STA.
+     * In such case, secondary STA will be disconnected when supplicant state
+     * for primary STA becomes ASSOCIATED and its band is conflict with primary
+     * STA
+     */
+    public boolean disconnectSecondaryClientIfNecessary(boolean isPrimary, int staFreqMhz) {
+        boolean needDisconnect = false;
+        WifiInfo primaryInfo;
+        WifiInfo secondaryInfo;
+        //5G band and 6G band belong to one band type
+        int primaryBandType;
+        int secondaryBandType;
+        if (!mContext.getResources().getBoolean(
+                R.bool.config_wifiAllowConnectPolicyForDualStation))
+            return needDisconnect;
+
+        // If secondary connection is not oem paid/private, return false
+        if (!((mOemPaidConnectionAllowed || mOemPrivateConnectionAllowed)
+                && mActiveModeWarden.isStaStaConcurrencySupportedForRestrictedConnections()))
+            return needDisconnect;
+
+        final ConcreteClientModeManager primaryCcm = mActiveModeWarden
+                .getPrimaryClientModeManagerNullable();
+        final ConcreteClientModeManager secondaryCcm = mActiveModeWarden
+                .getClientModeManagerInRole(ROLE_CLIENT_SECONDARY_LONG_LIVED);
+
+        int bandType = ScanResult.toBandType(staFreqMhz);
+
+        if (isPrimary && secondaryCcm != null && (secondaryCcm.isConnecting() || secondaryCcm.isConnected())) {
+            secondaryInfo = secondaryCcm.getConnectionInfo();
+           /* If secondary STA has two multi links, then disconnect directly since
+            * wifi chip supports up to two band simultaneously. Once secondary STA
+            * has two links, it will occupy two band, then it will conflict with
+            * primary STA.
+            */
+            if (secondaryInfo.getAssociatedMloLinks().size() == 2) {
+                Log.d(TAG, "2nd STA has two Mlo links, need to disconnect");
+                needDisconnect = true;
+            }
+
+            secondaryBandType = ScanResult.toBandType(secondaryInfo.getFrequency());
+            if (bandType == secondaryBandType) {
+                needDisconnect = true;
+            }
+        } else if (!isPrimary && primaryCcm != null && (primaryCcm.isConnecting() || primaryCcm.isConnected())) {
+            primaryInfo = primaryCcm.getConnectionInfo();
+            primaryBandType = ScanResult.toBandType(primaryInfo.getFrequency());
+            if (bandType == primaryBandType) {
+                needDisconnect = true;
+            }
+        }
+
+        if (needDisconnect == true)
+            secondaryCcm.disconnect();
+
+        return needDisconnect;
+    }
+
 }

@@ -25,6 +25,7 @@ import android.util.Log;
 import com.android.internal.annotations.VisibleForTesting;
 import com.android.server.wifi.HalDeviceManager;
 import com.android.server.wifi.MainlineSupplicantAidlManager;
+import com.android.server.wifi.SelfRecovery;
 import com.android.server.wifi.WifiInjector;
 import com.android.server.wifi.WifiNative;
 import com.android.server.wifi.hal.WifiNanIface;
@@ -44,6 +45,7 @@ public class WifiAwareNativeManager {
     private final HalDeviceManager mHalDeviceManager;
     private final WifiNative mWifiNative;
     private final MainlineSupplicantAidlManager mMainlineSupplicant;
+    private final SelfRecovery mSelfRecovery;
     private Handler mHandler;
     private final WifiAwareNativeCallback mWifiAwareNativeCallback;
     private final FeatureFlags mFeatureFlags;
@@ -68,6 +70,7 @@ public class WifiAwareNativeManager {
         mWifiAwareNativeCallback = wifiAwareNativeCallback;
         mMainlineSupplicant = wifiInjector.getMainlineSupplicantAidlManager();
         mContext = wifiInjector.getContext();
+        mSelfRecovery = wifiInjector.getSelfRecovery();
     }
 
     /**
@@ -106,13 +109,20 @@ public class WifiAwareNativeManager {
                         // only care about isStarted (Wi-Fi started) not isReady - since if not
                         // ready then Wi-Fi will also be down.
                         if (mHalDeviceManager.isStarted()) {
+                            // Skip NAN interface creation while recovery is in progress to avoid
+                            // interfering with the recovery process and causing a recovery loop.
+                            if (mSelfRecovery.isRecoveryInProgress()) {
+                                Log.d(TAG, "onStatusChanged: HAL started but recovery in"
+                                        + " progress, skip tryToGetAwareCapability");
+                                return;
+                            }
                             mWifiAwareStateManager.tryToGetAwareCapability();
                         } else {
                             awareIsDown(mWifiAwareStateManager.isD2dAllowedWhenStaDisabled());
                         }
                     }
                 }, mHandler);
-        if (mHalDeviceManager.isStarted()) {
+        if (mHalDeviceManager.isStarted() && !mSelfRecovery.isRecoveryInProgress()) {
             mWifiAwareStateManager.tryToGetAwareCapability();
         }
     }

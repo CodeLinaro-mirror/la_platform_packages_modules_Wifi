@@ -358,7 +358,7 @@ public class SupplicantWifiRttControllerAidlImpl implements ISupplicantWifiRttCo
             Log.v(TAG, "onContinuousRangingTerminated: cmdId=" + cmdId + ", reason=" + reason);
             for (SupplicantWifiRttController.SupplicantWifiRttControllerEventCallback
                     callback : mRttEventCallbacks) {
-                callback.onContinuousRangingStatusChanged(cmdId,
+                callback.onContinuousRangingTerminated(cmdId,
                         halToFrameworkRangingTerminateReason(reason));
             }
         }

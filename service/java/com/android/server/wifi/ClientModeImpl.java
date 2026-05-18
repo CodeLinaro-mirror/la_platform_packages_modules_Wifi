@@ -328,12 +328,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     // framework initiated disconnect reason code.
     private int mFrameworkDisconnectReasonOverride;
 
-// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
     /* if set to true then disconnect due to IP Reachability lost only
      * when obtained for the first 10 seconds of L2 connection */
     private boolean mIpReachabilityMonitorActive = true;
 
-// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
     private boolean mIpProvisioningTimedOut = false;
 
     private String getTag() {
@@ -626,11 +624,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
     static final int CMD_IPCLIENT_CREATED                               = BASE + 300;
 
-// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
     /* Vendor specific cmd: To handle IP Reachability session */
     private static final int CMD_IP_REACHABILITY_SESSION_END            = BASE + 311;
 
-// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
     @VisibleForTesting
     static final int CMD_ACCEPT_EAP_SERVER_CERTIFICATE                  = BASE + 301;
 
@@ -692,11 +688,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
     /* Tracks IpClient start state until (FILS_)NETWORK_CONNECTION_EVENT event */
     private boolean mIpClientWithPreConnection = false;
 
-// QTI_BEGIN: 2021-09-08: WLAN: Wifi: Defer scan during wifi On till interface mac is randmoized.
     /* Track setupClientMode to defer WifiConnectivityManger start */
     private boolean isClientSetupCompleted = false;
 
-// QTI_END: 2021-09-08: WLAN: Wifi: Defer scan during wifi On till interface mac is randmoized.
     /**
      * Work source to use to blame usage on the WiFi service
      */
@@ -2669,21 +2663,17 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             case WifiMonitor.BSS_FREQUENCY_CHANGED_EVENT:
                 sb.append(" frequency=" + msg.arg1);
                 break;
-// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
             case CMD_IP_REACHABILITY_SESSION_END:
                 if (msg.obj != null) {
                     sb.append(" ").append((String) msg.obj);
-// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                 }
                 break;
             case WifiMonitor.AUXILIARY_SUPPLICANT_EVENT:
                 SupplicantEventInfo eventInfo = (SupplicantEventInfo) msg.obj;
                 if (eventInfo != null) {
                     sb.append(" ").append(eventInfo.toString());
-// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                 }
                 break;
-// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
             default:
                 sb.append(" ");
                 sb.append(Integer.toString(msg.arg1));
@@ -4664,10 +4654,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         mLastSimBasedConnectionCarrierName = null;
         mLastSignalLevel = -1;
         mEnabledTdlsPeers.clear();
-// QTI_BEGIN: 2021-09-08: WLAN: Wifi: Defer scan during wifi On till interface mac is randmoized.
         mWifiConnectivityManager.handleConnectionStateChanged(mClientModeManager,
                 WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
-// QTI_END: 2021-09-08: WLAN: Wifi: Defer scan during wifi On till interface mac is randmoized.
         // TODO: b/79504296 This broadcast has been deprecated and should be removed
         sendSupplicantConnectionChangedBroadcast(true);
 
@@ -4710,9 +4698,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
 
         // Retrieve and store the factory MAC address (on first bootup).
         retrieveFactoryMacAddressAndStoreIfNecessary();
-// QTI_BEGIN: 2021-09-08: WLAN: Wifi: Defer scan during wifi On till interface mac is randmoized.
         isClientSetupCompleted = true;
-// QTI_END: 2021-09-08: WLAN: Wifi: Defer scan during wifi On till interface mac is randmoized.
         updateCurrentConnectionInfo();
     }
 
@@ -4730,9 +4716,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
         deregisterForWifiMonitorEvents(); // uses mInterfaceName, must call before nulling out
         // TODO: b/79504296 This broadcast has been deprecated and should be removed
         sendSupplicantConnectionChangedBroadcast(false);
-// QTI_BEGIN: 2021-09-08: WLAN: Wifi: Defer scan during wifi On till interface mac is randmoized.
         isClientSetupCompleted = false;
-// QTI_END: 2021-09-08: WLAN: Wifi: Defer scan during wifi On till interface mac is randmoized.
     }
 
     /**
@@ -6221,9 +6205,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                             mPasspointManager.requestVenueUrlAnqpElement(scanResult);
                         }
                     }
-// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                     mIpReachabilityMonitorActive = true;
-// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                     mWifiInfo.setNetworkKey(config.getNetworkKeyFromSecurityType(
                             mWifiInfo.getCurrentSecurityType()));
                     if (mApplicationQosPolicyRequestHandler.isFeatureEnabled()) {
@@ -7005,12 +6987,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     mWifiMetrics.logAsynchronousEvent(mInterfaceName,
                             WifiUsabilityStatsEntry.CAPTURE_EVENT_TYPE_IP_REACHABILITY_LOST, -1);
                     if (mWifiGlobals.getIpReachabilityDisconnectEnabled()) {
-// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                         if (mWifiGlobals.getDisconnectOnlyOnInitialIpReachability() && !mIpReachabilityMonitorActive) {
                             logd("CMD_IP_REACHABILITY_LOST Connect session is over, skip ip reachability lost indication.");
                             break;
                         }
-// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                         handleIpReachabilityLost(-1);
                     } else {
                         logd("CMD_IP_REACHABILITY_LOST but disconnect disabled -- ignore");
@@ -7057,10 +7037,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         sendNetworkChangeBroadcast(DetailedState.CONNECTED);
                     }
                     checkIfNeedDisconnectSecondaryWifi();
-// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                     mIpReachabilityMonitorActive = true;
                     sendMessageDelayed(obtainMessage(CMD_IP_REACHABILITY_SESSION_END, 0, 0), 10000);
-// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                     if (mApplicationQosPolicyRequestHandler.isFeatureEnabled()) {
                         mApplicationQosPolicyRequestHandler.queueAllPoliciesOnIface(
                                 mInterfaceName, mostRecentConnectionSupports11ax());
@@ -7699,9 +7677,7 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         //
                         // mIpClient.confirmConfiguration() is called within
                         // the handling of SupplicantState.COMPLETED.
-// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                         mIpReachabilityMonitorActive = true;
-// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                         transitionTo(mL3ConnectedState);
                     } else {
                         mMessageHandlingStatus = MESSAGE_HANDLING_STATUS_DISCARD;
@@ -7786,12 +7762,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mWifiConnectivityManager.handleConnectionStateChanged(
                     mClientModeManager,
                     WifiConnectivityManager.WIFI_STATE_CONNECTED);
-// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
 
             if (mIpReachabilityMonitorActive)
                 sendMessageDelayed(obtainMessage(CMD_IP_REACHABILITY_SESSION_END, 0, 0), 10000);
 
-// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
             registerConnected();
             mTargetWifiConfiguration = null;
             mWifiScoreReport.reset();
@@ -8099,12 +8073,10 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                     handleStatus = NOT_HANDLED;
                     break;
                 }
-// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                 case CMD_IP_REACHABILITY_SESSION_END: {
                     mIpReachabilityMonitorActive = false;
                     break;
                 }
-// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
                 default: {
                     handleStatus = NOT_HANDLED;
                     break;
@@ -8170,11 +8142,9 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                 return;
             }
 
-// QTI_BEGIN: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
             mIpReachabilityMonitorActive = false;
             removeMessages(CMD_IP_REACHABILITY_SESSION_END);
 
-// QTI_END: 2021-09-15: WLAN: Wifi: Disconnect on IP_REACHABILITY_LOST for a specific period
             if (mVerboseLoggingEnabled) {
                 logd(" Enter DisconnectedState screenOn=" + mScreenOn);
             }
@@ -8183,13 +8153,11 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
             mIsAutoRoaming = false;
             mTargetNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
 
-// QTI_BEGIN: 2021-09-08: WLAN: Wifi: Defer scan during wifi On till interface mac is randmoized.
             if (isClientSetupCompleted) {
                 mWifiConnectivityManager.handleConnectionStateChanged(
                         mClientModeManager,
                         WifiConnectivityManager.WIFI_STATE_DISCONNECTED);
             }
-// QTI_END: 2021-09-08: WLAN: Wifi: Defer scan during wifi On till interface mac is randmoized.
 
             if (mDeviceConfigFacade.isOobPseudonymEnabled()) {
                 if (mVerboseLoggingEnabled) {

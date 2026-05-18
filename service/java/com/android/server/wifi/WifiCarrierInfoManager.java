@@ -973,7 +973,6 @@ public class WifiCarrierInfoManager {
         return matchSubId;
     }
 
-// QTI_BEGIN: 2022-10-06: WLAN: HIDL: set SIM number to supplicant via Vendor Supplicant HAL
     /**
      * Gets the SimSlotIndex of SIM card for given carrier Id
      *
@@ -997,7 +996,6 @@ public class WifiCarrierInfoManager {
         return slot;
     }
 
-// QTI_END: 2022-10-06: WLAN: HIDL: set SIM number to supplicant via Vendor Supplicant HAL
     private int getBestMatchSubscriptionIdForEnterprise(WifiConfiguration config) {
         if (config.carrierId != TelephonyManager.UNKNOWN_CARRIER_ID) {
             return getMatchingSubId(config.carrierId);

@@ -4873,11 +4873,48 @@ public class WifiServiceImplTest extends WifiBaseTest {
      */
     @Test
     public void testStopSoftApWhenIpConfigFails() throws Exception {
+        mStateMachineSoftApCallback.onStateChanged(new SoftApState(
+                WIFI_AP_STATE_ENABLED, 0, TEST_TETHERING_REQUEST, WIFI_IFACE_NAME));
         mWifiServiceImpl.updateInterfaceIpState(WIFI_IFACE_NAME, IFACE_IP_MODE_TETHERED);
         mWifiServiceImpl.updateInterfaceIpState(WIFI_IFACE_NAME, IFACE_IP_MODE_CONFIGURATION_ERROR);
         mLooper.dispatchAll();
 
         verify(mActiveModeWarden).stopSoftAp(IFACE_IP_MODE_TETHERED);
+    }
+
+    /**
+     * Verify that if LOHS stops quickly, a delayed configuration error for the stale LOHS
+     * interface does not incorrectly stop the active tethered hotspot.
+     */
+    @Test
+    public void testConfigurationErrorOnStaleLohsInterfaceDoesNotStopTetheredHotspot()
+            throws Exception {
+        // Start a tethered hotspot on WIFI_IFACE_NAME
+        mStateMachineSoftApCallback.onStateChanged(new SoftApState(
+                WIFI_AP_STATE_ENABLED, 0, TEST_TETHERING_REQUEST, WIFI_IFACE_NAME));
+        mWifiServiceImpl.updateInterfaceIpState(WIFI_IFACE_NAME, IFACE_IP_MODE_TETHERED);
+
+        // Mock AP concurrency support
+        when(mActiveModeWarden.canRequestMoreSoftApManagers(any())).thenReturn(true);
+
+        // Start a LOHS request on WIFI_IFACE_NAME2
+        registerLOHSRequestFull();
+        mLohsApCallback.onStateChanged(new SoftApState(
+                WIFI_AP_STATE_ENABLED, 0, null, WIFI_IFACE_NAME2));
+        mWifiServiceImpl.updateInterfaceIpState(WIFI_IFACE_NAME2, IFACE_IP_MODE_LOCAL_ONLY);
+        mLooper.dispatchAll();
+
+        // Stop LOHS (simulate rapid teardown)
+        mLohsApCallback.onStateChanged(new SoftApState(
+                WIFI_AP_STATE_DISABLED, 0, null, null));
+        mLooper.dispatchAll();
+
+        mWifiServiceImpl.updateInterfaceIpState(
+                WIFI_IFACE_NAME2, IFACE_IP_MODE_CONFIGURATION_ERROR);
+        mLooper.dispatchAll();
+
+        // Verify that tethered softap was NOT stopped!
+        verify(mActiveModeWarden, never()).stopSoftAp(IFACE_IP_MODE_TETHERED);
     }
 
     /**

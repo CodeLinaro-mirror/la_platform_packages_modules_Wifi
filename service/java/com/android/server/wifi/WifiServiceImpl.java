@@ -2582,7 +2582,7 @@ public class WifiServiceImpl extends IWifiManager.Stub {
          *          {@link WifiManager#WIFI_AP_STATE_ENABLING},
          *          {@link WifiManager#WIFI_AP_STATE_FAILED}
          */
-        private final Object mLock = new Object();
+        final Object mLock = new Object();
         @NonNull
         private SoftApState mSoftApState =
                 new SoftApState(WIFI_AP_STATE_DISABLED, 0, null, null);
@@ -2847,6 +2847,28 @@ public class WifiServiceImpl extends IWifiManager.Stub {
     }
 
     private final class TetheredSoftApTracker extends BaseSoftApTracker {
+        private String mTetheredInterfaceName;
+
+        String getTetheredInterfaceName() {
+            synchronized (mLock) {
+                return mTetheredInterfaceName;
+            }
+        }
+
+        @Override
+        public void onStateChanged(SoftApState softApState) {
+            super.onStateChanged(softApState);
+            synchronized (mLock) {
+                int state = softApState.getState();
+                if (state == WIFI_AP_STATE_ENABLING || state == WIFI_AP_STATE_ENABLED) {
+                    mTetheredInterfaceName = softApState.getIface();
+                } else if (state == WIFI_AP_STATE_DISABLING || state == WIFI_AP_STATE_DISABLED
+                        || state == WIFI_AP_STATE_FAILED) {
+                    mTetheredInterfaceName = null;
+                }
+            }
+        }
+
         public void updateSoftApCapabilityWhenCarrierConfigChanged(int subId) {
             CarrierConfigManager carrierConfigManager =
                     mContext.getSystemService(CarrierConfigManager.class);
@@ -2967,7 +2989,9 @@ public class WifiServiceImpl extends IWifiManager.Stub {
                             sendHotspotFailedMessageToAllLOHSRequestInfoEntriesLocked(
                                     LocalOnlyHotspotCallback.ERROR_GENERIC);
                             stopSoftApInternal(WifiManager.IFACE_IP_MODE_LOCAL_ONLY);
-                        } else {
+                        } else if (TextUtils.equals(
+                                mTetheredSoftApTracker.getTetheredInterfaceName(),
+                                ifaceName)) {
                             // Not for LOHS. This is the wrong place to do this, but...
                             stopSoftApInternal(WifiManager.IFACE_IP_MODE_TETHERED);
                         }

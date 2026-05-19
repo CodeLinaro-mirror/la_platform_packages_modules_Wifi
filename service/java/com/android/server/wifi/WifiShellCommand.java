@@ -1074,7 +1074,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                     return 0;
                 }
                 case "reload-resources": {
-                    mContext.resetResourceCache();
+                    mContext.resetResourceApk();
                     return 0;
                 }
                 case "force-country-code": {

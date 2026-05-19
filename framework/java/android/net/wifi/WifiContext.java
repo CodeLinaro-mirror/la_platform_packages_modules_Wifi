@@ -76,7 +76,7 @@ public class WifiContext extends ContextWrapper {
         if (mWifiOverlayApkPkgName != null) {
             return mWifiOverlayApkPkgName;
         }
-        mWifiOverlayApkPkgName = getApkPkgNameForAction(ACTION_RESOURCES_APK, null);
+        mWifiOverlayApkPkgName = getApkPkgNameForAction(ACTION_RESOURCES_APK, UserHandle.SYSTEM);
         if (mWifiOverlayApkPkgName == null) {
             // Resource APK not loaded yet, print a stack trace to see where this is called from
             Log.e(TAG, "Attempted to fetch resources before Wifi Resources APK is loaded!",
@@ -209,14 +209,21 @@ public class WifiContext extends ContextWrapper {
     }
 
     /**
-     * Reset the resource cache which will cause it to be reloaded next time it is accessed.
+     * Reset the resource APK which will cause it to be reloaded next time it is accessed.
      */
-    public void resetResourceCache() {
+    public void resetResourceApk() {
         mWifiOverlayApkPkgName = null;
         mWifiAssetsFromApk = null;
         mWifiResourcesFromApk = null;
         mWifiThemeFromApk = null;
         mResourcesApkContext = null;
+        resetResourcesCache();
+    }
+
+    /**
+     * Reset the resource cache.
+     */
+    public void resetResourcesCache() {
         mWifiStringResourceWrapperSparseArray.clear();
         mWifiResourceCache.reset();
     }

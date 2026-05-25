@@ -2396,6 +2396,41 @@ public class WifiServiceImpl extends BaseWifiService {
             SoftApConfiguration softApConfig = mWifiApConfigStore.generateLocalOnlyHotspotConfig(
                     mContext, request.getCustomConfig(), lohsCapability);
 
+            /* try to restore from persist lohs channel */
+            WifiSettingsConfigStore configStore = mWifiInjector.getSettingsConfigStore();
+            int channel = configStore.get(WifiSettingsConfigStore.WIFI_LOHS_CHANNEL);
+            int tmpBand = configStore.get(WifiSettingsConfigStore.WIFI_LOHS_BAND);
+            /* if softApConfig.getBand() return BAND_5GHZ|BAND_2GHZ,
+             * then pass BAND_5GHZ to band, otherwise it will lead
+             * SofApConfiguration.Builder(softApConfig).setChannel(xx, BAND_5GHZ|BAND_2GHZ)
+             * failure
+             * */
+	    int band = Integer.highestOneBit(softApConfig.getBand());
+            String countryCode = mCountryCode.getCountryCode();
+            if (channel != 0 &&
+                TextUtils.equals(countryCode,
+                                 configStore.get(WifiSettingsConfigStore.WIFI_LOHS_CC))) {
+                band = Integer.highestOneBit(tmpBand);
+            } else {
+                int freq = ApConfigUtil.chooseApChannel(
+                               band, mCoexManager, mContext.getResources(), lohsCapability);
+                channel = ScanResult.convertFrequencyMhzToChannelIfSupported(freq);
+                configStore.put(WifiSettingsConfigStore.WIFI_LOHS_CHANNEL, channel);
+                configStore.put(WifiSettingsConfigStore.WIFI_LOHS_BAND, band);
+                configStore.put(WifiSettingsConfigStore.WIFI_LOHS_CC, countryCode);
+            }
+
+            mLog.info("persist channel=%, band=%, cc=%").c(channel).c(band).c(countryCode)
+                                                        .flush();
+            try {
+                SoftApConfiguration tmpConfig = new SoftApConfiguration.Builder(softApConfig)
+                                                .setChannel(channel, band).build();
+                softApConfig = tmpConfig;
+            } catch (IllegalArgumentException iae) {
+                /* keep same configuration generated from WifiApConfigStore */
+                mLog.info("fail to restore from persist lohs channel, reason: %").c(iae.getMessage()).flush();
+            }
+
             mActiveConfig = new SoftApModeConfiguration(
                     WifiManager.IFACE_IP_MODE_LOCAL_ONLY,
                     softApConfig, lohsCapability, mCountryCode.getCountryCode());

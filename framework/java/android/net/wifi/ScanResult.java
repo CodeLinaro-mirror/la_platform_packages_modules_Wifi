@@ -382,12 +382,10 @@ public final class ScanResult implements Parcelable {
      * Security key management scheme: any unknown AKM.
      */
     public static final int KEY_MGMT_UNKNOWN = 23;
-// QTI_BEGIN: 2021-11-10: WLAN: Add support for FT_EAP_SHA384 key_mgmt in framework
     /**
      * @hide
      * Security key management scheme: FT_EAP_SHA384.
      */
-// QTI_END: 2021-11-10: WLAN: Add support for FT_EAP_SHA384 key_mgmt in framework
     public static final int KEY_MGMT_FT_EAP_SHA384 = 24;
     /**
      * @hide

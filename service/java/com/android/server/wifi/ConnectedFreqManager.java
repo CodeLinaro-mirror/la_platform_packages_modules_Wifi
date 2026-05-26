@@ -1,4 +1,3 @@
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
 /* Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -236,13 +235,9 @@ public class ConnectedFreqManager {
      * @param configKey
      */
     public void removeNetwork(String configKey) {
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         if (!TextUtils.isEmpty(configKey)) {
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
             mNetworkList.remove(configKey);
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
         }
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
     }
 
     public void addAll(HashMap<String, HashMap<String, String>> list) {
@@ -334,9 +329,7 @@ public class ConnectedFreqManager {
          */
         public HashMap<String, HashMap<String, String>> getFreqList() {
             if (mFreqList == null) {
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
                 mNetworkList.clear();
-// QTI_BEGIN: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster
                 return new HashMap<String, HashMap<String, String>>();
             }
             return mFreqList;
@@ -352,4 +345,3 @@ public class ConnectedFreqManager {
     }
 }
 
-// QTI_END: 2022-03-16: WLAN: PNO scan enhancement to connect to frequently connected networks faster

@@ -9093,4 +9093,19 @@ public class WifiConfigManagerTest extends WifiBaseTest {
         retrievedConfig = mWifiConfigManager.getConfiguredNetwork(result.getNetworkId());
         assertTrue(retrievedConfig.isAutoJoinInAdvancedProtectionModeEnabled());
     }
+
+    /**
+     * Verify that updateConnectedNetworkFrequency updates the WifiScoreCard.
+     */
+    @Test
+    public void testUpdateConnectedNetworkFrequency() {
+        WifiConfiguration config = WifiConfigurationTestUtil.createOpenNetwork();
+        NetworkUpdateResult result = addNetworkToWifiConfigManager(config);
+        assertTrue(result.isSuccess());
+        int networkId = result.getNetworkId();
+        int newFrequency = 5745;
+        mWifiConfigManager.updateConnectedNetworkFrequency(networkId, newFrequency);
+        verify(mWifiScoreCard).lookupNetwork(eq(config.SSID));
+        verify(mPerNetwork).addFrequency(eq(newFrequency));
+    }
 }

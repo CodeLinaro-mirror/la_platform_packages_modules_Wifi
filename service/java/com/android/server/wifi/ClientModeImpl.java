@@ -7061,6 +7061,8 @@ public class ClientModeImpl extends StateMachine implements ClientMode {
                         if (isNeedUpdate) {
                             updateCurrentConnectionInfo();
                             updateCapabilities();
+                            mWifiConfigManager.updateConnectedNetworkFrequency(
+                                    mWifiInfo.getNetworkId(), newFrequency);
                         }
                     }
                     break;

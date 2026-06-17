@@ -96,7 +96,7 @@ public class HalDeviceManager {
     // Number of attempts a start() is re-tried. A value of 0 means no retries after a single
     // attempt.
     @VisibleForTesting
-    public static final int START_HAL_RETRY_TIMES = 3;
+    public static final int START_HAL_RETRY_TIMES = 6;
 
     private final WifiContext mContext;
     private final Clock mClock;
@@ -1525,7 +1525,8 @@ public class HalDeviceManager {
                         Log.e(TAG, "Started wifi but could not get current chip info.");
                     }
                     return true;
-                } else if (status == WifiHal.WIFI_STATUS_ERROR_NOT_AVAILABLE) {
+                } else if (status == WifiHal.WIFI_STATUS_ERROR_NOT_AVAILABLE
+                           || status == WifiHal.WIFI_STATUS_ERROR_UNKNOWN) {
                     // Should retry. Hal might still be stopping. the registered event
                     // callback will not be cleared.
                     Log.e(TAG, "Cannot start wifi because unavailable. Retrying...");

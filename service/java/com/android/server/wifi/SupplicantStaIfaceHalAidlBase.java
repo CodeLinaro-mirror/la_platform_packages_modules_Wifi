@@ -4186,6 +4186,7 @@ public abstract class SupplicantStaIfaceHalAidlBase implements ISupplicantStaIfa
                 ? frameworkConfig.getTxMatchFilterTlv() : new byte[0];
         aidlConfig.usdBaseConfig.serviceProtoType = frameworkToHalProtoType(
                 frameworkConfig.getServiceProtoType());
+        aidlConfig.eventsEnabled = frameworkConfig.isEventsEnabled();
         return aidlConfig;
     }
 

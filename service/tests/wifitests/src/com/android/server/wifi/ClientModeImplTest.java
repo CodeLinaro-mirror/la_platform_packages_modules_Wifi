@@ -11447,6 +11447,8 @@ public class ClientModeImplTest extends WifiBaseTest {
         mCmi.sendMessage(WifiMonitor.BSS_FREQUENCY_CHANGED_EVENT, sFreq1);
         mLooper.dispatchAll();
         assertEquals(sFreq1, mWifiInfo.getFrequency());
+        verify(mWifiConfigManager).updateConnectedNetworkFrequency(
+                eq(mWifiInfo.getNetworkId()), eq(sFreq1));
     }
 
     /**

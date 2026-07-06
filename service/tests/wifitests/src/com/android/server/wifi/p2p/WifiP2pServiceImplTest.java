@@ -3271,6 +3271,32 @@ public class WifiP2pServiceImplTest extends WifiBaseTest {
     }
 
     /**
+     * Verify that p2p_group_idle is set to 10 seconds for non-autonomous GO.
+     */
+    @Test
+    public void testP2pGroupIdleSetToDefaultForNonAutonomousGo() throws Exception {
+        forceP2pEnabled(mClient1);
+        // This triggers non-autonomous GO path (mAutonomousGroup is false by default)
+        sendGroupStartedMsg(mTestWifiP2pNewPersistentGoGroup);
+        verify(mWifiNative).setP2pGroupIdle(eq(mTestWifiP2pNewPersistentGoGroup.getInterface()),
+                eq(10));
+    }
+
+    /**
+     * Verify that p2p_group_idle is reset to 0 (disabled) for autonomous GO.
+     */
+    @Test
+    public void testP2pGroupIdleResetToZeroForAutonomousGo() throws Exception {
+        forceP2pEnabled(mClient1);
+        // Trigger autonomous GO by sending CREATE_GROUP first
+        when(mWifiNative.p2pGroupAdd(any(), eq(false))).thenReturn(true);
+        sendCreateGroupMsgWithConfigValidAsGroup(mClientMessenger);
+        sendGroupStartedMsg(mTestWifiP2pNewPersistentGoGroup);
+        verify(mWifiNative).setP2pGroupIdle(eq(mTestWifiP2pNewPersistentGoGroup.getInterface()),
+                eq(0));
+    }
+
+    /**
      * Verify the connection event for a fresh connection.
      */
     @Test

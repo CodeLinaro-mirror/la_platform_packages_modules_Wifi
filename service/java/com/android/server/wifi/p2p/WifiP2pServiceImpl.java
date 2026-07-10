@@ -4973,6 +4973,11 @@ public class WifiP2pServiceImpl extends IWifiP2pManager.Stub {
                             if (!mAutonomousGroup) {
                                 mWifiNative.setP2pGroupIdle(mGroup.getInterface(),
                                         GROUP_IDLE_TIME_S);
+                            } else {
+                                // Autonomous GO: explicitly reset idle timeout to 0 to avoid
+                                // being affected by a stale p2p_group_idle value persisted
+                                // from a previous non-autonomous GO or GC session.
+                                mWifiNative.setP2pGroupIdle(mGroup.getInterface(), 0);
                             }
                             // {@link com.android.server.connectivity.Tethering} listens to
                             // {@link WifiP2pManager#WIFI_P2P_CONNECTION_CHANGED_ACTION}

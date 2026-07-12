@@ -160,6 +160,11 @@ public class SoftApManagerTest extends WifiBaseTest {
     private static final int[] TEST_SUPPORTED_24G_CHANNELS = new int[] {1, 2};
     private static final int[] TEST_SUPPORTED_5G_CHANNELS = new int[] {36, 149};
 
+    private boolean mApBridgeIfaceCombinationSupported = true;
+    private boolean mApBridgeWithStaIfaceCombinationSupported = true;
+    private boolean mIsDriverSupportedRegChangedEvent =  false;
+    private boolean mDeviceWiphyCapabilitiesSupports11Be = false;
+
     private TestLooper mLooper;
     private TestAlarmManager mAlarmManager;
     private SoftApInfo mTestSoftApInfo; // Use for single Ap mode test case
@@ -336,6 +341,22 @@ public class SoftApManagerTest extends WifiBaseTest {
                 .thenReturn(ALLOWED_6G_FREQS);
         when(mWifiNative.getChannelsForBand(WifiScanner.WIFI_BAND_60_GHZ))
                 .thenReturn(ALLOWED_60G_FREQS);
+        when(mWifiNative.canDeviceSupportCreateTypeCombo(any()))
+                .thenAnswer(answer -> {
+                    SparseArray<Integer> combo = answer.getArgument(0);
+                    if (combo.contentEquals(new SparseArray<Integer>() {{
+                            put(HDM_CREATE_IFACE_AP_BRIDGE, 1);
+                        }})) {
+                        return mApBridgeIfaceCombinationSupported;
+                    }
+                    if (combo.contentEquals(new SparseArray<Integer>() {{
+                            put(HDM_CREATE_IFACE_AP_BRIDGE, 1);
+                            put(HDM_CREATE_IFACE_STA, 1);
+                        }})) {
+                        return mApBridgeWithStaIfaceCombinationSupported;
+                    }
+                    return false;
+                });
         when(mWifiNative.getApFactoryMacAddress(any())).thenReturn(TEST_INTERFACE_MAC_ADDRESS);
         when(mWifiApConfigStore.randomizeBssidIfUnset(any(), any())).thenAnswer(
                 (invocation) -> invocation.getArgument(1));
@@ -2314,6 +2335,14 @@ public class SoftApManagerTest extends WifiBaseTest {
             }
         }
 
+        if (SdkLevel.isAtLeastT()
+                && expectedConfig.isIeee80211beEnabled()
+                && !mDeviceWiphyCapabilitiesSupports11Be) {
+            expectedConfig = new SoftApConfiguration.Builder(expectedConfig)
+                    .setIeee80211beEnabled(false)
+                    .build();
+        }
+
         SoftApConfiguration expectedConfigWithFrameworkACS = null;
         if (!softApConfig.getCapability().areFeaturesSupported(
                 SoftApCapability.SOFTAP_FEATURE_ACS_OFFLOAD)) {
@@ -2388,6 +2417,20 @@ public class SoftApManagerTest extends WifiBaseTest {
             verify(mWifiCountryCode).unregisterListener(changeListenerCaptor.getValue());
             assertThat(mSoftApManager.getSoftApModeConfiguration().getCapability().getCountryCode())
                     .isEqualTo(softApConfig.getCountryCode());
+        } else if (TextUtils.isEmpty(softApConfig.getCountryCode())
+                && mIsDriverSupportedRegChangedEvent && expectedConfig.getBands().length == 1) {
+            // Don't start SoftAP before driver country code change.
+            verify(mWifiNative, never()).startSoftAp(any(), any(), anyBoolean(), any());
+
+            ArgumentCaptor<WifiCountryCode.ChangeListener> changeListenerCaptor =
+                    ArgumentCaptor.forClass(WifiCountryCode.ChangeListener.class);
+            verify(mWifiCountryCode).registerListener(changeListenerCaptor.capture());
+            // Now notify any country code.
+            changeListenerCaptor.getValue().onDriverCountryCodeChanged("some country");
+            mLooper.dispatchAll();
+            verify(mWifiCountryCode).unregisterListener(changeListenerCaptor.getValue());
+            assertThat(mSoftApManager.getSoftApModeConfiguration().getCapability().getCountryCode())
+                    .isEqualTo("some country");
         }
         order.verify(mWifiNative).startSoftAp(eq(TEST_INTERFACE_NAME),
                 configCaptor.capture(),
@@ -3484,6 +3527,7 @@ public class SoftApManagerTest extends WifiBaseTest {
     public void testWaitForDriverCountryCode() throws Exception {
         when(mResources.getBoolean(
                 R.bool.config_wifiDriverSupportedNl80211RegChangedEvent)).thenReturn(true);
+        mIsDriverSupportedRegChangedEvent = true;
         SoftApModeConfiguration apConfig =
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
                         mTestSoftApCapability, "Not " + TEST_COUNTRY_CODE);
@@ -3494,6 +3538,7 @@ public class SoftApManagerTest extends WifiBaseTest {
     public void testWaitForDriverCountryCodeTimedOut() throws Exception {
         when(mResources.getBoolean(
                 R.bool.config_wifiDriverSupportedNl80211RegChangedEvent)).thenReturn(true);
+        mIsDriverSupportedRegChangedEvent = true;
         SoftApModeConfiguration apConfig =
                 new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED, null,
                         mTestSoftApCapability, "Not" + TEST_COUNTRY_CODE);
@@ -3509,6 +3554,23 @@ public class SoftApManagerTest extends WifiBaseTest {
 
         verify(mWifiNative).startSoftAp(any(), any(), anyBoolean(), any());
         verify(mWifiCountryCode).unregisterListener(changeListenerCaptor.getValue());
+    }
+
+    @Test
+    public void testWaitForDriverCountryCodeWhenNoInitialCountryCodeFor5GHz() throws Exception {
+        when(mResources.getBoolean(
+                R.bool.config_wifiDriverSupportedNl80211RegChangedEvent)).thenReturn(true);
+        mIsDriverSupportedRegChangedEvent = true;
+        Builder configBuilder = new SoftApConfiguration.Builder();
+        configBuilder.setBand(SoftApConfiguration.BAND_5GHZ);
+        configBuilder.setSsid(TEST_SSID);
+        SoftApModeConfiguration apConfig =
+                new SoftApModeConfiguration(WifiManager.IFACE_IP_MODE_TETHERED,
+                        configBuilder.build(), mTestSoftApCapability, null,
+                        TEST_TETHERING_REQUEST);
+        startSoftApAndVerifyEnabled(apConfig);
+        mLooper.dispatchAll();
+        verify(mWifiNative, never()).setApCountryCode(any(), any());
     }
 
     @Test
@@ -3564,7 +3626,26 @@ public class SoftApManagerTest extends WifiBaseTest {
 
         SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
-                mTestSoftApCapability, TEST_COUNTRY_CODE);
+                mTestSoftApCapability, TEST_COUNTRY_CODE, TEST_TETHERING_REQUEST);
+        // Reset band to 2.4G | 5G to generate expected configuration since it should fallback to
+        // single AP mode
+        configBuilder.setBand(SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ);
+        startSoftApAndVerifyEnabled(apConfig, configBuilder.build(), false);
+    }
+
+    @Test
+    public void testFallbackToSingleModeDueToStaExistButStaWithBridgedApNotSupportedByDriver()
+            throws Exception {
+        assumeTrue(SdkLevel.isAtLeastS());
+        when(mResources.getBoolean(R.bool.config_wifiStaWithBridgedSoftApConcurrencySupported))
+                .thenReturn(true);
+        mApBridgeWithStaIfaceCombinationSupported = false;
+        Builder configBuilder = new SoftApConfiguration.Builder(
+                generateBridgedModeSoftApConfig(null));
+
+        SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
+                WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
+                mTestSoftApCapability, TEST_COUNTRY_CODE, TEST_TETHERING_REQUEST);
         // Reset band to 2.4G | 5G to generate expected configuration since it should fallback to
         // single AP mode
         configBuilder.setBand(SoftApConfiguration.BAND_2GHZ | SoftApConfiguration.BAND_5GHZ);
@@ -3694,9 +3775,125 @@ public class SoftApManagerTest extends WifiBaseTest {
 
         SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
-                testCapability, TEST_COUNTRY_CODE);
+                testCapability, TEST_COUNTRY_CODE, TEST_TETHERING_REQUEST);
         startSoftApAndVerifyEnabled(apConfig, configBuilder.build(), false);
     }
 
+    /**
+     * Tests that 11BE is set to disabled in the SoftApConfiguration if it isn't supported by
+     * SoftApCapability.
+     */
+    @Test
+    public void testStartSoftApRemoves11BEIfNotSupported() throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        when(mDeviceWiphyCapabilities.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11BE))
+                .thenReturn(false);
+        Builder configBuilder = new SoftApConfiguration.Builder();
+        configBuilder.setBand(SoftApConfiguration.BAND_2GHZ);
+        configBuilder.setSsid(TEST_SSID);
+        configBuilder.setIeee80211beEnabled(true);
+        SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
+                WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
+                mTestSoftApCapability, TEST_COUNTRY_CODE, TEST_TETHERING_REQUEST);
+        SoftApConfiguration expectedConfig = configBuilder.setIeee80211beEnabled(false).build();
+        startSoftApAndVerifyEnabled(apConfig, expectedConfig, false);
+    }
+
+    /**
+     * Tests that 11BE configuration is disabled in WPA2-PSK security type
+     */
+    @Test
+    public void testStartSoftApRemoves11BEInWpa2()throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        when(mDeviceWiphyCapabilities.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11BE))
+                .thenReturn(true);
+        mDeviceWiphyCapabilitiesSupports11Be = true;
+        Builder configBuilder = new SoftApConfiguration.Builder();
+        configBuilder.setBand(SoftApConfiguration.BAND_5GHZ);
+        configBuilder.setSsid(TEST_SSID);
+        configBuilder.setIeee80211beEnabled(true);
+        configBuilder.setPassphrase("somepassword",
+                SoftApConfiguration.SECURITY_TYPE_WPA2_PSK);
+        SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
+                WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
+                mTestSoftApCapability, TEST_COUNTRY_CODE, TEST_TETHERING_REQUEST);
+        // 11be is expected to be disabled in WPA2-PSK
+        SoftApConfiguration expectedConfig = configBuilder.setIeee80211beEnabled(false).build();
+        startSoftApAndVerifyEnabled(apConfig, expectedConfig, false);
+    }
+
+    /**
+     * Tests that 11BE configuration is disabled if device overlay doesn't support Single link MLO
+     * in bridged mode
+     */
+    @Test
+    public void testStartSoftApRemoves11BEInBridgedModeIfNotSupportedByOverlay()throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        when(mResources.getBoolean(R.bool.config_wifiSoftApSingleLinkMloInBridgedModeSupported))
+                .thenReturn(false);
+        when(mDeviceWiphyCapabilities.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11BE))
+                .thenReturn(true);
+        mDeviceWiphyCapabilitiesSupports11Be = true;
+        int[] dual_bands = {SoftApConfiguration.BAND_2GHZ,
+                SoftApConfiguration.BAND_5GHZ};
+        Builder configBuilder = new SoftApConfiguration.Builder();
+        configBuilder.setBands(dual_bands);
+        configBuilder.setSsid(TEST_SSID);
+        configBuilder.setIeee80211beEnabled(true);
+        configBuilder.setPassphrase("somepassword",
+                SoftApConfiguration.SECURITY_TYPE_WPA3_SAE);
+        SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
+                WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
+                mTestSoftApCapability, TEST_COUNTRY_CODE, TEST_TETHERING_REQUEST);
+        SoftApConfiguration expectedConfig = configBuilder.setIeee80211beEnabled(false).build();
+        startSoftApAndVerifyEnabled(apConfig, expectedConfig, false);
+    }
+
+    /**
+     * Tests that 11BE configuration is not disabled if device overlay support Single link MLO
+     * in bridged mode
+     */
+    @Test
+    public void testStartSoftApInBridgedMode11BEConfiguration()throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        when(mResources.getBoolean(R.bool.config_wifiSoftApSingleLinkMloInBridgedModeSupported))
+                .thenReturn(true);
+        when(mDeviceWiphyCapabilities.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11BE))
+                .thenReturn(true);
+        mDeviceWiphyCapabilitiesSupports11Be = true;
+        int[] dual_bands = {SoftApConfiguration.BAND_2GHZ,
+                SoftApConfiguration.BAND_5GHZ};
+        Builder configBuilder = new SoftApConfiguration.Builder();
+        configBuilder.setBands(dual_bands);
+        configBuilder.setSsid(TEST_SSID);
+        configBuilder.setIeee80211beEnabled(true);
+        configBuilder.setPassphrase("somepassword",
+                SoftApConfiguration.SECURITY_TYPE_WPA3_SAE);
+        SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
+                WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
+                mTestSoftApCapability, TEST_COUNTRY_CODE, TEST_TETHERING_REQUEST);
+        startSoftApAndVerifyEnabled(apConfig, configBuilder.build(), false);
+    }
+
+    /**
+     * Tests that 11BE configuration is not disabled in Single AP mode
+     */
+    @Test
+    public void testStartSoftApInSingleAp11BEConfiguration()throws Exception {
+        assumeTrue(SdkLevel.isAtLeastT());
+        when(mDeviceWiphyCapabilities.isWifiStandardSupported(ScanResult.WIFI_STANDARD_11BE))
+                .thenReturn(true);
+        mDeviceWiphyCapabilitiesSupports11Be = true;
+        Builder configBuilder = new SoftApConfiguration.Builder();
+        configBuilder.setBand(SoftApConfiguration.BAND_5GHZ);
+        configBuilder.setSsid(TEST_SSID);
+        configBuilder.setIeee80211beEnabled(true);
+        configBuilder.setPassphrase("somepassword",
+                SoftApConfiguration.SECURITY_TYPE_WPA3_SAE);
+        SoftApModeConfiguration apConfig = new SoftApModeConfiguration(
+                WifiManager.IFACE_IP_MODE_TETHERED, configBuilder.build(),
+                mTestSoftApCapability, TEST_COUNTRY_CODE, TEST_TETHERING_REQUEST);
+        startSoftApAndVerifyEnabled(apConfig, configBuilder.build(), false);
+    }
 }
 

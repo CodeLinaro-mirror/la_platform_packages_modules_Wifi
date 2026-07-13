@@ -4070,6 +4070,17 @@ public class WifiConfigManager {
         results = mConnectedFreqManager.getConnectedFreqList(configKey, ageInMillis);
         return results;
     }
+
+    /**
+     * Updates frequency tracking stores when the connected BSS frequency changes due to a
+     * Channel Switch Announcement (CSA). Ensures PNO scanning uses the post-CSA frequency.
+     */
+    public void updateConnectedNetworkFrequency(int networkId, int newFrequency) {
+        WifiConfiguration config = getInternalConfiguredNetwork(networkId);
+        if (config == null) return;
+        mWifiScoreCard.lookupNetwork(config.SSID).addFrequency(newFrequency);
+    }
+
     /**
      * Save the current snapshot of the in-memory lists to the config store.
      *

@@ -21,6 +21,8 @@ import static android.net.wifi.SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSI
 import static android.net.wifi.SoftApConfiguration.SECURITY_TYPE_WPA3_SAE;
 import static android.net.wifi.SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION;
 
+import android.app.ActivityManager;
+import android.net.wifi.util.Environment;
 import android.annotation.NonNull;
 import android.app.compat.CompatChanges;
 import android.content.Context;
@@ -33,6 +35,8 @@ import android.net.wifi.SoftApConfiguration.BandType;
 import android.net.wifi.WifiSsid;
 import android.os.Handler;
 import android.os.Process;
+import android.os.UserHandle;
+import android.os.UserManager;
 import android.text.TextUtils;
 import android.util.Log;
 import android.util.SparseIntArray;
@@ -48,8 +52,10 @@ import java.nio.charset.CharsetEncoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Random;
+import java.util.Set;
 
 import javax.annotation.Nullable;
 
@@ -80,6 +86,7 @@ public class WifiApConfigStore {
 
     private final Context mContext;
     private final Handler mHandler;
+    private final UserManager mUserManager;
     private final WifiMetrics mWifiMetrics;
     private final BackupManagerProxy mBackupManagerProxy;
     private final MacAddressUtil mMacAddressUtil;
@@ -91,6 +98,8 @@ public class WifiApConfigStore {
     private int mForcedApBand;
     private int mForcedApChannel;
     private final boolean mIsAutoAppendLowerBandEnabled;
+    private final Set<UserHandle> mUsersNeedMigration = new HashSet<>();
+    private SoftApConfiguration mSharedToPrivateMigrationDataHolder;
 
     /**
      * Module to interact with the wifi config store.
@@ -102,7 +111,7 @@ public class WifiApConfigStore {
             return mPersistentWifiApConfig;
         }
 
-        public void fromDeserialized(SoftApConfiguration config) {
+        public void fromDeserialized(@NonNull SoftApConfiguration config) {
             if (config.getPersistentRandomizedMacAddress() == null) {
                 config = updatePersistentRandomizedMacAddress(config);
             }
@@ -113,11 +122,49 @@ public class WifiApConfigStore {
         }
 
         public void reset() {
-            mPersistentWifiApConfig = null;
+            resetUserSessionData();
         }
 
         public boolean hasNewDataToSerialize() {
             return mHasNewDataToSerialize;
+        }
+
+        public void prepareSharedToPrivateMigrationDataHolder(@NonNull SoftApConfiguration config) {
+            if (!mUsersNeedMigration.isEmpty()) {
+                return;
+            }
+            Log.d(TAG, "Caching data for migration from shared SoftAp configuration.");
+            mUsersNeedMigration.addAll(mUserManager.getUserHandles(/* excludeDying= */ true));
+            mSharedToPrivateMigrationDataHolder = config;
+        }
+
+        public void resetMigrationDataHolder() {
+            Log.d(TAG, "Resetting migration data holder from shared SoftAp configuration.");
+            mUsersNeedMigration.clear();
+            mSharedToPrivateMigrationDataHolder = null;
+        }
+
+        public void migrateFromSharedToPrivateIfNeeded() {
+            UserHandle foregroundUser = UserHandle.of(ActivityManager.getCurrentUser());
+            SoftApConfiguration config;
+            if (mSharedToPrivateMigrationDataHolder == null
+                    || !mUsersNeedMigration.contains(foregroundUser)) {
+                // We generate default SoftApConfiguration and save to store for two cases:
+                // 1. The migration cache doesn't exist.
+                // 2. The current user is not an existing user before upgrading. We assume the DE
+                // data belong to all existing users and migrate to their CE stores when they load.
+                // For new users created after upgrading, we don't migrate and instead use default.
+                config = updatePersistentRandomizedMacAddress(getDefaultApConfiguration());
+            } else {
+                Log.i(TAG, "Obtaining migration data from shared SoftAp configuration for user id: "
+                        + foregroundUser.getIdentifier());
+                config = new SoftApConfiguration.Builder(
+                        mSharedToPrivateMigrationDataHolder).build();
+                if (config.getPersistentRandomizedMacAddress() == null) {
+                    config = updatePersistentRandomizedMacAddress(config);
+                }
+            }
+            persistConfigAndTriggerBackupManagerProxy(config);
         }
     }
 
@@ -131,14 +178,19 @@ public class WifiApConfigStore {
             WifiMetrics wifiMetrics) {
         mContext = context;
         mHandler = handler;
+        mUserManager = wifiInjector.getUserManager();
         mBackupManagerProxy = backupManagerProxy;
         mWifiConfigManager = wifiConfigManager;
         mActiveModeWarden = activeModeWarden;
         mWifiMetrics = wifiMetrics;
         mWifiNative = wifiInjector.getWifiNative();
-        // Register store data listener
+
+        // Register store data listeners
+        final SoftApStoreDataSource softApStoreDataSource = new SoftApStoreDataSource();
         wifiConfigStore.registerStoreData(
-                wifiInjector.makeSoftApStoreData(new SoftApStoreDataSource()));
+                wifiInjector.makeSharedSoftApStoreData(softApStoreDataSource));
+        wifiConfigStore.registerStoreData(
+                wifiInjector.makeUserSoftApStoreData(softApStoreDataSource));
 
         IntentFilter filter = new IntentFilter();
         filter.addAction(ACTION_HOTSPOT_CONFIG_USER_TAPPED_CONTENT);
@@ -734,5 +786,16 @@ public class WifiApConfigStore {
      */
     public synchronized String getLastConfiguredTetheredApPassphraseSinceBoot() {
         return mLastConfiguredPassphrase;
+    }
+
+    /**
+     * Resets user-session related data, typically invoked on user switch or stop (logout).
+     */
+    private synchronized void resetUserSessionData() {
+        mPersistentWifiApConfig = null;
+        mHasNewDataToSerialize = false;
+        // TODO(b/436322521): reset all user-session related data.
+        // For now, we only reset data related to UserStoreData. We will determine all data to be
+        // reset upon user-switch and user-stop in the coming CL.
     }
 }

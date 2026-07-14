@@ -47,6 +47,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
+import com.android.dx.mockito.inline.extended.ExtendedMockito;
 import android.Manifest;
 import android.app.test.TestAlarmManager;
 import android.content.Context;

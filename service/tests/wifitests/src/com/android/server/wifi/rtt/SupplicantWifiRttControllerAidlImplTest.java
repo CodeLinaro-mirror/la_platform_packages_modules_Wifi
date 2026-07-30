@@ -323,6 +323,8 @@ public class SupplicantWifiRttControllerAidlImplTest {
         assertEquals(TEST_MAC_ADDRESS, resultsCaptor.getValue().get(0).getMacAddress());
     }
 
+
+
     @Test
     public void testHalToFrameworkChannelBandwidth() {
         assertEquals(ScanResult.CHANNEL_WIDTH_20MHZ,

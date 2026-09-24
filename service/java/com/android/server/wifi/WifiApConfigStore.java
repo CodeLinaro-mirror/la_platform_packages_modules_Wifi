@@ -631,9 +631,8 @@ public class WifiApConfigStore {
         }
 
         // Automotive mode can force the LOHS to specific bands
-        if (hasAutomotiveFeature(context) && customConfig == null) {
-            if (Flags.bandOptimizationControl()
-                    && customConfig != null && !customConfig.isBandOptimizationEnabled()) {
+        if (hasAutomotiveFeature(context)) {
+            if (customConfig != null && !customConfig.isBandOptimizationEnabled()) {
                 Log.i(TAG, "Skipped band optimization for auto platform");
             } else {
                 int desiredBand = SoftApConfiguration.BAND_2GHZ;

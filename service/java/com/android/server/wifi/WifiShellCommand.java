@@ -3742,6 +3742,16 @@ public class WifiShellCommand extends BasicShellCommandHandler {
                 } else {
                     throw new IllegalArgumentException("Invalid bandwidth option " + bandwidth);
                 }
+            } else if (option.equals("-o")) {
+                String bandOptimizationEnabled = getNextArgRequired();
+                if (bandOptimizationEnabled.equals("true")) {
+                    configBuilder.setBandOptimizationEnabled(true);
+                } else if (bandOptimizationEnabled.equals("false")) {
+                    configBuilder.setBandOptimizationEnabled(false);
+                } else {
+                    throw new IllegalArgumentException(
+                            "Invalid band optimization option " + bandOptimizationEnabled);
+                }
             } else {
                 pw.println("Ignoring unknown option " + option);
             }
@@ -4440,7 +4450,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println(
                 "  start-softap <ssid> (open|wpa2|wpa3|wpa3_transition|owe|owe_transition)"
                         + " <passphrase> [-b 2|5|6|any|bridged|bridged_2_5|bridged_2_6|bridged_5_6]"
-                        + " [-x] [-w 20|40|80|160|320] [-f <int> [<int>]]");
+                        + " [-x] [-w 20|40|80|160|320] [-f <int> [<int>]] [-o true|false]");
         pw.println("    Start softap with provided params");
         pw.println("    Note that the shell command doesn't activate internet tethering. In some "
                 + "devices, internet sharing is possible when Wi-Fi STA is also enabled and is"
@@ -4474,6 +4484,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("          Use '-f 2412 5745' to enable bridged dual Soft Ap on 2412 and 5745");
         pw.println("    -x - Specifies the SSID as hex digits instead of plain text (T and above)");
         pw.println("    -w 20|40|80|160|320 - select the maximum channel bandwidth (MHz)");
+        pw.println("    -o true|false - enable/disable band settings optimization");
         pw.println("  stop-softap");
         pw.println("    Stop softap (hotspot)");
         pw.println("  force-softap-band enabled <int> | disabled");
@@ -4602,7 +4613,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println(
                 "  start-lohs <ssid> (open|wpa2|wpa3|wpa3_transition|owe|owe_transition)"
                         + " <passphrase> [-b 2|5|6|any|bridged|bridged_2_5|bridged_2_6|bridged_5_6]"
-                        + " [-x] [-w 20|40|80|160|320] [-f <int> [<int>]])");
+                        + " [-x] [-w 20|40|80|160|320] [-f <int> [<int>]] [-o true|false])");
         pw.println("    Start local only softap (hotspot) with provided params");
         pw.println("    <ssid> - SSID of the network");
         pw.println("    open|wpa2|wpa3|wpa3_transition|owe|owe_transition - Security type of the "
@@ -4633,6 +4644,7 @@ public class WifiShellCommand extends BasicShellCommandHandler {
         pw.println("          Use '-f 2412 5745' to enable bridged dual lohs on 2412 and 5745");
         pw.println("    -x - Specifies the SSID as hex digits instead of plain text (T and above)");
         pw.println("    -w 20|40|80|160|320 - select the maximum bandwidth (MHz)");
+        pw.println("    -o true|false - enable/disable band settings optimization");
         pw.println("  stop-softap");
         pw.println("    Stop softap (hotspot)");
         pw.println("    Note: If the band option is not provided, 2.4GHz is the preferred band.");

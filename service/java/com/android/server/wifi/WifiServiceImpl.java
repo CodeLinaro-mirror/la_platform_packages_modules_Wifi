@@ -1653,8 +1653,13 @@ public class WifiServiceImpl extends BaseWifiService {
      */
     @Override
     public boolean validateSoftApConfiguration(SoftApConfiguration config) {
-        int uid = Binder.getCallingUid();
-        boolean privileged = isSettingsOrSuw(Binder.getCallingPid(), uid);
+        return validateSoftApConfigurationInternal(config, Binder.getCallingUid(),
+                Binder.getCallingPid());
+    }
+
+    private boolean validateSoftApConfigurationInternal(SoftApConfiguration config,
+            int uid, int pid) {
+        boolean privileged = isSettingsOrSuw(pid, uid);
         return WifiApConfigStore.validateApWifiConfiguration(
                 config, privileged, mContext);
     }
@@ -1745,7 +1750,8 @@ public class WifiServiceImpl extends BaseWifiService {
         if (!startSoftApInternal(new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, softApConfig,
                 mTetheredSoftApTracker.getSoftApCapability(),
-                mCountryCode.getCountryCode()), requestorWs)) {
+                mCountryCode.getCountryCode()), requestorWs,
+                callingUid, Binder.getCallingPid())) {
             mTetheredSoftApTracker.setFailedWhileEnabling();
             return false;
         }
@@ -1766,6 +1772,7 @@ public class WifiServiceImpl extends BaseWifiService {
         // NETWORK_STACK is a signature only permission.
         enforceNetworkStackPermission();
         int callingUid = Binder.getCallingUid();
+        int callingPid = Binder.getCallingPid();
         mWifiPermissionsUtil.checkPackage(callingUid, packageName);
 
         // If user restriction is set, cannot start softap
@@ -1791,12 +1798,13 @@ public class WifiServiceImpl extends BaseWifiService {
         if (!startSoftApInternal(new SoftApModeConfiguration(
                 WifiManager.IFACE_IP_MODE_TETHERED, softApConfig,
                 mTetheredSoftApTracker.getSoftApCapability(),
-                mCountryCode.getCountryCode()), requestorWs)) {
+                mCountryCode.getCountryCode()), requestorWs,
+                callingUid, callingPid)) {
             mTetheredSoftApTracker.setFailedWhileEnabling();
             return false;
         }
         mLastCallerInfoManager.put(WifiManager.API_TETHERED_HOTSPOT, Process.myTid(),
-                callingUid, Binder.getCallingPid(), packageName, true);
+                callingUid, callingPid, packageName, true);
         return true;
     }
 
@@ -1804,9 +1812,8 @@ public class WifiServiceImpl extends BaseWifiService {
      * Internal method to start softap mode. Callers of this method should have already checked
      * proper permissions beyond the NetworkStack permission.
      */
-    private boolean startSoftApInternal(SoftApModeConfiguration apConfig, WorkSource requestorWs) {
-        int uid = Binder.getCallingUid();
-        boolean privileged = isSettingsOrSuw(Binder.getCallingPid(), uid);
+    private boolean startSoftApInternal(SoftApModeConfiguration apConfig,
+            WorkSource requestorWs, int uid, int pid) {
         mLog.trace("startSoftApInternal uid=% mode=%")
                 .c(uid).c(apConfig.getTargetMode()).flush();
 
@@ -1814,8 +1821,8 @@ public class WifiServiceImpl extends BaseWifiService {
         // AP config.
         SoftApConfiguration softApConfig = apConfig.getSoftApConfiguration();
         if (softApConfig != null
-                && (!WifiApConfigStore.validateApWifiConfiguration(
-                    softApConfig, privileged, mContext))) {
+                && !validateSoftApConfigurationInternal(
+                    softApConfig, uid, pid)) {
             Log.e(TAG, "Invalid SoftApConfiguration");
             return false;
         }
@@ -2435,8 +2442,13 @@ public class WifiServiceImpl extends BaseWifiService {
                     WifiManager.IFACE_IP_MODE_LOCAL_ONLY,
                     softApConfig, lohsCapability, mCountryCode.getCountryCode());
             mIsExclusive = (request.getCustomConfig() != null);
-            // Report the error if we got failure in startSoftApInternal
-            if (!startSoftApInternal(mActiveConfig, request.getWorkSource())) {
+            int uid = -1;
+            WorkSource ws = request.getWorkSource();
+            if (ws != null && !ws.isEmpty()) {
+                uid = ws.getUid(0);
+            }
+            int pid = request.getPid();
+            if (!startSoftApInternal(mActiveConfig, request.getWorkSource(), uid, pid)) {
                 onStateChanged(WIFI_AP_STATE_FAILED, ERROR_GENERIC);
             }
         }
